@@ -7,7 +7,7 @@ api:
   replicas: 2
   image:
     repository: geolens-api
-    tag: "1.0.1"
+    tag: "1.2.0"
     pullPolicy: IfNotPresent
   publicAppUrl: "https://geolens.example.com"
   publicApiUrl: "https://geolens.example.com/api"
@@ -21,7 +21,7 @@ worker:
   replicas: 1
   image:
     repository: geolens-worker
-    tag: "1.0.1"
+    tag: "1.2.0"
     pullPolicy: IfNotPresent
   resources: {}
   extraEnv: []
@@ -31,7 +31,7 @@ frontend:
   replicas: 2
   image:
     repository: geolens-frontend
-    tag: "1.0.1"
+    tag: "1.2.0"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP

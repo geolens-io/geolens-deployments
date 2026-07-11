@@ -8,6 +8,13 @@ Community-maintained Kubernetes packaging for [GeoLens](https://github.com/geole
 > Docker Compose — see the [GeoLens quickstart](https://docs.getgeolens.com/guides/quickstart/).
 > Chart issues and contributions are welcome here.
 
+## Scope
+
+This repo packages the Apache-2.0 **community edition** only — the same software
+as [`geolens-io/geolens`](https://github.com/geolens-io/geolens), nothing more.
+Deployment artifacts for commercial editions or hosted offerings are maintained
+privately and are out of scope here.
+
 ## Helm chart
 
 `helm/geolens` deploys the API, worker, frontend, and a one-shot migration job

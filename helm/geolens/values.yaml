@@ -6,7 +6,7 @@ imagePullSecrets: []
 api:
   replicas: 2
   image:
-    repository: geolens-api
+    repository: ghcr.io/geolens-io/geolens-api
     tag: "1.4.4"
     pullPolicy: IfNotPresent
   publicAppUrl: "https://geolens.example.com"
@@ -20,7 +20,7 @@ api:
 worker:
   replicas: 1
   image:
-    repository: geolens-worker
+    repository: ghcr.io/geolens-io/geolens-worker
     tag: "1.4.4"
     pullPolicy: IfNotPresent
   resources: {}
@@ -30,7 +30,7 @@ worker:
 frontend:
   replicas: 2
   image:
-    repository: geolens-frontend
+    repository: ghcr.io/geolens-io/geolens-frontend
     tag: "1.4.4"
     pullPolicy: IfNotPresent
   service:

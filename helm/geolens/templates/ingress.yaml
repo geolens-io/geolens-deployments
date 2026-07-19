@@ -5,8 +5,10 @@ metadata:
   name: {{ include "geolens.fullname" . }}
   labels:
     {{- include "geolens.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
   annotations:
-    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   {{- if .Values.ingress.className }}
   ingressClassName: {{ .Values.ingress.className }}
@@ -19,13 +21,12 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "geolens.fullname" . }}-api
-                port:
-                  name: http
+          # Everything flows through the frontend's edge nginx: it proxies
+          # /api and raster tiles to the api service (stripping the /api
+          # prefix the backend does not serve), 404s the unauthenticated
+          # /api/metrics endpoint, rate-limits anonymous raster traffic, and
+          # redacts credentialed paths from access logs. Adding a direct-to-api
+          # path here would bypass all of that.
           - path: /
             pathType: Prefix
             backend:

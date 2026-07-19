@@ -6,6 +6,12 @@ metadata:
   labels:
     {{- include "geolens.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
+  annotations:
+    # Run before install/upgrade so pods only ever start against a migrated
+    # schema. Job specs are immutable — without the delete policy every image
+    # bump would fail `helm upgrade` with a "field is immutable" error.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: {{ .Values.migrate.backoffLimit }}
   template:
@@ -17,21 +23,49 @@ spec:
       restartPolicy: OnFailure
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: migrate
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          # `upgrade heads` (plural) matches the api entrypoint and stays
+          # correct should the migration graph ever carry multiple heads.
           command:
             - sh
             - -c
-            - uv run --no-dev alembic upgrade head
+            - uv run --no-dev alembic upgrade heads
+          {{- if .Values.secrets.existingSecret }}
           envFrom:
-            - configMapRef:
-                name: {{ include "geolens.fullname" . }}-config
             - secretRef:
-                name: {{ include "geolens.secretName" . }}
-          {{- with .Values.enterprise.extraEnv }}
+                name: {{ .Values.secrets.existingSecret }}
+          {{- end }}
+          {{- if or (not .Values.secrets.existingSecret) .Values.api.extraEnv .Values.migrate.extraEnv }}
           env:
+            {{- if not .Values.secrets.existingSecret }}
+            # Inlined rather than referencing the chart-managed Secret: as a
+            # pre-install hook this Job runs before regular resources exist,
+            # so a secretRef would deadlock a fresh install.
+            - name: DATABASE_URL_OVERRIDE
+              value: {{ required "secrets.databaseUrlOverride is required (or provide secrets.existingSecret)" .Values.secrets.databaseUrlOverride | quote }}
+            - name: JWT_SECRET_KEY
+              value: {{ required "secrets.jwtSecretKey is required — generate with `openssl rand -hex 32` (or provide secrets.existingSecret)" .Values.secrets.jwtSecretKey | quote }}
+            - name: GEOLENS_ADMIN_USERNAME
+              value: {{ required "secrets.adminUsername is required (or provide secrets.existingSecret)" .Values.secrets.adminUsername | quote }}
+            - name: GEOLENS_ADMIN_PASSWORD
+              value: {{ required "secrets.adminPassword is required (or provide secrets.existingSecret)" .Values.secrets.adminPassword | quote }}
+            # Required at settings construction even though the override DSN
+            # carries the real credentials (see secret.yaml).
+            - name: POSTGRES_PASSWORD
+              value: "unused-database-url-override-in-use"
+            {{- end }}
+            {{- with .Values.api.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.migrate.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
 {{- end }}

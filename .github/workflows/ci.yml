@@ -1,0 +1,56 @@
+name: chart-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: helm lint
+        # Lint mode does not enforce `required` (this step passed with empty
+        # values), but linting with the same values as the template matrix
+        # keeps it representative of a real install.
+        run: |
+          helm lint helm/geolens \
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://geolens:pw@db.internal:5432/geolens' \
+            --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef' \
+            --set secrets.adminUsername='admin' \
+            --set secrets.adminPassword='chart-ci-only-Passw0rd!'
+
+      - name: Template — default configuration
+        run: |
+          helm template geolens helm/geolens \
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://geolens:pw@db.internal:5432/geolens' \
+            --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef' \
+            --set secrets.adminUsername='admin' \
+            --set secrets.adminPassword='chart-ci-only-Passw0rd!' \
+            > /dev/null
+
+      - name: Template — existingSecret + ingress + staging persistence
+        run: |
+          helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set ingress.enabled=true \
+            --set staging.persistence.enabled=true \
+            > /dev/null
+
+      - name: Template — titiler disabled, s3 storage
+        run: |
+          helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set titiler.enabled=false \
+            --set storage.backend=s3 \
+            --set storage.s3Bucket=geolens \
+            > /dev/null
+
+      - name: Required-value guards fail an empty install
+        run: |
+          if helm template geolens helm/geolens > /dev/null 2>&1; then
+            echo "expected 'required' failure when no secrets are provided" >&2
+            exit 1
+          fi

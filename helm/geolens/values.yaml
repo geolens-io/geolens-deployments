@@ -3,15 +3,28 @@ fullnameOverride: ""
 
 imagePullSecrets: []
 
+# Deployment security posture, passed to the backend as ENVIRONMENT (SEC-005).
+# "production" hides /docs and /redoc and marks the OAuth session cookie
+# Secure. Set "development" only on throwaway clusters.
+environment: "production"
+
+# Cluster DNS domain, used to build the fully qualified api Service name the
+# frontend nginx proxies to (its resolver ignores search domains, so short
+# names would not resolve). Change only on clusters with a custom domain.
+clusterDomain: cluster.local
+
 api:
   replicas: 2
   image:
     repository: ghcr.io/geolens-io/geolens-api
-    tag: "1.4.8"
+    tag: "1.4.9"
     pullPolicy: IfNotPresent
   publicAppUrl: "https://geolens.example.com"
   publicApiUrl: "https://geolens.example.com/api"
   corsAllowedOrigins: ""
+  # Backend upload limit. NOTE: the frontend edge nginx currently bakes a
+  # matching 500m client_max_body_size — values above 500 are rejected at the
+  # edge with 413 until the limit is parameterized upstream (geolens#580).
   uploadMaxSizeMb: "500"
   resources: {}
   extraEnv: []
@@ -21,7 +34,7 @@ worker:
   replicas: 1
   image:
     repository: ghcr.io/geolens-io/geolens-worker
-    tag: "1.4.8"
+    tag: "1.4.9"
     pullPolicy: IfNotPresent
   resources: {}
   extraEnv: []
@@ -31,17 +44,50 @@ frontend:
   replicas: 2
   image:
     repository: ghcr.io/geolens-io/geolens-frontend
-    tag: "1.4.8"
+    # Must stay >= 1.4.9: older frontend images predate the parameterized
+    # edge proxy (API_UPSTREAM) and cannot reach the api on Kubernetes.
+    tag: "1.4.9"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
     port: 80
+  # Browser-facing base URLs injected into the SPA at container start
+  # (window.__ENV__). Empty means same-origin relative URLs — correct whenever
+  # the app is reached through this chart's ingress. Set tileBaseUrl only when
+  # serving tiles through a separate CDN hostname.
+  apiBaseUrl: ""
+  tileBaseUrl: ""
   resources: {}
   extraEnv: []
 
+titiler:
+  # Raster (COG) tile rendering, part of the standard GeoLens topology.
+  # Disable only for vector-only catalogs — raster datasets need it.
+  enabled: true
+  replicas: 1
+  image:
+    repository: ghcr.io/developmentseed/titiler
+    tag: "2.0.5"
+    pullPolicy: IfNotPresent
+  resources: {}
+  # NOTE: with storage.backend=s3 on a non-AWS endpoint (MinIO/R2), raster
+  # assets resolve as /vsis3/ paths and GDAL inside titiler targets the AWS
+  # endpoint — upstream GeoLens has no endpoint plumbing for this path yet
+  # (its compose stack has the same gap). Until it does, supply the GDAL env
+  # here yourself, e.g.:
+  #   extraEnv:
+  #     - { name: AWS_S3_ENDPOINT, value: "minio.internal:9000" }  # schemeless
+  #     - { name: AWS_HTTPS, value: "NO" }                          # http endpoints
+  #     - { name: AWS_VIRTUAL_HOSTING, value: "FALSE" }             # path-style
+  extraEnv: []
+
 migrate:
+  # Run Alembic migrations as a pre-install/pre-upgrade hook Job, before any
+  # new pods roll. When disabled, every api pod runs migrations at boot
+  # instead, which races with api.replicas > 1 — keep this enabled.
   enabled: true
   backoffLimit: 2
+  extraEnv: []
 
 service:
   api:
@@ -49,6 +95,17 @@ service:
     port: 8000
 
 ingress:
+  # NOTE: behind an ingress controller the frontend nginx sees the
+  # controller's IP as the client (it deliberately overwrites forwarded
+  # headers as an anti-spoofing measure): the anonymous raster rate limit
+  # shares one bucket across all users and logs/backend rate limits lose the
+  # real client IP until trusted-proxy support lands upstream (geolens#581).
+  # Routes ALL traffic to the frontend, whose bundled nginx is the app edge:
+  # it proxies /api and raster tiles to the api service (the api serves its
+  # routes un-prefixed, nginx strips /api), blocks the unauthenticated
+  # /api/metrics endpoint, rate-limits anonymous raster traffic, and redacts
+  # credentialed paths from access logs. Do not add ingress paths that bypass
+  # it.
   enabled: false
   className: ""
   annotations: {}
@@ -56,20 +113,36 @@ ingress:
   tls: []
 
 secrets:
+  # Name of a pre-created Secret to use instead of the chart-managed one.
+  # It must carry the required keys listed in the README (DATABASE_URL_OVERRIDE,
+  # JWT_SECRET_KEY, GEOLENS_ADMIN_USERNAME, GEOLENS_ADMIN_PASSWORD, plus any
+  # optional ones you use).
   existingSecret: ""
+  # SQLAlchemy async DSN for the operator-managed PostgreSQL, e.g.
+  # postgresql+asyncpg://geolens:secret@db.example.internal:5432/geolens
   databaseUrlOverride: ""
   # JWT signing secret. MUST be at least 32 characters.
   # Generate with: openssl rand -hex 32
   # Maps to JWT_SECRET_KEY env var (matches Pydantic Settings field).
   jwtSecretKey: ""
+  # Initial admin credentials. The backend REQUIRES these at boot (there is no
+  # default) and refuses known-public example passwords.
+  adminUsername: ""
+  adminPassword: ""
   tileSigningSecret: ""
   openaiApiKey: ""
   anthropicApiKey: ""
 
 redis:
+  # Optional Redis-compatible tile/query cache (the compose stack ships
+  # Valkey). Empty disables caching.
   url: ""
 
 storage:
+  # Object storage for rasters, exports, and processed artifacts. On
+  # Kubernetes use "s3" (or "azure" via extraEnv). "local" writes into the
+  # staging volume: without staging.persistence that is a per-pod emptyDir,
+  # so stored data is LOST on pod restart and diverges across replicas.
   backend: "local"
   s3Endpoint: ""
   s3Region: ""
@@ -77,12 +150,24 @@ storage:
   s3AccessKeyId: ""
   s3SecretAccessKey: ""
 
-enterprise:
-  enabled: false
-  edition: "enterprise"
-  path: "/enterprise"
-  extraEnv: []
+staging:
+  # /app/staging is a shared handoff contract (GAP-022 in the main repo's
+  # docker-compose.yml): the api writes uploads there, the worker reads them
+  # for ingest, and titiler reads rasters under it — all at the same fixed
+  # path. Without a shared ReadWriteMany volume each pod sees its own
+  # emptyDir and ingest/raster serving cannot work across pods. Enable this
+  # (or point existingClaim at an RWX PVC) for any real deployment.
+  persistence:
+    enabled: false
+    existingClaim: ""
+    storageClass: ""
+    accessModes:
+      - ReadWriteMany
+    size: 20Gi
 
+# Applied to api, worker, and migrate pods (uid 1001 matches the appuser baked
+# into the backend images). The frontend and titiler images declare their own
+# non-root users and are left to them.
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1001

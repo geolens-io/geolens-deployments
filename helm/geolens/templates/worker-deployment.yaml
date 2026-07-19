@@ -16,6 +16,11 @@ spec:
       labels:
         {{- include "geolens.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: worker
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if not .Values.secrets.existingSecret }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -27,19 +32,17 @@ spec:
         - name: worker
           image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
           imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          ports:
+            - name: health
+              containerPort: 8001
           envFrom:
             - configMapRef:
                 name: {{ include "geolens.fullname" . }}-config
             - secretRef:
                 name: {{ include "geolens.secretName" . }}
-          {{- if or .Values.worker.extraEnv .Values.enterprise.extraEnv }}
+          {{- with .Values.worker.extraEnv }}
           env:
-            {{- with .Values.worker.extraEnv }}
             {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.enterprise.extraEnv }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
           {{- end }}
           volumeMounts:
             - name: staging
@@ -47,11 +50,27 @@ spec:
             {{- with .Values.worker.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          # The worker starts its health server only after schema-sync,
+          # storage bootstrap, and stale-job recovery, so give startup a real
+          # budget before liveness applies (slow DB/S3 would otherwise
+          # crash-loop a normally-booting worker).
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: health
+            periodSeconds: 5
+            failureThreshold: 30
+          # The worker serves no traffic; liveness against its health sidecar
+          # endpoint (same one the image HEALTHCHECK uses) restarts a hung
+          # job runner.
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: health
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
       volumes:
-        - name: staging
-          emptyDir: {}
+        {{- include "geolens.stagingVolume" . | nindent 8 }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

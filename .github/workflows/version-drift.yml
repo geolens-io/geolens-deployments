@@ -1,0 +1,42 @@
+name: version-drift
+
+# The chart's appVersion/image tags are bumped by hand at each GeoLens
+# release; this catches the drift that once left the chart a month stale.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare chart versions to the latest GeoLens release
+        run: |
+          latest="$(gh api repos/geolens-io/geolens/releases/latest --jq .tag_name)"
+          latest="${latest#v}"
+          app="$(awk -F'"' '/^appVersion:/ {print $2}' helm/geolens/Chart.yaml)"
+          echo "latest GeoLens release: $latest — chart appVersion: $app"
+          fail=0
+          if [ "$app" != "$latest" ]; then
+            echo "::error file=helm/geolens/Chart.yaml::appVersion $app != latest GeoLens release $latest"
+            fail=1
+          fi
+          mismatch="$(awk -v want="$latest" '
+            /repository: ghcr.io\/geolens-io\// { repo = $2 }
+            /tag:/ && repo != "" {
+              gsub(/"/, "", $2)
+              if ($2 != want) print repo " -> " $2
+              repo = ""
+            }' helm/geolens/values.yaml)"
+          if [ -n "$mismatch" ]; then
+            echo "::error file=helm/geolens/values.yaml::image tags behind $latest: $mismatch"
+            fail=1
+          fi
+          exit "$fail"

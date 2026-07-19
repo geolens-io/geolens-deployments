@@ -29,8 +29,20 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            - name: VITE_API_BASE_URL
-              value: {{ .Values.api.publicApiUrl | quote }}
+            # nginx proxy target for the /api, raster-tile, and embed
+            # frame-policy blocks (frontend images >= 1.4.9; older images
+            # ignore this and can only proxy under compose).
+            - name: API_UPSTREAM
+              value: {{ include "geolens.apiUrl" . | quote }}
+            # Rendered into the SPA's window.__ENV__ at container start.
+            # Empty values mean same-origin relative URLs.
+            - name: API_BASE_URL
+              value: {{ .Values.frontend.apiBaseUrl | quote }}
+            - name: TILE_BASE_URL
+              value: {{ .Values.frontend.tileBaseUrl | quote }}
+            # Absolutizes the og:image meta tag for social scrapers.
+            - name: PUBLIC_APP_URL
+              value: {{ .Values.api.publicAppUrl | quote }}
             {{- with .Values.frontend.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

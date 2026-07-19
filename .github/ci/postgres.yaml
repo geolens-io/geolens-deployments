@@ -1,0 +1,80 @@
+# CI-only PostgreSQL for the kind install test. NOT a production manifest —
+# the chart deliberately does not ship a database (operator-owned service).
+#
+# Image note: no upstream image bundles PostGIS *and* pgvector, and the
+# baseline migration requires postgis, pg_trgm, vector, and unaccent to be
+# pre-created. The command wrapper installs pgvector from the PGDG apt repo
+# the postgis image already configures (same approach as the main repo's
+# db/Dockerfile, done at start here because CI has no image registry).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: geolens-ci-db-init
+data:
+  10-extensions.sql: |
+    CREATE EXTENSION IF NOT EXISTS postgis;
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE EXTENSION IF NOT EXISTS vector;
+    CREATE EXTENSION IF NOT EXISTS unaccent;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: geolens-ci-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: geolens-ci-db
+  template:
+    metadata:
+      labels:
+        app: geolens-ci-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgis/postgis:17-3.5
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends postgresql-17-pgvector
+              exec docker-entrypoint.sh postgres
+          env:
+            - name: POSTGRES_DB
+              value: geolens
+            - name: POSTGRES_USER
+              value: geolens
+            - name: POSTGRES_PASSWORD
+              value: chart-ci-db-password
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "geolens", "-d", "geolens"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 60
+      volumes:
+        - name: initdb
+          configMap:
+            name: geolens-ci-db-init
+        - name: pgdata
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: geolens-ci-db
+spec:
+  selector:
+    app: geolens-ci-db
+  ports:
+    - port: 5432
+      targetPort: 5432

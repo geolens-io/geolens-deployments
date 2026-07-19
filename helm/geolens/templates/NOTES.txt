@@ -1,4 +1,15 @@
 GeoLens {{ .Chart.AppVersion }} ({{ .Release.Name }}) deployed.
+{{- $feTag := .Values.frontend.image.tag | toString }}
+{{- if regexMatch "^v?\\d+\\.\\d+\\.\\d+$" $feTag }}
+{{- if semverCompare "<1.4.9-0" $feTag }}
+
+WARNING: frontend image {{ $feTag }} predates the parameterized edge proxy
+(API_UPSTREAM, introduced in GeoLens 1.4.9). Its bundled nginx can only reach
+the api under Docker Compose, so API calls through this install WILL FAIL.
+Bump the three ghcr.io/geolens-io/* image tags to >= 1.4.9 as soon as that
+release is published (the weekly version-drift CI in this repo flags it).
+{{- end }}
+{{- end }}
 
 {{- if .Values.ingress.enabled }}
 

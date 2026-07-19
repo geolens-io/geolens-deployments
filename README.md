@@ -30,10 +30,15 @@ serve — while blocking the unauthenticated `/api/metrics` endpoint,
 rate-limiting anonymous raster traffic, and redacting credentialed paths from
 its access log. Don't route around it.
 
-> [!NOTE]
-> Proxying through the frontend requires frontend image **1.4.9 or newer**
-> (older images hardwire a Docker-compose-only upstream). The chart's
-> `API_UPSTREAM` env is ignored by older images.
+> [!WARNING]
+> Proxying through the frontend requires frontend image **1.4.9 or newer** —
+> older images hardwire a Docker-compose-only upstream and ignore the chart's
+> `API_UPSTREAM` env, and no alternative topology works with them (routing
+> `/api` straight to the api Service 404s because the backend serves its
+> routes un-prefixed). While the chart's default tags still point at 1.4.8,
+> an install renders and deploys but **cannot serve API traffic**; `helm
+> install` prints the same warning. Bump the three `ghcr.io/geolens-io/*`
+> tags the moment 1.4.9 is published.
 
 ### Required values
 

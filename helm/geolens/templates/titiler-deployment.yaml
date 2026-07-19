@@ -86,6 +86,34 @@ spec:
                   optional: true
             - name: AWS_DEFAULT_REGION
               value: {{ .Values.storage.s3Region | default "us-east-1" | quote }}
+            {{- /*
+              Custom-endpoint plumbing for GDAL's /vsis3/ reads (geolens#579).
+              titiler runs no GeoLens code, so the api/worker's boot-time
+              derive_gdal_s3_env() cannot reach it — the same rules are applied
+              here instead, from the same storage.* values the api receives:
+                - GDAL wants a scheme-LESS host[:port]; the scheme becomes
+                  AWS_HTTPS. An explicit scheme on s3Endpoint wins, otherwise
+                  s3AllowHttp decides.
+                - AWS_VIRTUAL_HOSTING=FALSE only for path-style addressing.
+            */}}
+            {{- $ep := trim (.Values.storage.s3Endpoint | default "") }}
+            {{- if $ep }}
+            {{- $hasScheme := contains "://" $ep }}
+            {{- $scheme := $hasScheme | ternary (splitList "://" $ep | first) "" }}
+            {{- $host := ($hasScheme | ternary (splitList "://" $ep | last) $ep) | splitList "/" | first }}
+            {{- if $host }}
+            - name: AWS_S3_ENDPOINT
+              value: {{ $host | quote }}
+            {{- if $hasScheme | ternary (eq $scheme "http") .Values.storage.s3AllowHttp }}
+            - name: AWS_HTTPS
+              value: "NO"
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- if eq .Values.storage.s3AddressingStyle "path" }}
+            - name: AWS_VIRTUAL_HOSTING
+              value: "FALSE"
+            {{- end }}
             {{- end }}
             {{- with .Values.titiler.extraEnv }}
             {{- toYaml . | nindent 12 }}

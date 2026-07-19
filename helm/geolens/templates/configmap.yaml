@@ -17,6 +17,14 @@ data:
   {{- with .Values.storage.s3Region }}
   S3_REGION: {{ . | quote }}
   {{- end }}
+  {{- /* Same two knobs titiler's GDAL env is derived from — passed here so the
+         api/worker and titiler resolve the endpoint identically. */}}
+  {{- if .Values.storage.s3AllowHttp }}
+  S3_ALLOW_HTTP: "true"
+  {{- end }}
+  {{- if ne .Values.storage.s3AddressingStyle "auto" }}
+  S3_ADDRESSING_STYLE: {{ .Values.storage.s3AddressingStyle | quote }}
+  {{- end }}
   {{- if eq .Values.storage.backend "s3" }}
   S3_BUCKET: {{ required "storage.s3Bucket is required when storage.backend=s3" .Values.storage.s3Bucket | quote }}
   {{- else }}

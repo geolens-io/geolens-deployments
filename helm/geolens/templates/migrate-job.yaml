@@ -42,6 +42,7 @@ spec:
             - secretRef:
                 name: {{ .Values.secrets.existingSecret }}
           {{- end }}
+          {{- if or (not .Values.secrets.existingSecret) .Values.api.extraEnv .Values.migrate.extraEnv }}
           env:
             {{- if not .Values.secrets.existingSecret }}
             # Inlined rather than referencing the chart-managed Secret: as a
@@ -66,4 +67,5 @@ spec:
             {{- with .Values.migrate.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- end }}
 {{- end }}

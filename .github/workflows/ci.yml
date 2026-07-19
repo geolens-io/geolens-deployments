@@ -54,3 +54,57 @@ jobs:
             echo "expected 'required' failure when no secrets are provided" >&2
             exit 1
           fi
+
+  # Real install against a kind cluster: exercises the install-time failure
+  # classes static rendering provably cannot catch (hook ordering, Job
+  # immutability on upgrade, probe budgets, FQDN proxy resolution through the
+  # frontend edge). Uses the published GHCR images at the chart's default tags.
+  install-test:
+    name: kind install test
+    runs-on: ubuntu-latest
+    needs: lint-and-template
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+
+      - name: Deploy CI PostgreSQL (PostGIS + pgvector)
+        run: |
+          kubectl apply -f .github/ci/postgres.yaml
+          kubectl rollout status deployment/geolens-ci-db --timeout=300s
+
+      - name: helm install --wait
+        run: |
+          helm install geolens helm/geolens \
+            --set api.replicas=1 \
+            --set frontend.replicas=1 \
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://geolens:chart-ci-db-password@geolens-ci-db.default.svc.cluster.local:5432/geolens' \
+            --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef' \
+            --set secrets.adminUsername='ci-admin' \
+            --set secrets.adminPassword='chart-ci-only-Passw0rd!' \
+            --wait --timeout 20m
+
+      - name: Smoke through the frontend edge
+        # Validates the whole chain the chart configures: frontend nginx ->
+        # resolver -> api Service FQDN -> /api prefix strip -> backend /health.
+        run: |
+          kubectl run smoke --image=curlimages/curl:8.10.1 --restart=Never \
+            --attach --rm --command -- \
+            curl -sf --retry 5 --retry-delay 3 http://geolens-frontend/api/health
+
+      - name: helm upgrade idempotence (migrate hook re-run)
+        run: |
+          helm upgrade geolens helm/geolens --reuse-values --wait --timeout 10m
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide
+          kubectl get events --sort-by=.lastTimestamp | tail -50
+          kubectl describe pods -l app.kubernetes.io/instance=geolens
+          for c in $(kubectl get pods -l app.kubernetes.io/instance=geolens -o name); do
+            echo "=== logs $c ==="
+            kubectl logs "$c" --all-containers --tail=100 || true
+          done
+          kubectl logs -l app=geolens-ci-db --tail=50 || true

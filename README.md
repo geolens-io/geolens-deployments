@@ -3,9 +3,12 @@
 Community-maintained Kubernetes packaging for [GeoLens](https://github.com/geolens-io/geolens).
 
 > [!IMPORTANT]
-> **Community-maintained / unsupported.** This Helm chart is provided as-is and is
-> not actively tested against a live cluster. The **supported** install path is
-> Docker Compose — see the [GeoLens quickstart](https://docs.getgeolens.com/guides/quickstart/).
+> **Community-maintained / unsupported.** This Helm chart is provided as-is.
+> CI installs every change into a throwaway [kind](https://kind.sigs.k8s.io/)
+> cluster (install → smoke through the frontend edge → upgrade), but no
+> long-lived production cluster is maintained. The **supported** install path
+> is Docker Compose — see the
+> [GeoLens quickstart](https://docs.getgeolens.com/guides/quickstart/).
 > Chart issues and contributions are welcome here.
 
 ## Scope
@@ -14,6 +17,25 @@ This repo packages the Apache-2.0 **community edition** only — the same softwa
 as [`geolens-io/geolens`](https://github.com/geolens-io/geolens), nothing more.
 Deployment artifacts for commercial editions or hosted offerings are maintained
 privately and are out of scope here.
+
+## Install
+
+From the hosted Helm repository:
+
+```bash
+helm repo add geolens https://geolens-io.github.io/geolens-deployments
+helm upgrade --install geolens geolens/geolens [--set ...]
+```
+
+or OCI:
+
+```bash
+helm upgrade --install geolens oci://ghcr.io/geolens-io/charts/geolens [--set ...]
+```
+
+or from a checkout of this repo, replacing `geolens/geolens` with
+`helm/geolens` in the commands below. Charts are published by the
+`release-charts` workflow whenever a `Chart.yaml` version bump lands on main.
 
 ## Helm chart
 
@@ -129,6 +151,23 @@ The externally managed PostgreSQL instance must satisfy:
 - **Extensions present**: `postgis`, `pg_trgm`, `vector` (pgvector), `unaccent`.
   On managed services (RDS, Cloud SQL) create them once with a privileged role,
   e.g. `CREATE EXTENSION IF NOT EXISTS vector;`.
+- **Schemas and reader role pre-created** — the migrations expect them (the
+  hook otherwise fails with `schema "data" does not exist`). Run once with a
+  privileged role, where `app_user` is the role from your
+  `DATABASE_URL_OVERRIDE` DSN — the `AUTHORIZATION` clause matters on managed
+  services (RDS, Cloud SQL): schemas owned by the admin role would leave the
+  app user without `USAGE`/`CREATE` and the migration job fails on permission
+  errors:
+
+  ```sql
+  CREATE SCHEMA IF NOT EXISTS catalog AUTHORIZATION app_user;
+  CREATE SCHEMA IF NOT EXISTS data AUTHORIZATION app_user;
+  CREATE ROLE geolens_reader NOLOGIN;
+  GRANT USAGE ON SCHEMA data TO geolens_reader;
+  GRANT SELECT ON ALL TABLES IN SCHEMA data TO geolens_reader;
+  ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA data
+    GRANT SELECT ON TABLES TO geolens_reader;
+  ```
 
 ### Migrations & upgrades
 

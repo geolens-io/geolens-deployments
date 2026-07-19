@@ -69,8 +69,11 @@ spec:
             - name: pgdata
               mountPath: /var/lib/postgresql/data
           readinessProbe:
+            # -h 127.0.0.1 forces TCP: during first init the entrypoint runs a
+            # socket-only temporary server for init scripts, and a socket
+            # pg_isready would report ready before the real listener is up.
             exec:
-              command: ["pg_isready", "-U", "geolens", "-d", "geolens"]
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", "geolens", "-d", "geolens"]
             initialDelaySeconds: 10
             periodSeconds: 5
             failureThreshold: 60

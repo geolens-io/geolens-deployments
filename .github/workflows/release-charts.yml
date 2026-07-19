@@ -63,3 +63,18 @@ jobs:
           for pkg in "${pkgs[@]}"; do
             helm push "$pkg" oci://ghcr.io/${{ github.repository_owner }}/charts
           done
+
+      - name: Verify anonymous OCI pull
+        # GHCR creates new packages PRIVATE by default and only public packages
+        # allow anonymous pulls — the README advertises an unauthenticated
+        # install. Fail loudly (rather than silently shipping a broken install
+        # path) until an org admin flips the one-time visibility setting.
+        run: |
+          helm registry logout ghcr.io || true
+          version=$(awk '/^version:/ {print $2}' helm/geolens/Chart.yaml)
+          if ! helm pull "oci://ghcr.io/${{ github.repository_owner }}/charts/geolens" \
+              --version "$version" -d "$(mktemp -d)"; then
+            echo "::error::ghcr.io/${{ github.repository_owner }}/charts/geolens is not anonymously pullable." \
+                 "One-time fix: org settings -> Packages -> charts/geolens -> Change visibility -> Public, then re-run this job."
+            exit 1
+          fi

@@ -12,7 +12,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: helm lint
-        run: helm lint helm/geolens
+        # Lint mode does not enforce `required` (this step passed with empty
+        # values), but linting with the same values as the template matrix
+        # keeps it representative of a real install.
+        run: |
+          helm lint helm/geolens \
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://geolens:pw@db.internal:5432/geolens' \
+            --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef' \
+            --set secrets.adminUsername='admin' \
+            --set secrets.adminPassword='chart-ci-only-Passw0rd!'
 
       - name: Template — default configuration
         run: |

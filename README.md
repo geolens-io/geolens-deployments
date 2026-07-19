@@ -151,6 +151,18 @@ The externally managed PostgreSQL instance must satisfy:
 - **Extensions present**: `postgis`, `pg_trgm`, `vector` (pgvector), `unaccent`.
   On managed services (RDS, Cloud SQL) create them once with a privileged role,
   e.g. `CREATE EXTENSION IF NOT EXISTS vector;`.
+- **Schemas and reader role pre-created** — the migrations expect them (the
+  hook otherwise fails with `schema "data" does not exist`). Run once, as in
+  the main repo's `scripts/init-db.sh`:
+
+  ```sql
+  CREATE SCHEMA IF NOT EXISTS catalog;
+  CREATE SCHEMA IF NOT EXISTS data;
+  CREATE ROLE geolens_reader NOLOGIN;
+  GRANT USAGE ON SCHEMA data TO geolens_reader;
+  GRANT SELECT ON ALL TABLES IN SCHEMA data TO geolens_reader;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA data GRANT SELECT ON TABLES TO geolens_reader;
+  ```
 
 ### Migrations & upgrades
 

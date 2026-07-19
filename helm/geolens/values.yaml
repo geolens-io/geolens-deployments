@@ -95,6 +95,11 @@ service:
     port: 8000
 
 ingress:
+  # NOTE: behind an ingress controller the frontend nginx sees the
+  # controller's IP as the client (it deliberately overwrites forwarded
+  # headers as an anti-spoofing measure): the anonymous raster rate limit
+  # shares one bucket across all users and logs/backend rate limits lose the
+  # real client IP until trusted-proxy support lands upstream (geolens#581).
   # Routes ALL traffic to the frontend, whose bundled nginx is the app edge:
   # it proxies /api and raster tiles to the api service (the api serves its
   # routes un-prefixed, nginx strips /api), blocks the unauthenticated

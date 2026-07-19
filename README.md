@@ -30,6 +30,13 @@ serve — while blocking the unauthenticated `/api/metrics` endpoint,
 rate-limiting anonymous raster traffic, and redacting credentialed paths from
 its access log. Don't route around it.
 
+Known limitation behind an ingress controller: the frontend nginx overwrites
+forwarded headers (deliberate anti-spoofing when it is the true edge), so the
+controller's IP becomes "the client" — the anonymous raster rate limit shares
+one bucket across all users and backend logs/rate limits lose the real client
+IP. Trusted-proxy support is tracked upstream as
+[geolens#581](https://github.com/geolens-io/geolens/issues/581).
+
 > [!NOTE]
 > Proxying through the frontend requires frontend image **1.4.9 or newer** —
 > older images hardwire a Docker-compose-only upstream and ignore the chart's

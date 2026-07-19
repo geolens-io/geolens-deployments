@@ -50,6 +50,16 @@ spec:
             {{- with .Values.worker.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          # The worker starts its health server only after schema-sync,
+          # storage bootstrap, and stale-job recovery, so give startup a real
+          # budget before liveness applies (slow DB/S3 would otherwise
+          # crash-loop a normally-booting worker).
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: health
+            periodSeconds: 5
+            failureThreshold: 30
           # The worker serves no traffic; liveness against its health sidecar
           # endpoint (same one the image HEALTHCHECK uses) restarts a hung
           # job runner.

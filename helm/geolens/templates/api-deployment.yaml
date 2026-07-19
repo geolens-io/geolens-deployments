@@ -55,6 +55,14 @@ spec:
             {{- with .Values.api.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          # Boot waits on the database (and migrations when migrate.enabled
+          # is false); give startup a budget before liveness applies.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
           readinessProbe:
             httpGet:
               path: /health

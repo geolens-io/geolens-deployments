@@ -22,6 +22,9 @@ api:
   publicAppUrl: "https://geolens.example.com"
   publicApiUrl: "https://geolens.example.com/api"
   corsAllowedOrigins: ""
+  # Backend upload limit. NOTE: the frontend edge nginx currently bakes a
+  # matching 500m client_max_body_size — values above 500 are rejected at the
+  # edge with 413 until the limit is parameterized upstream (geolens#580).
   uploadMaxSizeMb: "500"
   resources: {}
   extraEnv: []

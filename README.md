@@ -86,6 +86,11 @@ The chart sets `ENVIRONMENT=production` by default (API docs hidden, Secure
 session cookie). Override with `--set environment=development` only on
 throwaway clusters.
 
+Upload sizes: `api.uploadMaxSizeMb` above 500 currently also requires raising
+the frontend edge's baked `client_max_body_size` (500m) — tracked upstream as
+[geolens#580](https://github.com/geolens-io/geolens/issues/580); until it
+lands, larger uploads are rejected at the edge with 413.
+
 ### Storage & the shared staging volume
 
 `/app/staging` is a shared handoff path: the api writes uploads there, the

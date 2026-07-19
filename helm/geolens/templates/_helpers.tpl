@@ -36,8 +36,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{/*
+Fully qualified on purpose: the frontend nginx resolves this through its
+`resolver` directive, which does not apply resolv.conf search domains — a
+short Service name would NXDOMAIN at CoreDNS.
+*/}}
 {{- define "geolens.apiUrl" -}}
-http://{{ include "geolens.fullname" . }}-api:{{ .Values.service.api.port }}
+http://{{ include "geolens.fullname" . }}-api.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.service.api.port }}
 {{- end -}}
 
 {{/*

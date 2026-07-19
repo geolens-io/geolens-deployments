@@ -8,6 +8,11 @@ imagePullSecrets: []
 # Secure. Set "development" only on throwaway clusters.
 environment: "production"
 
+# Cluster DNS domain, used to build the fully qualified api Service name the
+# frontend nginx proxies to (its resolver ignores search domains, so short
+# names would not resolve). Change only on clusters with a custom domain.
+clusterDomain: cluster.local
+
 api:
   replicas: 2
   image:

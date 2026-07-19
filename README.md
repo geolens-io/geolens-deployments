@@ -102,6 +102,12 @@ for a quick render, not for real use. For a working deployment:
   `storage.backend=local` keeps stored rasters/exports inside the staging
   volume, so without persistence they are lost on every pod restart.
 
+S3-compatible endpoints (MinIO, R2): raster serving resolves assets as
+`/vsis3/` paths, and upstream GeoLens does not yet plumb a custom endpoint
+through to GDAL/Titiler (its compose stack has the same gap). Until that
+lands upstream, pass the GDAL env yourself via `titiler.extraEnv` — see the
+example in `values.yaml`.
+
 ### Database requirements
 
 The externally managed PostgreSQL instance must satisfy:

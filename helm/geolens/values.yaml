@@ -68,6 +68,15 @@ titiler:
     tag: "2.0.5"
     pullPolicy: IfNotPresent
   resources: {}
+  # NOTE: with storage.backend=s3 on a non-AWS endpoint (MinIO/R2), raster
+  # assets resolve as /vsis3/ paths and GDAL inside titiler targets the AWS
+  # endpoint — upstream GeoLens has no endpoint plumbing for this path yet
+  # (its compose stack has the same gap). Until it does, supply the GDAL env
+  # here yourself, e.g.:
+  #   extraEnv:
+  #     - { name: AWS_S3_ENDPOINT, value: "minio.internal:9000" }  # schemeless
+  #     - { name: AWS_HTTPS, value: "NO" }                          # http endpoints
+  #     - { name: AWS_VIRTUAL_HOSTING, value: "FALSE" }             # path-style
   extraEnv: []
 
 migrate:

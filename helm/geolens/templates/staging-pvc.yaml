@@ -1,0 +1,17 @@
+{{- if and .Values.staging.persistence.enabled (not .Values.staging.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "geolens.fullname" . }}-staging
+  labels:
+    {{- include "geolens.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.staging.persistence.accessModes | nindent 4 }}
+  {{- with .Values.staging.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.staging.persistence.size }}
+{{- end }}

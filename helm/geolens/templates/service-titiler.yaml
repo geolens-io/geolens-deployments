@@ -1,0 +1,18 @@
+{{- if .Values.titiler.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "geolens.fullname" . }}-titiler
+  labels:
+    {{- include "geolens.labels" . | nindent 4 }}
+    app.kubernetes.io/component: titiler
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+  selector:
+    {{- include "geolens.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: titiler
+{{- end }}

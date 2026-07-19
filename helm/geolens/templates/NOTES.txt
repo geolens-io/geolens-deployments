@@ -1,0 +1,25 @@
+GeoLens {{ .Chart.AppVersion }} ({{ .Release.Name }}) deployed.
+
+{{- if .Values.ingress.enabled }}
+
+URL: http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
+{{- else }}
+
+No ingress enabled. Reach the app with:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "geolens.fullname" . }}-frontend 8080:{{ .Values.frontend.service.port }}
+
+then open http://localhost:8080
+{{- end }}
+
+Sign in with the admin credentials you configured (secrets.adminUsername).
+
+{{- if not .Values.staging.persistence.enabled }}
+
+WARNING: staging.persistence is disabled, so api/worker/titiler each see a
+private emptyDir at /app/staging. Uploads land on one api pod and the worker
+cannot read them — ingest will fail across pods{{- if eq .Values.storage.backend "local" }}, and with storage.backend=local
+stored rasters/exports are LOST whenever a pod restarts{{- end }}. Enable
+staging.persistence (ReadWriteMany) and prefer storage.backend=s3 — see the
+README's Storage section.
+{{- end }}

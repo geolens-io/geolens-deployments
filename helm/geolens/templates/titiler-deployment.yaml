@@ -1,0 +1,102 @@
+{{- if .Values.titiler.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "geolens.fullname" . }}-titiler
+  labels:
+    {{- include "geolens.labels" . | nindent 4 }}
+    app.kubernetes.io/component: titiler
+spec:
+  replicas: {{ .Values.titiler.replicas }}
+  selector:
+    matchLabels:
+      {{- include "geolens.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: titiler
+  template:
+    metadata:
+      labels:
+        {{- include "geolens.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: titiler
+    spec:
+      # No podSecurityContext: the upstream titiler image declares its own
+      # user; the chart's uid 1001 is a backend-image contract.
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: titiler
+          image: "{{ .Values.titiler.image.repository }}:{{ .Values.titiler.image.tag }}"
+          imagePullPolicy: {{ .Values.titiler.image.pullPolicy }}
+          command:
+            - uvicorn
+            - titiler.application.main:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+            - --workers
+            - "1"
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            # GDAL raster I/O tuning — mirrors the titiler service in the main
+            # repo's docker-compose.yml.
+            - name: GDAL_CACHEMAX
+              value: "200"
+            - name: GDAL_DISABLE_READDIR_ON_OPEN
+              value: "EMPTY_DIR"
+            - name: CPL_VSIL_CURL_ALLOWED_EXTENSIONS
+              value: ".tif,.tiff,.cog,.vrt"
+            - name: GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE
+              value: "NETWORK_OR_LOCAL"
+            - name: VSI_CACHE
+              value: "TRUE"
+            - name: CPL_VSIL_CURL_CACHE_SIZE
+              value: "16777216"
+            - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
+              value: "YES"
+            # SSRF posture: the api revalidates remote object URLs per hop;
+            # titiler must never follow redirects itself (Rule 2 in the main
+            # repo's security checklist).
+            - name: GDAL_HTTP_FOLLOWLOCATION
+              value: "NO"
+            {{- if eq .Values.storage.backend "s3" }}
+            # optional: absent keys fall through to the pod's ambient AWS
+            # credential chain (e.g. IRSA).
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "geolens.secretName" . }}
+                  key: S3_ACCESS_KEY_ID
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "geolens.secretName" . }}
+                  key: S3_SECRET_ACCESS_KEY
+                  optional: true
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.storage.s3Region | default "us-east-1" | quote }}
+            {{- end }}
+            {{- with .Values.titiler.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            # titiler reads rasters under the shared staging path (GAP-022).
+            - name: staging
+              mountPath: /app/staging
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            {{- toYaml .Values.titiler.resources | nindent 12 }}
+      volumes:
+        {{- include "geolens.stagingVolume" . | nindent 8 }}
+{{- end }}

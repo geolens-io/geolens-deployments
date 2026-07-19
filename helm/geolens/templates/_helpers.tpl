@@ -35,3 +35,22 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-secrets" (include "geolens.fullname" .) -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "geolens.apiUrl" -}}
+http://{{ include "geolens.fullname" . }}-api:{{ .Values.service.api.port }}
+{{- end -}}
+
+{{/*
+The shared /app/staging volume (GAP-022 handoff contract — see values.yaml).
+With persistence enabled, api/worker/titiler all mount one RWX claim; without
+it each pod gets its own emptyDir and cross-pod handoff cannot work.
+*/}}
+{{- define "geolens.stagingVolume" -}}
+- name: staging
+{{- if .Values.staging.persistence.enabled }}
+  persistentVolumeClaim:
+    claimName: {{ .Values.staging.persistence.existingClaim | default (printf "%s-staging" (include "geolens.fullname" .)) }}
+{{- else }}
+  emptyDir: {}
+{{- end }}
+{{- end -}}

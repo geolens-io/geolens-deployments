@@ -63,7 +63,8 @@ kubectl create secret generic geolens-secrets \
   --from-literal=DATABASE_URL_OVERRIDE='postgresql+asyncpg://geolens:change-me@postgres.internal:5432/geolens' \
   --from-literal=JWT_SECRET_KEY="$(openssl rand -hex 32)" \
   --from-literal=GEOLENS_ADMIN_USERNAME='admin' \
-  --from-literal=GEOLENS_ADMIN_PASSWORD='a-strong-unique-password'
+  --from-literal=GEOLENS_ADMIN_PASSWORD='a-strong-unique-password' \
+  --from-literal=POSTGRES_PASSWORD='unused'
 
 helm upgrade --install geolens helm/geolens \
   --set secrets.existingSecret=geolens-secrets \

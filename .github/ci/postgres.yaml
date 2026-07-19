@@ -22,13 +22,14 @@ data:
     CREATE EXTENSION IF NOT EXISTS vector;
     CREATE EXTENSION IF NOT EXISTS unaccent;
 
-    CREATE SCHEMA IF NOT EXISTS catalog;
-    CREATE SCHEMA IF NOT EXISTS data;
+    CREATE SCHEMA IF NOT EXISTS catalog AUTHORIZATION geolens;
+    CREATE SCHEMA IF NOT EXISTS data AUTHORIZATION geolens;
 
     CREATE ROLE geolens_reader NOLOGIN;
     GRANT USAGE ON SCHEMA data TO geolens_reader;
     GRANT SELECT ON ALL TABLES IN SCHEMA data TO geolens_reader;
-    ALTER DEFAULT PRIVILEGES IN SCHEMA data GRANT SELECT ON TABLES TO geolens_reader;
+    ALTER DEFAULT PRIVILEGES FOR ROLE geolens IN SCHEMA data
+      GRANT SELECT ON TABLES TO geolens_reader;
 ---
 apiVersion: apps/v1
 kind: Deployment

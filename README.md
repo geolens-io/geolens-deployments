@@ -152,16 +152,21 @@ The externally managed PostgreSQL instance must satisfy:
   On managed services (RDS, Cloud SQL) create them once with a privileged role,
   e.g. `CREATE EXTENSION IF NOT EXISTS vector;`.
 - **Schemas and reader role pre-created** — the migrations expect them (the
-  hook otherwise fails with `schema "data" does not exist`). Run once, as in
-  the main repo's `scripts/init-db.sh`:
+  hook otherwise fails with `schema "data" does not exist`). Run once with a
+  privileged role, where `app_user` is the role from your
+  `DATABASE_URL_OVERRIDE` DSN — the `AUTHORIZATION` clause matters on managed
+  services (RDS, Cloud SQL): schemas owned by the admin role would leave the
+  app user without `USAGE`/`CREATE` and the migration job fails on permission
+  errors:
 
   ```sql
-  CREATE SCHEMA IF NOT EXISTS catalog;
-  CREATE SCHEMA IF NOT EXISTS data;
+  CREATE SCHEMA IF NOT EXISTS catalog AUTHORIZATION app_user;
+  CREATE SCHEMA IF NOT EXISTS data AUTHORIZATION app_user;
   CREATE ROLE geolens_reader NOLOGIN;
   GRANT USAGE ON SCHEMA data TO geolens_reader;
   GRANT SELECT ON ALL TABLES IN SCHEMA data TO geolens_reader;
-  ALTER DEFAULT PRIVILEGES IN SCHEMA data GRANT SELECT ON TABLES TO geolens_reader;
+  ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA data
+    GRANT SELECT ON TABLES TO geolens_reader;
   ```
 
 ### Migrations & upgrades

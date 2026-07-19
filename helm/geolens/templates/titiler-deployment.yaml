@@ -17,6 +17,12 @@ spec:
       labels:
         {{- include "geolens.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: titiler
+      {{- if and (eq .Values.storage.backend "s3") (not .Values.secrets.existingSecret) }}
+      annotations:
+        # Roll titiler when the chart-managed Secret rotates — its AWS_* env
+        # comes from secretKeyRefs read only at container start.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      {{- end }}
     spec:
       # No podSecurityContext: the upstream titiler image declares its own
       # user; the chart's uid 1001 is a backend-image contract.

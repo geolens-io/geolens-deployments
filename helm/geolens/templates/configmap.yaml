@@ -17,8 +17,12 @@ data:
   {{- with .Values.storage.s3Region }}
   S3_REGION: {{ . | quote }}
   {{- end }}
+  {{- if eq .Values.storage.backend "s3" }}
+  S3_BUCKET: {{ required "storage.s3Bucket is required when storage.backend=s3" .Values.storage.s3Bucket | quote }}
+  {{- else }}
   {{- with .Values.storage.s3Bucket }}
   S3_BUCKET: {{ . | quote }}
+  {{- end }}
   {{- end }}
   {{- with .Values.redis.url }}
   REDIS_URL: {{ . | quote }}

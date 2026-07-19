@@ -79,9 +79,10 @@ Keys the chart reads from an `existingSecret`:
 | `JWT_SECRET_KEY` | yes | JWT signing secret, ≥ 32 chars |
 | `GEOLENS_ADMIN_USERNAME` | yes | initial admin login |
 | `GEOLENS_ADMIN_PASSWORD` | yes | initial admin password (known-public example values are rejected at boot) |
+| `POSTGRES_PASSWORD` | yes | required by backend settings even when `DATABASE_URL_OVERRIDE` carries the real credentials — any placeholder (e.g. `unused`) satisfies it; the chart-managed Secret sets one automatically |
 | `TILE_SIGNING_SECRET` | no | signed tile URLs |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | no | AI features |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | no | object storage credentials (also handed to Titiler as `AWS_*`) |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | when `storage.backend=s3` | object storage credentials — the backend hard-requires them for s3 (no ambient/IRSA fallback); also handed to Titiler as `AWS_*` |
 
 The chart sets `ENVIRONMENT=production` by default (API docs hidden, Secure
 session cookie). Override with `--set environment=development` only on

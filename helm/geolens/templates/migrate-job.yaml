@@ -55,6 +55,10 @@ spec:
               value: {{ required "secrets.adminUsername is required (or provide secrets.existingSecret)" .Values.secrets.adminUsername | quote }}
             - name: GEOLENS_ADMIN_PASSWORD
               value: {{ required "secrets.adminPassword is required (or provide secrets.existingSecret)" .Values.secrets.adminPassword | quote }}
+            # Required at settings construction even though the override DSN
+            # carries the real credentials (see secret.yaml).
+            - name: POSTGRES_PASSWORD
+              value: "unused-database-url-override-in-use"
             {{- end }}
             {{- with .Values.api.extraEnv }}
             {{- toYaml . | nindent 12 }}

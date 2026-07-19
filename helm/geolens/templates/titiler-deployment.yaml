@@ -63,8 +63,9 @@ spec:
             - name: GDAL_HTTP_FOLLOWLOCATION
               value: "NO"
             {{- if eq .Values.storage.backend "s3" }}
-            # optional: absent keys fall through to the pod's ambient AWS
-            # credential chain (e.g. IRSA).
+            # optional: tolerates a pre-created Secret that lacks these exact
+            # keys. (The backend itself hard-requires s3 credentials, so an
+            # ambient-credential-only setup cannot boot the api anyway.)
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:

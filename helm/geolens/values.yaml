@@ -17,14 +17,15 @@ api:
   replicas: 2
   image:
     repository: ghcr.io/geolens-io/geolens-api
-    tag: "1.4.10"
+    tag: "1.4.11"
     pullPolicy: IfNotPresent
   publicAppUrl: "https://geolens.example.com"
   publicApiUrl: "https://geolens.example.com/api"
   corsAllowedOrigins: ""
-  # Backend upload limit. NOTE: the frontend edge nginx currently bakes a
-  # matching 500m client_max_body_size — values above 500 are rejected at the
-  # edge with 413 until the limit is parameterized upstream (geolens#580).
+  # Backend upload limit. The frontend edge nginx is kept in step with this
+  # automatically: the chart renders CLIENT_MAX_BODY_SIZE as "<value>m" on the
+  # frontend (geolens#580, shipped in 1.4.10), so raising it no longer 413s at
+  # the edge. Frontend images < 1.4.10 ignore that variable and stay at 500m.
   uploadMaxSizeMb: "500"
   resources: {}
   extraEnv: []
@@ -34,7 +35,7 @@ worker:
   replicas: 1
   image:
     repository: ghcr.io/geolens-io/geolens-worker
-    tag: "1.4.10"
+    tag: "1.4.11"
     pullPolicy: IfNotPresent
   resources: {}
   extraEnv: []
@@ -46,7 +47,7 @@ frontend:
     repository: ghcr.io/geolens-io/geolens-frontend
     # Must stay >= 1.4.9: older frontend images predate the parameterized
     # edge proxy (API_UPSTREAM) and cannot reach the api on Kubernetes.
-    tag: "1.4.10"
+    tag: "1.4.11"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -57,6 +58,24 @@ frontend:
   # serving tiles through a separate CDN hostname.
   apiBaseUrl: ""
   tileBaseUrl: ""
+  # CIDRs of the proxies in front of this chart's frontend — typically the
+  # ingress controller's pod network, plus any CDN edge ranges ahead of it
+  # (geolens#581, frontend images >= 1.4.10).
+  #
+  # Empty keeps the anti-spoofing overwrite: nginx trusts nobody and every
+  # request is attributed to the immediate peer, so the anonymous raster rate
+  # limit shares ONE bucket across all users and access logs show the
+  # controller's IP instead of the client's.
+  #
+  # nginx walks X-Forwarded-For right-to-left skipping trusted entries, so
+  # EVERY hop must be listed or resolution stops early — listing only a CDN
+  # while an ingress controller sits in between resolves to the CDN edge, not
+  # the client. Untrusted client-supplied entries are never reached, so a
+  # spoofed header cannot win. Entries are charset-validated at container
+  # start; a malformed value fails fast rather than injecting nginx config.
+  #
+  # e.g. ["10.42.0.0/16"] or ["10.42.0.0/16", "173.245.48.0/20"]
+  trustedProxyCidrs: []
   resources: {}
   extraEnv: []
 
@@ -70,15 +89,15 @@ titiler:
     tag: "2.0.5"
     pullPolicy: IfNotPresent
   resources: {}
-  # NOTE: with storage.backend=s3 on a non-AWS endpoint (MinIO/R2), raster
-  # assets resolve as /vsis3/ paths and GDAL inside titiler targets the AWS
-  # endpoint — upstream GeoLens has no endpoint plumbing for this path yet
-  # (its compose stack has the same gap). Until it does, supply the GDAL env
-  # here yourself, e.g.:
-  #   extraEnv:
-  #     - { name: AWS_S3_ENDPOINT, value: "minio.internal:9000" }  # schemeless
-  #     - { name: AWS_HTTPS, value: "NO" }                          # http endpoints
-  #     - { name: AWS_VIRTUAL_HOSTING, value: "FALSE" }             # path-style
+  # With storage.backend=s3 on a non-AWS endpoint (MinIO/R2), raster assets
+  # resolve as /vsis3/ paths and GDAL needs to be told about the endpoint.
+  # The chart now derives AWS_S3_ENDPOINT / AWS_HTTPS / AWS_VIRTUAL_HOSTING
+  # from the storage.* values at template time, mirroring the rules the api
+  # and worker apply to themselves at boot (geolens#579, derive_gdal_s3_env).
+  # titiler is a separate process tree that runs no GeoLens code, so template
+  # time is the only place this can happen for it.
+  #
+  # Anything set here still wins: extraEnv is emitted after the derived block.
   extraEnv: []
 
 migrate:
@@ -95,11 +114,10 @@ service:
     port: 8000
 
 ingress:
-  # NOTE: behind an ingress controller the frontend nginx sees the
-  # controller's IP as the client (it deliberately overwrites forwarded
-  # headers as an anti-spoofing measure): the anonymous raster rate limit
-  # shares one bucket across all users and logs/backend rate limits lose the
-  # real client IP until trusted-proxy support lands upstream (geolens#581).
+  # Behind an ingress controller the frontend nginx sees the controller's IP
+  # as the client unless you list the controller's network in
+  # frontend.trustedProxyCidrs — without it the anonymous raster rate limit
+  # shares one bucket across all users and access logs lose the real client.
   # Routes ALL traffic to the frontend, whose bundled nginx is the app edge:
   # it proxies /api and raster tiles to the api service (the api serves its
   # routes un-prefixed, nginx strips /api), blocks the unauthenticated
@@ -149,6 +167,14 @@ storage:
   s3Bucket: ""
   s3AccessKeyId: ""
   s3SecretAccessKey: ""
+  # Reach a scheme-less s3Endpoint over http instead of https. Mirrors the
+  # backend's S3_ALLOW_HTTP; an explicit scheme on s3Endpoint always wins.
+  s3AllowHttp: false
+  # "auto" | "path" | "virtual". MinIO generally wants "path". Mirrors the
+  # backend's S3_ADDRESSING_STYLE. Both keys are passed to the api/worker AND
+  # used to derive titiler's GDAL env, so the two cannot drift apart — the
+  # divergence class geolens#579 fixed.
+  s3AddressingStyle: "auto"
 
 staging:
   # /app/staging is a shared handoff contract (GAP-022 in the main repo's

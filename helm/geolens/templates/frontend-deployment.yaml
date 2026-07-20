@@ -43,17 +43,31 @@ spec:
             # Absolutizes the og:image meta tag for social scrapers.
             - name: PUBLIC_APP_URL
               value: {{ .Values.api.publicAppUrl | quote }}
+            {{- /*
+              Both derived keys are skipped when already present in
+              frontend.extraEnv: repeating an env name survives the container
+              runtime but breaks strategic-merge tooling, which keys `env` by
+              `name`, so a Helm/Argo upgrade can fail on the duplicate merge
+              key. Operators who set either variable by hand before the chart
+              wired them must still be able to upgrade.
+            */}}
+            {{- $feExtraNames := list }}
+            {{- range (.Values.frontend.extraEnv | default list) }}
+            {{- $feExtraNames = append $feExtraNames .name }}
+            {{- end }}
+            {{- if not (has "CLIENT_MAX_BODY_SIZE" $feExtraNames) }}
             # Keep the edge upload ceiling in step with the backend's limit so
             # a raised api.uploadMaxSizeMb is not 413'd by nginx (geolens#580,
             # frontend images >= 1.4.10). The entrypoint validates the value.
             - name: CLIENT_MAX_BODY_SIZE
               value: {{ printf "%sm" (toString .Values.api.uploadMaxSizeMb) | quote }}
-            {{- with .Values.frontend.trustedProxyCidrs }}
+            {{- end }}
+            {{- if and .Values.frontend.trustedProxyCidrs (not (has "TRUSTED_PROXY_CIDRS" $feExtraNames)) }}
             # Recover the real client address from X-Forwarded-For for exactly
             # these hops (geolens#581). Comma-joined; the entrypoint rejects
             # anything outside IP/CIDR characters.
             - name: TRUSTED_PROXY_CIDRS
-              value: {{ join "," . | quote }}
+              value: {{ join "," .Values.frontend.trustedProxyCidrs | quote }}
             {{- end }}
             {{- with .Values.frontend.extraEnv }}
             {{- toYaml . | nindent 12 }}

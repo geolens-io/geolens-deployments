@@ -95,22 +95,35 @@ spec:
                   AWS_HTTPS. An explicit scheme on s3Endpoint wins, otherwise
                   s3AllowHttp decides.
                 - AWS_VIRTUAL_HOSTING=FALSE only for path-style addressing.
+
+              Every derived key is skipped when the operator already set it in
+              titiler.extraEnv. Emitting both would repeat an env name, and
+              while the container runtime just takes the later value, strategic
+              -merge tooling keys `env` by `name` — so Helm/Argo upgrades can
+              fail on the duplicate merge key before a pod ever rolls. Anyone
+              who followed the old workaround note must be able to upgrade.
             */}}
+            {{- $extraNames := list }}
+            {{- range (.Values.titiler.extraEnv | default list) }}
+            {{- $extraNames = append $extraNames .name }}
+            {{- end }}
             {{- $ep := trim (.Values.storage.s3Endpoint | default "") }}
             {{- if $ep }}
             {{- $hasScheme := contains "://" $ep }}
             {{- $scheme := $hasScheme | ternary (splitList "://" $ep | first) "" }}
             {{- $host := ($hasScheme | ternary (splitList "://" $ep | last) $ep) | splitList "/" | first }}
             {{- if $host }}
+            {{- if not (has "AWS_S3_ENDPOINT" $extraNames) }}
             - name: AWS_S3_ENDPOINT
               value: {{ $host | quote }}
-            {{- if $hasScheme | ternary (eq $scheme "http") .Values.storage.s3AllowHttp }}
+            {{- end }}
+            {{- if and ($hasScheme | ternary (eq $scheme "http") .Values.storage.s3AllowHttp) (not (has "AWS_HTTPS" $extraNames)) }}
             - name: AWS_HTTPS
               value: "NO"
             {{- end }}
             {{- end }}
             {{- end }}
-            {{- if eq .Values.storage.s3AddressingStyle "path" }}
+            {{- if and (eq .Values.storage.s3AddressingStyle "path") (not (has "AWS_VIRTUAL_HOSTING" $extraNames)) }}
             - name: AWS_VIRTUAL_HOSTING
               value: "FALSE"
             {{- end }}

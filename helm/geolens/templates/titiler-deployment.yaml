@@ -34,6 +34,17 @@ spec:
         - name: titiler
           image: "{{ .Values.titiler.image.repository }}:{{ .Values.titiler.image.tag }}"
           imagePullPolicy: {{ .Values.titiler.image.pullPolicy }}
+          # Parity with the compose titiler service's hardening (cap_drop ALL,
+          # no-new-privileges, read_only rootfs + /tmp tmpfs). GDAL scratch
+          # goes to /tmp, mounted as an emptyDir below; everything else the
+          # process touches is /vsis3/-style virtual I/O or the staging mount.
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           command:
             - uvicorn
             - titiler.application.main:app
@@ -140,6 +151,10 @@ spec:
             # titiler reads rasters under the shared staging path (GAP-022).
             - name: staging
               mountPath: /app/staging
+            # Writable scratch for GDAL under the read-only rootfs; size
+            # mirrors the compose tmpfs (/tmp:size=128m).
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             httpGet:
               path: /healthz
@@ -152,4 +167,7 @@ spec:
             {{- toYaml .Values.titiler.resources | nindent 12 }}
       volumes:
         {{- include "geolens.stagingVolume" . | nindent 8 }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
 {{- end }}

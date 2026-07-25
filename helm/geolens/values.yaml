@@ -89,6 +89,11 @@ titiler:
     tag: "2.0.5"
     pullPolicy: IfNotPresent
   resources: {}
+  # glibc malloc arena cap inside the titiler container (geolens#678). Slows
+  # (does not stop) TiTiler's RSS ratchet under concurrent tile reads; raise
+  # only if malloc contention shows up on many-core nodes. Mirrors the compose
+  # TITILER_MALLOC_ARENA_MAX knob.
+  mallocArenaMax: 2
   # With storage.backend=s3 on a non-AWS endpoint (MinIO/R2), raster assets
   # resolve as /vsis3/ paths and GDAL needs to be told about the endpoint.
   # The chart now derives AWS_S3_ENDPOINT / AWS_HTTPS / AWS_VIRTUAL_HOSTING

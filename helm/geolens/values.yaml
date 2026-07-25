@@ -88,6 +88,15 @@ titiler:
     repository: ghcr.io/developmentseed/titiler
     tag: "2.0.5"
     pullPolicy: IfNotPresent
+  # Empty = BestEffort QoS: titiler is evicted first under node pressure and
+  # its RSS ratchet (geolens#678) grows unbounded. For production, set a
+  # memory limit of roughly 2x the plateau you observe (the demo plateaus
+  # around 600Mi-1.8Gi depending on raster traffic) — under a limit, an
+  # OOMKill restart is the intended recycling backstop, gated by the probes
+  # below. Requests are also the prerequisite for ever running an HPA.
+  #   resources:
+  #     requests: {memory: 256Mi, cpu: 100m}
+  #     limits: {memory: 2Gi}
   resources: {}
   # glibc malloc arena cap inside the titiler container (geolens#678). Slows
   # (does not stop) TiTiler's RSS ratchet under concurrent tile reads; raise

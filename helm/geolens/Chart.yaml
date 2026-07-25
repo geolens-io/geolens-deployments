@@ -2,7 +2,7 @@ apiVersion: v2
 name: geolens
 description: Community-maintained Helm chart for the GeoLens community edition. Unsupported — Docker Compose is the supported install path.
 type: application
-version: 0.4.2
+version: 0.4.3
 appVersion: "1.4.13"
 kubeVersion: ">=1.19.0-0"
 home: https://github.com/geolens-io/geolens-deployments

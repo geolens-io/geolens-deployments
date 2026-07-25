@@ -68,6 +68,11 @@ spec:
             # repo's security checklist).
             - name: GDAL_HTTP_FOLLOWLOCATION
               value: "NO"
+            # geolens#678: cap glibc malloc arenas — slows (does not stop)
+            # TiTiler's RSS ratchet under concurrent tile reads. Mirrors the
+            # compose TITILER_MALLOC_ARENA_MAX knob and its default.
+            - name: MALLOC_ARENA_MAX
+              value: {{ .Values.titiler.mallocArenaMax | default 2 | quote }}
             {{- if eq .Values.storage.backend "s3" }}
             # optional: tolerates a pre-created Secret that lacks these exact
             # keys. (The backend itself hard-requires s3 credentials, so an

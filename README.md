@@ -169,6 +169,18 @@ The externally managed PostgreSQL instance must satisfy:
     GRANT SELECT ON TABLES TO geolens_reader;
   ```
 
+### Backups
+
+The chart ships no backup workload. The Docker Compose stack's `backup`
+service (scheduled `pg_dump`, local retention, optional offsite S3 upload)
+is Compose-only: it dumps the bundled `db` container, and this chart does
+not install PostgreSQL. On Kubernetes, database recovery belongs to your
+externally managed PostgreSQL — use its native backup/PITR. If you enable
+`staging.persistence`, cover that PVC with your volume-snapshot tooling;
+uploaded source files live there. Restore procedures are in the main repo's
+[RUNBOOK.md](https://github.com/geolens-io/geolens/blob/main/RUNBOOK.md)
+(section 3, managed / external Postgres mode).
+
 ### Migrations & upgrades
 
 Migrations run in a `pre-install,pre-upgrade` hook Job, so new pods only start

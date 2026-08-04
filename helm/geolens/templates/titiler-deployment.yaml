@@ -74,11 +74,12 @@ spec:
               value: "16777216"
             - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
               value: "YES"
-            # SSRF posture: the api revalidates remote object URLs per hop;
-            # titiler must never follow redirects itself (Rule 2 in the main
-            # repo's security checklist).
-            - name: GDAL_HTTP_FOLLOWLOCATION
-              value: "NO"
+            # fix(geolens#937): GDAL_HTTP_FOLLOWLOCATION was set here as a
+            # redirect clamp. It is not a GDAL option and has no effect, so it
+            # read as a defense that was never there. Do not re-add it. GDAL
+            # cannot be made redirect-safe from the inside; the real controls
+            # are the api revalidating remote object URLs per hop and the
+            # CPL_VSIL_CURL_ALLOWED_EXTENSIONS clamp above.
             # geolens#678: cap glibc malloc arenas — slows (does not stop)
             # TiTiler's RSS ratchet under concurrent tile reads. Mirrors the
             # compose TITILER_MALLOC_ARENA_MAX knob and its default.

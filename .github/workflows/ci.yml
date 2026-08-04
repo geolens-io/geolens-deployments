@@ -48,6 +48,19 @@ jobs:
             --set storage.s3Bucket=geolens \
             > /dev/null
 
+      - name: Guard - no no-op GDAL_HTTP_FOLLOWLOCATION in rendered output
+        # geolens#937: the variable is not a GDAL option and does nothing, so
+        # setting it reads as a redirect defense that is not there. The main
+        # repo removed it and pins that in backend/tests/test_titiler_redirect_env.py;
+        # this is the chart-side equivalent so the two cannot drift apart again.
+        run: |
+          if helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            | grep -q 'name: GDAL_HTTP_FOLLOWLOCATION'; then
+            echo "GDAL_HTTP_FOLLOWLOCATION is not a GDAL option and provides no redirect protection (geolens#937); remove it" >&2
+            exit 1
+          fi
+
       - name: Required-value guards fail an empty install
         run: |
           if helm template geolens helm/geolens > /dev/null 2>&1; then

@@ -94,6 +94,50 @@ jobs:
           esac
           echo "GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE=$value is accepted by GDAL"
 
+      - name: Guard - extraEnv overrides never render duplicate env names
+        # fix(#16 review): an operator overriding a chart-default env var via
+        # extraEnv (e.g. opting back into raw-band VRTs) must yield exactly one
+        # entry with that name. The runtime tolerates duplicates but
+        # strategic-merge tooling keys `env` by `name`, so an Argo/Helm upgrade
+        # can fail on the duplicate merge key before a pod rolls — wedging the
+        # very upgrade that applies the override. Checks every container in
+        # every rendered manifest, not just the overridden one, so a NEW
+        # unguarded static entry in any template fails here the day it
+        # collides.
+        run: |
+          rendered=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set storage.backend=s3 --set storage.s3Bucket=geolens \
+            --set-json 'titiler.extraEnv=[{"name":"GDAL_VRT_ENABLE_RAWRASTERBAND","value":"YES"},{"name":"MALLOC_ARENA_MAX","value":"4"}]' \
+            --set-json 'frontend.extraEnv=[{"name":"API_BASE_URL","value":"https://geo.example.com"}]' \
+            --set-json 'api.extraEnv=[{"name":"GEOLENS_API_RUN_MIGRATIONS","value":"true"}]')
+          # A name may legitimately appear once per CONTAINER, so scope the
+          # count per container: container list entries (lowercase names at
+          # 8-space indent) and document separators both reset the seen-set;
+          # env entries are ALL-CAPS at deeper indent and never match the
+          # container pattern.
+          fail=0
+          printf '%s\n' "$rendered" | awk '
+            /^---$/ { delete seen }
+            /^ {8}- name: [a-z]/ { delete seen }
+            /^ +- name: [A-Z_0-9]+$/ {
+              if (seen[$3]++) { print "duplicate env name in one container: " $3; bad=1 }
+            }
+            END { exit bad }
+          ' || fail=1
+          if [ "$fail" -ne 0 ]; then
+            echo "extraEnv override rendered a duplicate env name (see above); guard the static entry with the \$extraNames check" >&2
+            exit 1
+          fi
+          # The override must also WIN: the operator value, not the default.
+          got=$(printf '%s\n' "$rendered" | grep -A1 'name: GDAL_VRT_ENABLE_RAWRASTERBAND' \
+            | sed -n 's/.*value: "\(.*\)"/\1/p' | head -1)
+          if [ "$got" != "YES" ]; then
+            echo "extraEnv override did not take effect: GDAL_VRT_ENABLE_RAWRASTERBAND='$got', expected 'YES'" >&2
+            exit 1
+          fi
+          echo "extraEnv overrides render uniquely and win"
+
   # Real install against a kind cluster: exercises the install-time failure
   # classes static rendering provably cannot catch (hook ordering, Job
   # immutability on upgrade, probe budgets, FQDN proxy resolution through the

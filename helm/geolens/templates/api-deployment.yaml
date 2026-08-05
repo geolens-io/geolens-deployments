@@ -41,11 +41,23 @@ spec:
             - secretRef:
                 name: {{ include "geolens.secretName" . }}
           env:
+            {{- /*
+              fix(#16 review): skipped when the operator set it in
+              api.extraEnv — a duplicate env name breaks strategic-merge
+              tooling (keys `env` by `name`) even though the runtime tolerates
+              it. Same guard as the titiler and frontend templates.
+            */}}
+            {{- $apiExtraNames := list }}
+            {{- range (.Values.api.extraEnv | default list) }}
+            {{- $apiExtraNames = append $apiExtraNames .name }}
+            {{- end }}
             # The migrate hook Job owns schema migrations. Boot-time migration
             # in the api entrypoint defaults ON and would race across
             # replicas (compose runs it as a singleton service).
+            {{- if not (has "GEOLENS_API_RUN_MIGRATIONS" $apiExtraNames) }}
             - name: GEOLENS_API_RUN_MIGRATIONS
               value: {{ ternary "false" "true" .Values.migrate.enabled | quote }}
+            {{- end }}
             {{- with .Values.api.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

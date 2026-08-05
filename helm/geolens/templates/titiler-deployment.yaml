@@ -61,14 +61,34 @@ spec:
             - name: http
               containerPort: 8000
           env:
+            {{- /*
+              fix(#16 review): every key below — static and derived alike — is
+              skipped when the operator already set it in titiler.extraEnv.
+              Emitting both would repeat an env name, and while the container
+              runtime just takes the later value, strategic-merge tooling keys
+              `env` by `name` — so Helm/Argo upgrades can fail on the duplicate
+              merge key before a pod ever rolls. extraEnv is the operator's
+              escape hatch (e.g. opting back into raw-band VRTs); it must not
+              wedge the upgrade that applies it.
+            */}}
+            {{- $extraNames := list }}
+            {{- range (.Values.titiler.extraEnv | default list) }}
+            {{- $extraNames = append $extraNames .name }}
+            {{- end }}
             # GDAL raster I/O tuning — mirrors the titiler service in the main
             # repo's docker-compose.yml.
+            {{- if not (has "GDAL_CACHEMAX" $extraNames) }}
             - name: GDAL_CACHEMAX
               value: "200"
+            {{- end }}
+            {{- if not (has "GDAL_DISABLE_READDIR_ON_OPEN" $extraNames) }}
             - name: GDAL_DISABLE_READDIR_ON_OPEN
               value: "EMPTY_DIR"
+            {{- end }}
+            {{- if not (has "CPL_VSIL_CURL_ALLOWED_EXTENSIONS" $extraNames) }}
             - name: CPL_VSIL_CURL_ALLOWED_EXTENSIONS
               value: ".tif,.tiff,.cog,.vrt"
+            {{- end }}
             # geolens#1192: pin the VRT rawband controls (both GDAL >= 3.12)
             # rather than inheriting version-dependent defaults, so a base-image
             # bump cannot relax them silently.
@@ -84,19 +104,29 @@ spec:
             # accepts, and costs nothing: GeoLens emits no VRTRawRasterBand
             # (gdalbuildvrt writes SimpleSource / ComplexSource), and ordinary
             # SimpleSource VRTs read unchanged under NO.
+            {{- if not (has "GDAL_VRT_ENABLE_RAWRASTERBAND" $extraNames) }}
             - name: GDAL_VRT_ENABLE_RAWRASTERBAND
               value: "NO"
+            {{- end }}
+            {{- if not (has "GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE" $extraNames) }}
             - name: GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE
               value: "SIBLING_OR_CHILD_OF_VRT_PATH"
+            {{- end }}
             # CPL_VSIL_CURL_HEADER_FILE_KVP_ENABLED restricts the /vsicurl
             # header_file option and needs GDAL >= 3.13.2 — deliberately absent
             # until the image's rasterio wheel crosses that (geolens#1192).
+            {{- if not (has "VSI_CACHE" $extraNames) }}
             - name: VSI_CACHE
               value: "TRUE"
+            {{- end }}
+            {{- if not (has "CPL_VSIL_CURL_CACHE_SIZE" $extraNames) }}
             - name: CPL_VSIL_CURL_CACHE_SIZE
               value: "16777216"
+            {{- end }}
+            {{- if not (has "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES" $extraNames) }}
             - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
               value: "YES"
+            {{- end }}
             # fix(geolens#937): GDAL_HTTP_FOLLOWLOCATION was set here as a
             # redirect clamp. It is not a GDAL option and has no effect, so it
             # read as a defense that was never there. Do not re-add it. GDAL
@@ -106,26 +136,34 @@ spec:
             # geolens#678: cap glibc malloc arenas — slows (does not stop)
             # TiTiler's RSS ratchet under concurrent tile reads. Mirrors the
             # compose TITILER_MALLOC_ARENA_MAX knob and its default.
+            {{- if not (has "MALLOC_ARENA_MAX" $extraNames) }}
             - name: MALLOC_ARENA_MAX
               value: {{ .Values.titiler.mallocArenaMax | default 2 | quote }}
+            {{- end }}
             {{- if eq .Values.storage.backend "s3" }}
             # optional: tolerates a pre-created Secret that lacks these exact
             # keys. (The backend itself hard-requires s3 credentials, so an
             # ambient-credential-only setup cannot boot the api anyway.)
+            {{- if not (has "AWS_ACCESS_KEY_ID" $extraNames) }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
                   name: {{ include "geolens.secretName" . }}
                   key: S3_ACCESS_KEY_ID
                   optional: true
+            {{- end }}
+            {{- if not (has "AWS_SECRET_ACCESS_KEY" $extraNames) }}
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "geolens.secretName" . }}
                   key: S3_SECRET_ACCESS_KEY
                   optional: true
+            {{- end }}
+            {{- if not (has "AWS_DEFAULT_REGION" $extraNames) }}
             - name: AWS_DEFAULT_REGION
               value: {{ .Values.storage.s3Region | default "us-east-1" | quote }}
+            {{- end }}
             {{- /*
               Custom-endpoint plumbing for GDAL's /vsis3/ reads (geolens#579).
               titiler runs no GeoLens code, so the api/worker's boot-time
@@ -137,16 +175,11 @@ spec:
                 - AWS_VIRTUAL_HOSTING=FALSE only for path-style addressing.
 
               Every derived key is skipped when the operator already set it in
-              titiler.extraEnv. Emitting both would repeat an env name, and
-              while the container runtime just takes the later value, strategic
-              -merge tooling keys `env` by `name` — so Helm/Argo upgrades can
-              fail on the duplicate merge key before a pod ever rolls. Anyone
-              who followed the old workaround note must be able to upgrade.
+              titiler.extraEnv, via the $extraNames set built at the top of
+              this env block — the same guard every static key above carries
+              (fix(#16 review)). Anyone who followed the old workaround note
+              must be able to upgrade.
             */}}
-            {{- $extraNames := list }}
-            {{- range (.Values.titiler.extraEnv | default list) }}
-            {{- $extraNames = append $extraNames .name }}
-            {{- end }}
             {{- $ep := trim (.Values.storage.s3Endpoint | default "") }}
             {{- if $ep }}
             {{- $hasScheme := contains "://" $ep }}

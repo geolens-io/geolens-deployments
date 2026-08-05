@@ -29,31 +29,40 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            # nginx proxy target for the /api, raster-tile, and embed
-            # frame-policy blocks (frontend images >= 1.4.9; older images
-            # ignore this and can only proxy under compose).
-            - name: API_UPSTREAM
-              value: {{ include "geolens.apiUrl" . | quote }}
-            # Rendered into the SPA's window.__ENV__ at container start.
-            # Empty values mean same-origin relative URLs.
-            - name: API_BASE_URL
-              value: {{ .Values.frontend.apiBaseUrl | quote }}
-            - name: TILE_BASE_URL
-              value: {{ .Values.frontend.tileBaseUrl | quote }}
-            # Absolutizes the og:image meta tag for social scrapers.
-            - name: PUBLIC_APP_URL
-              value: {{ .Values.api.publicAppUrl | quote }}
             {{- /*
-              Both derived keys are skipped when already present in
-              frontend.extraEnv: repeating an env name survives the container
-              runtime but breaks strategic-merge tooling, which keys `env` by
-              `name`, so a Helm/Argo upgrade can fail on the duplicate merge
-              key. Operators who set either variable by hand before the chart
-              wired them must still be able to upgrade.
+              Every key below is skipped when already present in
+              frontend.extraEnv (fix(#16 review) widened this from the two
+              derived keys to the statics too): repeating an env name survives
+              the container runtime but breaks strategic-merge tooling, which
+              keys `env` by `name`, so a Helm/Argo upgrade can fail on the
+              duplicate merge key. Operators who set a variable by hand before
+              the chart wired it must still be able to upgrade.
             */}}
             {{- $feExtraNames := list }}
             {{- range (.Values.frontend.extraEnv | default list) }}
             {{- $feExtraNames = append $feExtraNames .name }}
+            {{- end }}
+            # nginx proxy target for the /api, raster-tile, and embed
+            # frame-policy blocks (frontend images >= 1.4.9; older images
+            # ignore this and can only proxy under compose).
+            {{- if not (has "API_UPSTREAM" $feExtraNames) }}
+            - name: API_UPSTREAM
+              value: {{ include "geolens.apiUrl" . | quote }}
+            {{- end }}
+            # Rendered into the SPA's window.__ENV__ at container start.
+            # Empty values mean same-origin relative URLs.
+            {{- if not (has "API_BASE_URL" $feExtraNames) }}
+            - name: API_BASE_URL
+              value: {{ .Values.frontend.apiBaseUrl | quote }}
+            {{- end }}
+            {{- if not (has "TILE_BASE_URL" $feExtraNames) }}
+            - name: TILE_BASE_URL
+              value: {{ .Values.frontend.tileBaseUrl | quote }}
+            {{- end }}
+            # Absolutizes the og:image meta tag for social scrapers.
+            {{- if not (has "PUBLIC_APP_URL" $feExtraNames) }}
+            - name: PUBLIC_APP_URL
+              value: {{ .Values.api.publicAppUrl | quote }}
             {{- end }}
             {{- if not (has "CLIENT_MAX_BODY_SIZE" $feExtraNames) }}
             # Keep the edge upload ceiling in step with the backend's limit so

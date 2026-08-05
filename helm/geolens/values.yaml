@@ -86,8 +86,24 @@ titiler:
   replicas: 1
   image:
     repository: ghcr.io/developmentseed/titiler
-    tag: "2.0.5"
+    # geolens#1190: upstream ships security fixes as ordinary bugfix releases
+    # with no advisory, and OSV carries nothing for rio-tiler or titiler.core,
+    # so Dependabot cannot see this drift — bumps here are deliberate.
+    # 2.2.1 resolves rio-tiler 9.4.2, but rasterio stays 1.5.0 / GDAL 3.12.1
+    # (the PyPI wheel pins GDAL, not the titiler tag).
+    tag: "2.2.1"
     pullPolicy: IfNotPresent
+  # geolens#1193: uvicorn worker processes per titiler pod. Tile rendering is
+  # CPU-bound under the GIL, so one worker renders one tile at a time and
+  # concurrent cache misses queue. On Kubernetes prefer `replicas` above for
+  # scale-out; this knob exists for parity with the compose TITILER_WORKERS
+  # default and for nodes where one fat pod beats several thin ones.
+  #
+  # Raise the memory limit in `resources` with it. GDAL_CACHEMAX is per
+  # PROCESS, so N workers multiply the block-cache ceiling on top of N Python
+  # interpreters, and the geolens#678 RSS ratchet runs in every one of them —
+  # raising workers under an unchanged limit reaches OOMKill sooner, not later.
+  workers: 1
   # Empty = BestEffort QoS: titiler is evicted first under node pressure and
   # its RSS ratchet (geolens#678) grows unbounded. For production, set a
   # memory limit of roughly 2x the plateau you observe (the demo plateaus

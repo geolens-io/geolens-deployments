@@ -68,6 +68,32 @@ jobs:
             exit 1
           fi
 
+      - name: Guard - GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE is a value GDAL accepts
+        # geolens#1192: this shipped as "NETWORK_OR_LOCAL" for months, which is
+        # not one of GDAL's four accepted forms (SIBLING_OR_CHILD_OF_VRT_PATH |
+        # ONLY_REMOTE | ALL | <absolute path>). GDAL parsed it as a bogus
+        # absolute path and refused every VRTRawRasterBand source, so the
+        # setting silently meant the opposite of its comment. The check fails on
+        # any unrecognised token rather than passing it — an unknown value here
+        # is exactly the case that must be loud.
+        run: |
+          value=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            | grep -A1 'name: GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE' \
+            | sed -n 's/.*value: "\(.*\)"/\1/p' | head -1)
+          if [ -z "$value" ]; then
+            echo "GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE is not rendered at all; pin it explicitly (geolens#1192)" >&2
+            exit 1
+          fi
+          case "$value" in
+            SIBLING_OR_CHILD_OF_VRT_PATH|ONLY_REMOTE|ALL|/*) ;;
+            *)
+              echo "GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE='$value' is not a value GDAL accepts; it will be parsed as an absolute path and refuse every source (geolens#1192)" >&2
+              exit 1
+              ;;
+          esac
+          echo "GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE=$value is accepted by GDAL"
+
   # Real install against a kind cluster: exercises the install-time failure
   # classes static rendering provably cannot catch (hook ordering, Job
   # immutability on upgrade, probe budgets, FQDN proxy resolution through the

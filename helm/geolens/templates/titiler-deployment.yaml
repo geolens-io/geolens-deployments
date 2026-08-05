@@ -53,7 +53,10 @@ spec:
             - --port
             - "8000"
             - --workers
-            - "1"
+            # geolens#1193: mirrors the compose TITILER_WORKERS knob. Raise
+            # titiler.resources memory alongside it — GDAL_CACHEMAX is per
+            # process and the geolens#678 RSS ratchet runs in each worker.
+            - {{ .Values.titiler.workers | default 1 | quote }}
           ports:
             - name: http
               containerPort: 8000
@@ -66,8 +69,28 @@ spec:
               value: "EMPTY_DIR"
             - name: CPL_VSIL_CURL_ALLOWED_EXTENSIONS
               value: ".tif,.tiff,.cog,.vrt"
+            # geolens#1192: pin the VRT rawband controls (both GDAL >= 3.12)
+            # rather than inheriting version-dependent defaults, so a base-image
+            # bump cannot relax them silently.
+            #
+            # ALLOWED_SOURCE previously read "NETWORK_OR_LOCAL", which is not a
+            # value GDAL accepts (SIBLING_OR_CHILD_OF_VRT_PATH | ONLY_REMOTE |
+            # ALL | <absolute path>). GDAL parsed it as a bogus absolute path
+            # and refused every VRTRawRasterBand source, so the effective policy
+            # was already deny-all while the name suggested otherwise. Measured
+            # in titiler 2.0.5 and 2.2.1, both GDAL 3.12.1.
+            #
+            # ENABLE_RAWRASTERBAND=NO states that deny-all in a value GDAL
+            # accepts, and costs nothing: GeoLens emits no VRTRawRasterBand
+            # (gdalbuildvrt writes SimpleSource / ComplexSource), and ordinary
+            # SimpleSource VRTs read unchanged under NO.
+            - name: GDAL_VRT_ENABLE_RAWRASTERBAND
+              value: "NO"
             - name: GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE
-              value: "NETWORK_OR_LOCAL"
+              value: "SIBLING_OR_CHILD_OF_VRT_PATH"
+            # CPL_VSIL_CURL_HEADER_FILE_KVP_ENABLED restricts the /vsicurl
+            # header_file option and needs GDAL >= 3.13.2 — deliberately absent
+            # until the image's rasterio wheel crosses that (geolens#1192).
             - name: VSI_CACHE
               value: "TRUE"
             - name: CPL_VSIL_CURL_CACHE_SIZE

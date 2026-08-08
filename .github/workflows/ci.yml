@@ -48,6 +48,76 @@ jobs:
             --set storage.s3Bucket=geolens \
             > /dev/null
 
+      - name: Guard - Titiler selects one S3 credential source
+        # geolens#1191: the empty/default selector must remain byte-compatible
+        # with existing installs, while a dedicated read-only Secret must
+        # replace (not accompany) the shared storage credential in the sidecar.
+        run: |
+          credential_ref() {
+            env_name="$1"
+            awk -v want="$env_name" '
+              $1 == "-" && $2 == "name:" && $3 == want { in_env=1; next }
+              in_env && $1 == "name:" { secret=$2; next }
+              in_env && $1 == "key:" { print secret "|" $2; exit }
+            '
+          }
+
+          fallback=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set storage.backend=s3 \
+            --set storage.s3Bucket=geolens \
+            --show-only templates/titiler-deployment.yaml)
+          fallback_access=$(credential_ref AWS_ACCESS_KEY_ID <<<"$fallback")
+          fallback_secret=$(credential_ref AWS_SECRET_ACCESS_KEY <<<"$fallback")
+          if [ "$fallback_access" != "geolens-secrets|S3_ACCESS_KEY_ID" ] || \
+             [ "$fallback_secret" != "geolens-secrets|S3_SECRET_ACCESS_KEY" ]; then
+            echo "Titiler shared-credential fallback drifted: access=$fallback_access secret=$fallback_secret" >&2
+            exit 1
+          fi
+
+          legacy=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set storage.backend=s3 \
+            --set storage.s3Bucket=geolens \
+            --set-json 'titiler.s3Credentials=null' \
+            --show-only templates/titiler-deployment.yaml)
+          legacy_access=$(credential_ref AWS_ACCESS_KEY_ID <<<"$legacy")
+          legacy_secret=$(credential_ref AWS_SECRET_ACCESS_KEY <<<"$legacy")
+          if [ "$legacy_access" != "$fallback_access" ] || [ "$legacy_secret" != "$fallback_secret" ]; then
+            echo "Titiler legacy --reuse-values fallback drifted: access=$legacy_access secret=$legacy_secret" >&2
+            exit 1
+          fi
+
+          dedicated=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set storage.backend=s3 \
+            --set storage.s3Bucket=geolens \
+            --set titiler.s3Credentials.existingSecret=geolens-titiler-readonly \
+            --set titiler.s3Credentials.accessKeyIdKey=readonly-access-id \
+            --set titiler.s3Credentials.secretAccessKeyKey=readonly-secret \
+            --show-only templates/titiler-deployment.yaml)
+          dedicated_access=$(credential_ref AWS_ACCESS_KEY_ID <<<"$dedicated")
+          dedicated_secret=$(credential_ref AWS_SECRET_ACCESS_KEY <<<"$dedicated")
+          if [ "$dedicated_access" != "geolens-titiler-readonly|readonly-access-id" ] || \
+             [ "$dedicated_secret" != "geolens-titiler-readonly|readonly-secret" ]; then
+            echo "Titiler dedicated credential did not win: access=$dedicated_access secret=$dedicated_secret" >&2
+            exit 1
+          fi
+          if grep -q 'name: geolens-secrets' <<<"$dedicated"; then
+            echo "Titiler still carries the shared storage Secret alongside its dedicated credential" >&2
+            exit 1
+          fi
+          if grep -q 'checksum/secret:' <<<"$dedicated"; then
+            echo "Titiler checksums a chart-managed Secret it does not consume" >&2
+            exit 1
+          fi
+          if [ "$(grep -c 'name: AWS_ACCESS_KEY_ID' <<<"$dedicated")" -ne 1 ] || \
+             [ "$(grep -c 'name: AWS_SECRET_ACCESS_KEY' <<<"$dedicated")" -ne 1 ]; then
+            echo "Titiler rendered duplicate AWS credential env entries" >&2
+            exit 1
+          fi
+          echo "Titiler credential fallback and dedicated replacement both render correctly"
+
       - name: Guard - no no-op GDAL_HTTP_FOLLOWLOCATION in rendered output
         # geolens#937: the variable is not a GDAL option and does nothing, so
         # setting it reads as a redirect defense that is not there. The main

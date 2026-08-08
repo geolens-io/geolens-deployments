@@ -119,6 +119,16 @@ titiler:
   # only if malloc contention shows up on many-core nodes. Mirrors the compose
   # TITILER_MALLOC_ARENA_MAX knob.
   mallocArenaMax: 2
+  # TiTiler only reads managed raster objects. For least privilege, point this
+  # at a pre-created Secret whose principal can GetObject only under rasters/*
+  # and tenants/*/rasters/*. The empty existingSecret and default key names are
+  # an upgrade-compatibility fallback: they select the chart's shared storage
+  # Secret and its S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY keys, exactly as
+  # chart versions before 0.4.17 did. See the README's storage section.
+  s3Credentials:
+    existingSecret: ""
+    accessKeyIdKey: "S3_ACCESS_KEY_ID"
+    secretAccessKeyKey: "S3_SECRET_ACCESS_KEY"
   # With storage.backend=s3 on a non-AWS endpoint (MinIO/R2), raster assets
   # resolve as /vsis3/ paths and GDAL needs to be told about the endpoint.
   # The chart now derives AWS_S3_ENDPOINT / AWS_HTTPS / AWS_VIRTUAL_HOSTING

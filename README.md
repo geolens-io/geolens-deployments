@@ -109,7 +109,7 @@ Keys the chart reads from an `existingSecret`:
 | `POSTGRES_PASSWORD` | yes | required by backend settings even when `DATABASE_URL_OVERRIDE` carries the real credentials — any placeholder (e.g. `unused`) satisfies it; the chart-managed Secret sets one automatically |
 | `TILE_SIGNING_SECRET` | no | signed tile URLs |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | no | AI features |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | when `storage.backend=s3` | object storage credentials — the backend hard-requires them for s3 (no ambient/IRSA fallback); also handed to Titiler as `AWS_*` |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | when `storage.backend=s3` | shared object-storage credentials — the backend hard-requires them for s3 (no ambient/IRSA fallback); Titiler uses these only as the compatibility fallback described below |
 
 The chart sets `ENVIRONMENT=production` by default (API docs hidden, Secure
 session cookie). Override with `--set environment=development` only on
@@ -134,10 +134,69 @@ for a quick render, not for real use. For a working deployment:
   volume, so without persistence they are lost on every pod restart.
 
 S3-compatible endpoints (MinIO, R2): raster serving resolves assets as
-`/vsis3/` paths, and upstream GeoLens does not yet plumb a custom endpoint
-through to GDAL/Titiler (its compose stack has the same gap). Until that
-lands upstream, pass the GDAL env yourself via `titiler.extraEnv` — see the
-example in `values.yaml`.
+`/vsis3/` paths. The chart derives GDAL's `AWS_S3_ENDPOINT`, `AWS_HTTPS`, and
+`AWS_VIRTUAL_HOSTING` settings from `storage.s3Endpoint`, `s3AllowHttp`, and
+`s3AddressingStyle`; an explicit `titiler.extraEnv` entry still overrides a
+derived value.
+
+#### TiTiler read-only S3 credentials
+
+TiTiler never writes objects. Give it a separate principal that can read only
+the managed raster prefixes (`rasters/*` and `tenants/*/rasters/*`), store that
+principal in an operator-managed Kubernetes Secret, and select it with
+`titiler.s3Credentials`. For example, create `geolens-titiler-s3` through your
+External Secrets controller or from an operator-protected env file (this keeps
+the secret off the Helm command line):
+
+```bash
+kubectl create secret generic geolens-titiler-s3 \
+  --from-env-file=/secure/path/titiler-s3.env
+
+helm upgrade --install geolens helm/geolens \
+  --set secrets.existingSecret=geolens-secrets \
+  --set storage.backend=s3 \
+  --set storage.s3Bucket=geolens \
+  --set titiler.s3Credentials.existingSecret=geolens-titiler-s3 \
+  --set titiler.s3Credentials.accessKeyIdKey=AWS_ACCESS_KEY_ID \
+  --set titiler.s3Credentials.secretAccessKeyKey=AWS_SECRET_ACCESS_KEY
+```
+
+The protected env file contains those two named keys. The chart renders only
+the selected Secret references into the TiTiler sidecar; it does not also pass
+the shared writer credential. When `titiler.s3Credentials.existingSecret` is
+empty, the chart falls back to the main GeoLens Secret and the
+`S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` keys, preserving existing installs
+while operators migrate.
+
+For MinIO, save this policy as `geolens-titiler-readonly.json`, replacing
+`<bucket-name>` with the configured bucket. It grants only `GetObject` under
+the single-tenant and tenant-scoped managed-raster layouts:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::<bucket-name>/rasters/*",
+        "arn:aws:s3:::<bucket-name>/tenants/*/rasters/*"
+      ]
+    }
+  ]
+}
+```
+
+Create and attach it to a distinct MinIO user, then store that user's generated
+credential in the Kubernetes Secret above. Do not put the credential in the
+policy file, source control, command arguments, or command output.
+
+```bash
+mc admin policy create <alias> geolens-titiler-readonly geolens-titiler-readonly.json
+mc admin policy attach <alias> geolens-titiler-readonly --user <titiler-user>
+mc admin policy entities <alias> --policy geolens-titiler-readonly
+```
 
 ### Database requirements
 

@@ -1,4 +1,15 @@
 {{- if .Values.titiler.enabled }}
+{{- /*
+  geolens#1191: a dedicated TiTiler read-only principal can live in an
+  operator-managed Secret. Defaults preserve upgrades from older chart values:
+  the shared GeoLens Secret and S3_* keys remain the fallback. `default dict`
+  also keeps --reuse-values upgrades safe when the old release has no
+  titiler.s3Credentials map at all.
+*/}}
+{{- $titilerS3Credentials := .Values.titiler.s3Credentials | default dict }}
+{{- $titilerS3SecretName := get $titilerS3Credentials "existingSecret" | default (include "geolens.secretName" .) }}
+{{- $titilerS3AccessKey := get $titilerS3Credentials "accessKeyIdKey" | default "S3_ACCESS_KEY_ID" }}
+{{- $titilerS3SecretKey := get $titilerS3Credentials "secretAccessKeyKey" | default "S3_SECRET_ACCESS_KEY" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,10 +28,12 @@ spec:
       labels:
         {{- include "geolens.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: titiler
-      {{- if and (eq .Values.storage.backend "s3") (not .Values.secrets.existingSecret) }}
+      {{- if and (eq .Values.storage.backend "s3") (not .Values.secrets.existingSecret) (not (get $titilerS3Credentials "existingSecret")) }}
       annotations:
         # Roll titiler when the chart-managed Secret rotates — its AWS_* env
-        # comes from secretKeyRefs read only at container start.
+        # comes from secretKeyRefs read only at container start. External
+        # Secrets are operator-managed and do not have chart-rendered content
+        # to checksum.
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       {{- end }}
     spec:
@@ -148,16 +161,19 @@ spec:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "geolens.secretName" . }}
-                  key: S3_ACCESS_KEY_ID
+                  # geolens#1191: render exactly one selected reference. A
+                  # dedicated Secret replaces, rather than accompanies, the
+                  # shared storage credential in this sidecar.
+                  name: {{ $titilerS3SecretName | quote }}
+                  key: {{ $titilerS3AccessKey | quote }}
                   optional: true
             {{- end }}
             {{- if not (has "AWS_SECRET_ACCESS_KEY" $extraNames) }}
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "geolens.secretName" . }}
-                  key: S3_SECRET_ACCESS_KEY
+                  name: {{ $titilerS3SecretName | quote }}
+                  key: {{ $titilerS3SecretKey | quote }}
                   optional: true
             {{- end }}
             {{- if not (has "AWS_DEFAULT_REGION" $extraNames) }}

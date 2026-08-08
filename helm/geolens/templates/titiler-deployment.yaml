@@ -164,16 +164,16 @@ spec:
                   # geolens#1191: render exactly one selected reference. A
                   # dedicated Secret replaces, rather than accompanies, the
                   # shared storage credential in this sidecar.
-                  name: {{ $titilerS3SecretName }}
-                  key: {{ $titilerS3AccessKey }}
+                  name: {{ $titilerS3SecretName | quote }}
+                  key: {{ $titilerS3AccessKey | quote }}
                   optional: true
             {{- end }}
             {{- if not (has "AWS_SECRET_ACCESS_KEY" $extraNames) }}
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ $titilerS3SecretName }}
-                  key: {{ $titilerS3SecretKey }}
+                  name: {{ $titilerS3SecretName | quote }}
+                  key: {{ $titilerS3SecretKey | quote }}
                   optional: true
             {{- end }}
             {{- if not (has "AWS_DEFAULT_REGION" $extraNames) }}

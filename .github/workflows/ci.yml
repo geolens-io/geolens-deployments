@@ -57,8 +57,17 @@ jobs:
             env_name="$1"
             awk -v want="$env_name" '
               $1 == "-" && $2 == "name:" && $3 == want { in_env=1; next }
-              in_env && $1 == "name:" { secret=$2; next }
-              in_env && $1 == "key:" { print secret "|" $2; exit }
+              in_env && $1 == "name:" {
+                secret=$2
+                gsub(/^"|"$/, "", secret)
+                next
+              }
+              in_env && $1 == "key:" {
+                key=$2
+                gsub(/^"|"$/, "", key)
+                print secret "|" key
+                exit
+              }
             '
           }
 
@@ -114,6 +123,24 @@ jobs:
           if [ "$(grep -c 'name: AWS_ACCESS_KEY_ID' <<<"$dedicated")" -ne 1 ] || \
              [ "$(grep -c 'name: AWS_SECRET_ACCESS_KEY' <<<"$dedicated")" -ne 1 ]; then
             echo "Titiler rendered duplicate AWS credential env entries" >&2
+            exit 1
+          fi
+
+          # fix(#21 review): Secret names and keys are strings even when their
+          # spelling looks like a YAML boolean, null, or number. Keep the
+          # rendered scalars quoted so Kubernetes receives valid string fields.
+          scalar_like=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set storage.backend=s3 \
+            --set storage.s3Bucket=geolens \
+            --set-string titiler.s3Credentials.existingSecret=yes \
+            --set-string titiler.s3Credentials.accessKeyIdKey=123 \
+            --set-string titiler.s3Credentials.secretAccessKeyKey=null \
+            --show-only templates/titiler-deployment.yaml)
+          if [ "$(grep -c 'name: "yes"' <<<"$scalar_like")" -ne 2 ] || \
+             [ "$(grep -c 'key: "123"' <<<"$scalar_like")" -ne 1 ] || \
+             [ "$(grep -c 'key: "null"' <<<"$scalar_like")" -ne 1 ]; then
+            echo "Titiler Secret selectors must stay quoted YAML strings" >&2
             exit 1
           fi
           echo "Titiler credential fallback and dedicated replacement both render correctly"

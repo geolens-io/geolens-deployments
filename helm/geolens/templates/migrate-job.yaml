@@ -20,6 +20,15 @@ spec:
         {{- include "geolens.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: migrate
     spec:
+      {{- /* Deliberately NOT serviceAccountName: this Job is a pre-install /
+           pre-upgrade hook and runs BEFORE regular resources exist, so a
+           chart-created ServiceAccount is not there yet — the Job is rejected
+           with "error looking up service account ... not found", creates no
+           pod at all, and the hook hangs until the timeout, failing every
+           fresh install. Same ordering rule as the DATABASE_URL_OVERRIDE note
+           below. It runs under the namespace default ServiceAccount, which is
+           what it did before serviceAccount.* existed; migrations reach only
+           the database, never object storage, so they need no cloud role. */}}
       restartPolicy: OnFailure
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -42,8 +51,18 @@ spec:
             - secretRef:
                 name: {{ .Values.secrets.existingSecret }}
           {{- end }}
-          {{- if or (not .Values.secrets.existingSecret) .Values.api.extraEnv .Values.migrate.extraEnv }}
+          {{- if or (not .Values.secrets.existingSecret) .Values.api.extraEnv .Values.migrate.extraEnv .Values.database.sslMode }}
           env:
+            {{- with .Values.database.sslMode }}
+            # Inlined, not read from the -config ConfigMap: this Job is a
+            # pre-install hook and runs before regular resources exist, so it
+            # has no envFrom for them (see the DATABASE_URL_OVERRIDE note
+            # below). Without this line the api and worker would connect under
+            # the configured TLS mode while the migration connection quietly
+            # fell back to the application default.
+            - name: DATABASE_SSL_MODE
+              value: {{ . | quote }}
+            {{- end }}
             {{- if not .Values.secrets.existingSecret }}
             # Inlined rather than referencing the chart-managed Secret: as a
             # pre-install hook this Job runs before regular resources exist,
@@ -68,4 +87,17 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
+          {{- with .Values.migrate.extraVolumeMounts }}
+          # This Job connects to the same database as the api, so anything the
+          # api must MOUNT to reach it — most often a CA bundle for
+          # DATABASE_SSL_MODE=verify-full — this Job needs too. Without it the
+          # pre-upgrade hook is the one pod that cannot be given the file, and
+          # it fails before any api pod rolls.
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.extraVolumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- end }}

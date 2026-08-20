@@ -32,6 +32,9 @@ data:
   S3_BUCKET: {{ . | quote }}
   {{- end }}
   {{- end }}
+  {{- with .Values.database.sslMode }}
+  DATABASE_SSL_MODE: {{ . | quote }}
+  {{- end }}
   {{- with .Values.redis.url }}
   REDIS_URL: {{ . | quote }}
   {{- end }}

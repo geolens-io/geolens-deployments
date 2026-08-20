@@ -109,7 +109,7 @@ Keys the chart reads from an `existingSecret`:
 | `POSTGRES_PASSWORD` | yes | required by backend settings even when `DATABASE_URL_OVERRIDE` carries the real credentials — any placeholder (e.g. `unused`) satisfies it; the chart-managed Secret sets one automatically |
 | `TILE_SIGNING_SECRET` | no | signed tile URLs |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | no | AI features |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | when `storage.backend=s3` | shared object-storage credentials — the backend hard-requires them for s3 (no ambient/IRSA fallback); Titiler uses these only as the compatibility fallback described below |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | when `storage.backend=s3` and `storage.s3AmbientCredentials` is false | shared object-storage credentials; Titiler uses these only as the compatibility fallback described below. With `storage.s3AmbientCredentials=true` (app images ≥ 1.14.2) both are omitted and the SDKs resolve a role instead — see [Keyless object storage](#keyless-object-storage-irsa--pod-identity) |
 
 The chart sets `ENVIRONMENT=production` by default (API docs hidden, Secure
 session cookie). Override with `--set environment=development` only on
@@ -138,6 +138,47 @@ S3-compatible endpoints (MinIO, R2): raster serving resolves assets as
 `AWS_VIRTUAL_HOSTING` settings from `storage.s3Endpoint`, `s3AllowHttp`, and
 `s3AddressingStyle`; an explicit `titiler.extraEnv` entry still overrides a
 derived value.
+
+#### Keyless object storage (IRSA / Pod Identity)
+
+On EKS you do not need to keep IAM user keys in a Secret at all. Annotate the
+chart's ServiceAccount with the role and turn off static keys:
+
+```bash
+helm upgrade --install geolens helm/geolens \
+  --set storage.backend=s3 \
+  --set storage.s3Bucket=geolens \
+  --set storage.s3Region=us-east-1 \
+  --set storage.s3AmbientCredentials=true \
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<account>:role/geolens-s3
+```
+
+The api, worker and TiTiler pods then resolve the role themselves — boto3 for
+the application, GDAL for TiTiler's `/vsis3/` reads. EKS **Pod Identity** needs
+no annotation; associate the role with this ServiceAccount name instead. To
+attach a ServiceAccount you manage (eksctl, Terraform), set
+`serviceAccount.create=false` and `serviceAccount.name`.
+
+Requires app images **≥ 1.14.2**: earlier backends refuse to boot with
+`STORAGE_PROVIDER=s3` and no `S3_ACCESS_KEY_ID`, whatever the runtime offers.
+
+> **Migrating an existing install off static keys:** a key already stored in
+> the Secret is **not** removed by upgrading to a keyless configuration if that
+> Secret was first written by a chart older than 0.4.25 — those releases wrote
+> credentials through `stringData`, which the API server folds into `data`, so
+> Helm's deletion diff finds nothing to remove. Both boto3 and GDAL prefer a
+> static key over an attached role, so the install keeps using the old
+> credential while the rendered manifest looks clean. Remove it once, by hand:
+>
+> ```bash
+> kubectl patch secret <release>-secrets --type=json \
+>   -p '[{"op":"remove","path":"/data/S3_ACCESS_KEY_ID"},
+>        {"op":"remove","path":"/data/S3_SECRET_ACCESS_KEY"}]'
+> kubectl rollout restart deploy/<release>-api deploy/<release>-worker deploy/<release>-titiler
+> ```
+>
+> Restarting TiTiler matters: env vars are read at pod start, so a running
+> pod keeps the old key until it is replaced.
 
 #### TiTiler read-only S3 credentials
 
@@ -227,6 +268,53 @@ The externally managed PostgreSQL instance must satisfy:
   ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA data
     GRANT SELECT ON TABLES TO geolens_reader;
   ```
+
+#### Database TLS
+
+Set `database.sslMode` (`disable` | `prefer` | `require` | `verify-full`).
+Leaving it empty keeps the application default, `prefer`, which uses encryption
+when the server offers it and **silently continues without it when it does
+not**.
+
+> Writing `?sslmode=require` into `secrets.databaseUrlOverride` does **not**
+> configure TLS. The backend strips that parameter before handing the DSN to
+> asyncpg, which has no such option, and derives TLS from `database.sslMode`
+> alone. Verified against RDS: with `sslmode=require` in the DSN and the mode
+> set to `disable`, the client offered no encryption and only the server's own
+> `rds.force_ssl` refused the connection.
+
+`verify-full` additionally needs the provider's CA bundle as a file. Create a
+ConfigMap for it and mount it into all three workloads that talk to the
+database — the migrate hook included, or the upgrade fails there before any pod
+rolls:
+
+```bash
+curl -o rds-ca.pem https://truststore.pki.rds.amazonaws.com/<region>/<region>-bundle.pem
+kubectl create configmap rds-ca --from-file=rds-ca.pem
+```
+
+```yaml
+database:
+  sslMode: verify-full
+extraVolumes:
+  - name: rds-ca
+    configMap:
+      name: rds-ca
+api:
+  extraEnv: [{name: DATABASE_SSL_CA_CERT, value: /etc/ssl/db/rds-ca.pem}]
+  extraVolumeMounts: [{name: rds-ca, mountPath: /etc/ssl/db, readOnly: true}]
+worker:
+  extraEnv: [{name: DATABASE_SSL_CA_CERT, value: /etc/ssl/db/rds-ca.pem}]
+  extraVolumeMounts: [{name: rds-ca, mountPath: /etc/ssl/db, readOnly: true}]
+migrate:
+  extraEnv: [{name: DATABASE_SSL_CA_CERT, value: /etc/ssl/db/rds-ca.pem}]
+  extraVolumeMounts: [{name: rds-ca, mountPath: /etc/ssl/db, readOnly: true}]
+```
+
+`verify-full` needs app images **≥ 1.14.2** on any deployment that ingests
+vector data: earlier builds passed the TLS mode to `ogr2ogr` without the CA
+path, so every vector ingest failed inside libpq with `root certificate file
+... does not exist` while the API itself stayed healthy.
 
 ### Backups
 

@@ -37,6 +37,7 @@ spec:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       {{- end }}
     spec:
+      serviceAccountName: {{ include "geolens.serviceAccountName" . }}
       # No podSecurityContext: the upstream titiler image declares its own
       # user; the chart's uid 1001 is a backend-image contract.
       {{- with .Values.imagePullSecrets }}
@@ -155,8 +156,13 @@ spec:
             {{- end }}
             {{- if eq .Values.storage.backend "s3" }}
             # optional: tolerates a pre-created Secret that lacks these exact
-            # keys. (The backend itself hard-requires s3 credentials, so an
-            # ambient-credential-only setup cannot boot the api anyway.)
+            # keys. That is also what carries storage.s3AmbientCredentials
+            # here: the chart-managed Secret then holds no S3_* keys, both refs
+            # resolve to nothing, and GDAL falls through to the web-identity
+            # credentials the ServiceAccount's role provides — the same
+            # resolution the api gets from boto3. A key present in a
+            # pre-created Secret still wins over the role, so drop stale
+            # credentials from it when moving an install onto IRSA.
             {{- if not (has "AWS_ACCESS_KEY_ID" $extraNames) }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:

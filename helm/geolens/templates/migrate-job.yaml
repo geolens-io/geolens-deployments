@@ -122,7 +122,23 @@ spec:
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- with .Values.extraVolumes }}
+      {{- /* Only the volumes this Job actually mounts. extraVolumes is shared
+           with the api and worker, and attaching one the migration does not use
+           can wedge the hook: a ReadWriteOnce PVC already attached to another
+           node blocks scheduling, and a Secret or ConfigMap that does not exist
+           yet keeps the pod pending — either way a pre-install hook that never
+           completes fails the whole install (codex review on #29). */}}
+      {{- $mountNames := list }}
+      {{- range (.Values.migrate.extraVolumeMounts | default list) }}
+      {{- $mountNames = append $mountNames .name }}
+      {{- end }}
+      {{- $volumes := list }}
+      {{- range (.Values.extraVolumes | default list) }}
+      {{- if has .name $mountNames }}
+      {{- $volumes = append $volumes . }}
+      {{- end }}
+      {{- end }}
+      {{- with $volumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
       {{- end }}

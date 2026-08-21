@@ -122,16 +122,25 @@ lands, larger uploads are rejected at the edge with 413.
 
 ### Storage & the shared staging volume
 
-`/app/staging` is a shared handoff path: the api writes uploads there, the
-worker reads them to ingest, and Titiler reads rasters under it. By default
-each pod gets its own `emptyDir`, which breaks that handoff across pods — fine
-for a quick render, not for real use. For a working deployment:
+`/app/staging` is scratch space: the api writes uploads there, the worker
+reads them to ingest, and Titiler reads rasters under it. By default each pod
+gets its own `emptyDir`. Whether that matters depends entirely on the storage
+backend:
 
-- **Enable `staging.persistence`** (a `ReadWriteMany` PVC, or point
-  `staging.persistence.existingClaim` at one), **and**
-- **use `storage.backend=s3`** for durable artifact storage.
-  `storage.backend=local` keeps stored rasters/exports inside the staging
+- **Use `storage.backend=s3`.** This is the one that matters.
+  `storage.backend=local` keeps stored rasters and exports inside the staging
   volume, so without persistence they are lost on every pod restart.
+- **`staging.persistence` is then optional.** With s3, an upload is written to
+  the bucket under a relative key and the worker fetches it from there, so the
+  api/worker handoff never crosses a filesystem — measured by ingesting vector
+  and raster data across pods with no shared volume at all. Enable it (a
+  `ReadWriteMany` PVC, or `staging.persistence.existingClaim`) only if you want
+  a shared scratch filesystem for its own sake.
+- **On EKS, do not enable it with the defaults.** `ReadWriteMany` is rejected
+  outright by the EBS CSI driver (`Volume capabilities not supported`), and an
+  empty `staging.persistence.storageClass` renders no `storageClassName`, which
+  needs a cluster *default* StorageClass that an eksctl-built cluster does not
+  mark — the claim then sits `Pending` forever. RWX on AWS means EFS.
 
 S3-compatible endpoints (MinIO, R2): raster serving resolves assets as
 `/vsis3/` paths. The chart derives GDAL's `AWS_S3_ENDPOINT`, `AWS_HTTPS`, and
@@ -150,14 +159,20 @@ helm upgrade --install geolens helm/geolens \
   --set storage.s3Bucket=geolens \
   --set storage.s3Region=us-east-1 \
   --set storage.s3AmbientCredentials=true \
+  --set serviceAccount.create=true \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<account>:role/geolens-s3
 ```
+
+`serviceAccount.create=true` is required here: it defaults to false so that an
+upgrade never moves existing workloads off the `default` account, and without
+it the annotation is rendered nowhere while this same command removes the
+static keys — leaving the pods with no credentials at all.
 
 The api, worker and TiTiler pods then resolve the role themselves — boto3 for
 the application, GDAL for TiTiler's `/vsis3/` reads. EKS **Pod Identity** needs
 no annotation; associate the role with this ServiceAccount name instead. To
-attach a ServiceAccount you manage (eksctl, Terraform), set
-`serviceAccount.create=false` and `serviceAccount.name`.
+attach a ServiceAccount you manage (eksctl, Terraform), keep
+`serviceAccount.create=false` and set `serviceAccount.name`.
 
 Requires app images **≥ 1.14.2**: earlier backends refuse to boot with
 `STORAGE_PROVIDER=s3` and no `S3_ACCESS_KEY_ID`, whatever the runtime offers.

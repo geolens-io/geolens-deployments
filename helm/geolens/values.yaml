@@ -293,12 +293,20 @@ storage:
   s3AddressingStyle: "auto"
 
 staging:
-  # /app/staging is a shared handoff contract (GAP-022 in the main repo's
+  # /app/staging is scratch space (GAP-022 in the main repo's
   # docker-compose.yml): the api writes uploads there, the worker reads them
   # for ingest, and titiler reads rasters under it — all at the same fixed
-  # path. Without a shared ReadWriteMany volume each pod sees its own
-  # emptyDir and ingest/raster serving cannot work across pods. Enable this
-  # (or point existingClaim at an RWX PVC) for any real deployment.
+  # path. Whether it must be SHARED depends on storage.backend:
+  #
+  #   s3    — no. An upload is written to the bucket under a relative key and
+  #           the worker fetches it from there, so the handoff never crosses a
+  #           filesystem. Measured across pods with no shared volume at all.
+  #   local — yes. The only copy lives in one pod's emptyDir, so the worker
+  #           cannot read it and stored artifacts are lost on pod restart.
+  #
+  # On EKS the defaults below cannot bind: ReadWriteMany is rejected by the EBS
+  # CSI driver, and an empty storageClass needs a cluster DEFAULT StorageClass
+  # that eksctl does not mark. RWX on AWS means EFS.
   persistence:
     enabled: false
     existingClaim: ""

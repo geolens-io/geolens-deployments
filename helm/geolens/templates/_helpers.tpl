@@ -46,10 +46,11 @@ RBAC, its own workload-identity annotations) keeps applying.
 The migrate Job deliberately does not use this; see migrate-job.yaml.
 */}}
 {{- define "geolens.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create -}}
-{{- default (include "geolens.fullname" .) .Values.serviceAccount.name -}}
+{{- $sa := .Values.serviceAccount | default dict -}}
+{{- if $sa.create -}}
+{{- default (include "geolens.fullname" .) $sa.name -}}
 {{- else -}}
-{{- default "default" .Values.serviceAccount.name -}}
+{{- default "default" $sa.name -}}
 {{- end -}}
 {{- end -}}
 

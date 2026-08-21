@@ -225,6 +225,26 @@ jobs:
           fi
           echo "ambient credentials omit static keys; the static path still fails closed"
 
+      - name: Guard - renders when a cross-version --reuse-values omits the new maps
+        # `helm upgrade --reuse-values` coalesces the OLD release's values
+        # against the new chart, so a release installed from 0.4.24 or earlier
+        # supplies NO top-level serviceAccount or database map. Dereferencing
+        # .Values.database.sslMode then aborts rendering with a nil pointer and
+        # the upgrade fails before anything rolls. Every new parent map must be
+        # `| default dict`-guarded, the way titiler.s3Credentials already is.
+        # The upgrade step in this workflow cannot catch it: it reuses values
+        # from a release installed with this same chart.
+        run: |
+          helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set-json 'serviceAccount=null' \
+            --set-json 'database=null' \
+            > /dev/null || {
+              echo "rendering failed with the new top-level maps absent; a --reuse-values upgrade from an older chart would fail here" >&2
+              exit 1
+            }
+          echo "renders with serviceAccount/database absent (cross-version --reuse-values safe)"
+
       - name: Guard - database.sslMode reaches the migrate hook too
         # The migrate Job cannot read the chart ConfigMap (hook ordering), so a
         # mode configured only there would leave migrations on the application

@@ -51,9 +51,9 @@ spec:
             - secretRef:
                 name: {{ .Values.secrets.existingSecret }}
           {{- end }}
-          {{- if or (not .Values.secrets.existingSecret) .Values.api.extraEnv .Values.migrate.extraEnv .Values.database.sslMode }}
+          {{- if or (not .Values.secrets.existingSecret) .Values.api.extraEnv .Values.migrate.extraEnv (.Values.database | default dict).sslMode }}
           env:
-            {{- with .Values.database.sslMode }}
+            {{- with (.Values.database | default dict).sslMode }}
             # Inlined, not read from the -config ConfigMap: this Job is a
             # pre-install hook and runs before regular resources exist, so it
             # has no envFrom for them (see the DATABASE_URL_OVERRIDE note
@@ -87,7 +87,7 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
-          {{- with .Values.migrate.extraVolumeMounts }}
+          {{- with (.Values.migrate | default dict).extraVolumeMounts }}
           # This Job connects to the same database as the api, so anything the
           # api must MOUNT to reach it — most often a CA bundle for
           # DATABASE_SSL_MODE=verify-full — this Job needs too. Without it the

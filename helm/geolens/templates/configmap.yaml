@@ -32,7 +32,7 @@ data:
   S3_BUCKET: {{ . | quote }}
   {{- end }}
   {{- end }}
-  {{- with .Values.database.sslMode }}
+  {{- with (.Values.database | default dict).sslMode }}
   DATABASE_SSL_MODE: {{ . | quote }}
   {{- end }}
   {{- with .Values.redis.url }}

@@ -160,13 +160,8 @@ helm upgrade --install geolens helm/geolens \
   --set storage.s3Region=us-east-1 \
   --set storage.s3AmbientCredentials=true \
   --set serviceAccount.create=true \
-  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<account>:role/geolens-s3 \
-  --set api.image.tag=1.14.2 --set worker.image.tag=1.14.2 --set frontend.image.tag=1.14.2
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<account>:role/geolens-s3
 ```
-
-The image pins are required until the chart's appVersion reaches 1.14.2: the
-defaults are still 1.14.1, which refuses to boot with `STORAGE_PROVIDER=s3` and
-no access key, so this command without them crash-loops the api and worker.
 
 `serviceAccount.create=true` is required here: it defaults to false so that an
 upgrade never moves existing workloads off the `default` account, and without
@@ -179,8 +174,9 @@ no annotation; associate the role with this ServiceAccount name instead. To
 attach a ServiceAccount you manage (eksctl, Terraform), keep
 `serviceAccount.create=false` and set `serviceAccount.name`.
 
-Requires app images **≥ 1.14.2**: earlier backends refuse to boot with
-`STORAGE_PROVIDER=s3` and no `S3_ACCESS_KEY_ID`, whatever the runtime offers.
+Requires app images **≥ 1.14.2** (the chart default from 0.4.26): earlier
+backends refuse to boot with `STORAGE_PROVIDER=s3` and no `S3_ACCESS_KEY_ID`,
+whatever the runtime offers.
 
 > **Migrating an existing install off static keys:** a key already stored in
 > the Secret is **not** removed by upgrading to a keyless configuration if that

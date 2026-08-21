@@ -21,7 +21,7 @@
 environment: production
 
 # Keyless object storage. Annotate the ServiceAccount with an IRSA role and no
-# static key is stored anywhere. Needs app images >= 1.14.2.
+# static key is stored anywhere. Needs app images >= 1.14.2 (the chart default).
 #
 # For EKS Pod Identity, drop the annotation and associate the role with this
 # ServiceAccount name instead.
@@ -75,21 +75,9 @@ api:
   replicas: 2
   publicAppUrl: https://<your-host>
   publicApiUrl: https://<your-host>/api
-  # s3AmbientCredentials needs 1.14.2 or newer, and chart 0.4.25 still defaults
-  # to 1.14.1 — which refuses to boot with STORAGE_PROVIDER=s3 and no access
-  # key. Without these pins the api and worker crash-loop. Drop them once the
-  # chart's appVersion has caught up.
-  image:
-    tag: "1.14.2"
-
-worker:
-  image:
-    tag: "1.14.2"
 
 frontend:
   replicas: 2
-  image:
-    tag: "1.14.2"
   # The ingress controller's pod network. Without it the frontend nginx
   # attributes every request to the controller, so the anonymous raster rate
   # limit shares ONE bucket across all clients.

@@ -160,8 +160,13 @@ helm upgrade --install geolens helm/geolens \
   --set storage.s3Region=us-east-1 \
   --set storage.s3AmbientCredentials=true \
   --set serviceAccount.create=true \
-  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<account>:role/geolens-s3
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<account>:role/geolens-s3 \
+  --set api.image.tag=1.14.2 --set worker.image.tag=1.14.2 --set frontend.image.tag=1.14.2
 ```
+
+The image pins are required until the chart's appVersion reaches 1.14.2: the
+defaults are still 1.14.1, which refuses to boot with `STORAGE_PROVIDER=s3` and
+no access key, so this command without them crash-loops the api and worker.
 
 `serviceAccount.create=true` is required here: it defaults to false so that an
 upgrade never moves existing workloads off the `default` account, and without

@@ -53,6 +53,18 @@ spec:
           {{- end }}
           {{- if or (not .Values.secrets.existingSecret) .Values.api.extraEnv .Values.migrate.extraEnv (.Values.database | default dict).sslMode }}
           env:
+            {{- /* Names the operator supplies, from either list. A generated
+                 entry below is skipped when it collides, the same way the
+                 titiler template guards its defaults — the operator's value is
+                 the one they can see (codex review on #29). */}}
+            {{- $overrideNames := list }}
+            {{- range (.Values.api.extraEnv | default list) }}
+            {{- $overrideNames = append $overrideNames .name }}
+            {{- end }}
+            {{- range (.Values.migrate.extraEnv | default list) }}
+            {{- $overrideNames = append $overrideNames .name }}
+            {{- end }}
+            {{- if not (has "DATABASE_SSL_MODE" $overrideNames) }}
             {{- with (.Values.database | default dict).sslMode }}
             # Inlined, not read from the -config ConfigMap: this Job is a
             # pre-install hook and runs before regular resources exist, so it
@@ -62,6 +74,7 @@ spec:
             # fell back to the application default.
             - name: DATABASE_SSL_MODE
               value: {{ . | quote }}
+            {{- end }}
             {{- end }}
             {{- if not .Values.secrets.existingSecret }}
             # Inlined rather than referencing the chart-managed Secret: as a

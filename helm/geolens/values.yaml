@@ -3,23 +3,34 @@ fullnameOverride: ""
 
 imagePullSecrets: []
 
-# ServiceAccount for the api, worker, migrate and titiler pods. Its reason to
-# exist is cloud credentials: annotate it and the platform injects credentials
-# the AWS/Azure SDKs resolve on their own, so no long-lived key ever lands in a
+# ServiceAccount for the api, worker and titiler pods. Its reason to exist is
+# cloud credentials: annotate it and the platform injects credentials the
+# AWS/Azure SDKs resolve on their own, so no long-lived key ever lands in a
 # Secret.
 #
-# On EKS (IRSA), annotate with the role and set storage.s3AmbientCredentials=true:
+# `create: false` is the default deliberately. Every release before this value
+# existed ran under the namespace's `default` ServiceAccount, and switching an
+# existing install to a fresh one on an ordinary upgrade would silently drop
+# whatever that account carries — imagePullSecrets, RBAC bindings, its own
+# workload-identity annotations — which surfaces as ImagePullBackOff or lost
+# access rather than as anything pointing back at this value. Opting in is the
+# safe direction; being opted in by an upgrade is not.
+#
+# On EKS (IRSA), create one and annotate it, alongside
+# storage.s3AmbientCredentials=true:
 #
 #   serviceAccount:
+#     create: true
 #     annotations:
 #       eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/geolens-s3
 #
 # EKS Pod Identity needs no annotation at all — associate the role with this
-# ServiceAccount name instead. Leave `create: false` and set `name` to adopt a
-# ServiceAccount you manage yourself (eksctl, Terraform).
+# ServiceAccount name instead. To adopt a ServiceAccount you manage yourself
+# (eksctl, Terraform), keep `create: false` and set `name`.
 serviceAccount:
-  create: true
-  # Defaults to the release fullname when empty.
+  create: false
+  # With create: true, defaults to the release fullname when empty.
+  # With create: false, empty means the namespace's `default` account.
   name: ""
   annotations: {}
 

@@ -48,7 +48,7 @@ spec:
              credential until it was restarted by hand. */}}
         checksum/serviceaccount: {{ include (print $.Template.BasePath "/serviceaccount.yaml") . | sha256sum }}
     spec:
-      serviceAccountName: {{ include "geolens.serviceAccountName" . }}
+      serviceAccountName: {{ include "geolens.serviceAccountName" . | quote }}
       # No podSecurityContext: the upstream titiler image declares its own
       # user; the chart's uid 1001 is a backend-image contract.
       {{- with .Values.imagePullSecrets }}

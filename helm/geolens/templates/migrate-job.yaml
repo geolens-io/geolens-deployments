@@ -80,8 +80,21 @@ spec:
             - name: POSTGRES_PASSWORD
               value: "unused-database-url-override-in-use"
             {{- end }}
-            {{- with .Values.api.extraEnv }}
-            {{- toYaml . | nindent 12 }}
+            {{- /* This Job renders api.extraEnv AND migrate.extraEnv, so a name
+                 set in both would land twice in one container. The runtime
+                 takes the later value, but strategic-merge tooling keys `env`
+                 by `name` and an Argo/Helm upgrade fails on the duplicate merge
+                 key before a pod rolls — wedging the upgrade that applies the
+                 override. A migrate-specific entry wins; the api one is
+                 dropped (codex review on #29). */}}
+            {{- $migrateNames := list }}
+            {{- range (.Values.migrate.extraEnv | default list) }}
+            {{- $migrateNames = append $migrateNames .name }}
+            {{- end }}
+            {{- range (.Values.api.extraEnv | default list) }}
+            {{- if not (has .name $migrateNames) }}
+            - {{ toYaml . | nindent 14 | trim }}
+            {{- end }}
             {{- end }}
             {{- with .Values.migrate.extraEnv }}
             {{- toYaml . | nindent 12 }}

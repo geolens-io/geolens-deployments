@@ -322,7 +322,10 @@ worker:
   extraEnv: [{name: DATABASE_SSL_CA_CERT, value: /etc/ssl/db/rds-ca.pem}]
   extraVolumeMounts: [{name: rds-ca, mountPath: /etc/ssl/db, readOnly: true}]
 migrate:
-  extraEnv: [{name: DATABASE_SSL_CA_CERT, value: /etc/ssl/db/rds-ca.pem}]
+  # extraEnv is not repeated here: the migrate Job already renders
+  # api.extraEnv. Setting the same name in both is safe (the migrate value
+  # wins, and the chart drops the duplicate), but there is nothing to gain.
+  # The MOUNT is not shared, so that one does have to be repeated.
   extraVolumeMounts: [{name: rds-ca, mountPath: /etc/ssl/db, readOnly: true}]
 ```
 

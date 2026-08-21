@@ -323,7 +323,11 @@ jobs:
             --set storage.backend=s3 --set storage.s3Bucket=geolens \
             --set-json 'titiler.extraEnv=[{"name":"GDAL_VRT_ENABLE_RAWRASTERBAND","value":"YES"},{"name":"MALLOC_ARENA_MAX","value":"4"}]' \
             --set-json 'frontend.extraEnv=[{"name":"API_BASE_URL","value":"https://geo.example.com"}]' \
-            --set-json 'api.extraEnv=[{"name":"GEOLENS_API_RUN_MIGRATIONS","value":"true"}]')
+            --set-json 'api.extraEnv=[{"name":"GEOLENS_API_RUN_MIGRATIONS","value":"true"},{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"}]' \
+            --set-json 'migrate.extraEnv=[{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"}]')
+          # The migrate Job renders api.extraEnv AND migrate.extraEnv, so the
+          # same name set in both lands twice in one container — the case the
+          # README's verify-full recipe walked into (codex review on #29).
           # A name may legitimately appear once per CONTAINER, so scope the
           # count per container: container list entries (lowercase names at
           # 8-space indent) and document separators both reset the seen-set;

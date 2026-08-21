@@ -37,6 +37,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{/*
+The ServiceAccount the api, worker and titiler pods run as. With the default
+create: false and no name, this resolves to "default" — what every release
+before this value existed already ran as, so an upgrade that sets neither keeps
+its current identity, and anything bound to that account (imagePullSecrets,
+RBAC, its own workload-identity annotations) keeps applying.
+
+The migrate Job deliberately does not use this; see migrate-job.yaml.
+*/}}
+{{- define "geolens.serviceAccountName" -}}
+{{- $sa := .Values.serviceAccount | default dict -}}
+{{- if $sa.create -}}
+{{- default (include "geolens.fullname" .) $sa.name -}}
+{{- else -}}
+{{- default "default" $sa.name -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Fully qualified on purpose: the frontend nginx resolves this through its
 `resolver` directive, which does not apply resolv.conf search domains — a
 short Service name would NXDOMAIN at CoreDNS.

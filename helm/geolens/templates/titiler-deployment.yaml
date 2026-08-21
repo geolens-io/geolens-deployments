@@ -28,15 +28,27 @@ spec:
       labels:
         {{- include "geolens.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: titiler
-      {{- if and (eq .Values.storage.backend "s3") (not .Values.secrets.existingSecret) (not (get $titilerS3Credentials "existingSecret")) }}
       annotations:
+        {{- if and (eq .Values.storage.backend "s3") (not .Values.secrets.existingSecret) (not (get $titilerS3Credentials "existingSecret")) }}
         # Roll titiler when the chart-managed Secret rotates — its AWS_* env
         # comes from secretKeyRefs read only at container start. External
         # Secrets are operator-managed and do not have chart-rendered content
         # to checksum.
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
-      {{- end }}
+        {{- end }}
+        {{- /* codex review on #29: Helm updates the ServiceAccount in place when
+             its IRSA / Pod Identity annotations change, but pods keep the
+             AWS_ROLE_ARN and token volume the webhook injected at admission.
+             Without this checksum a role change silently leaves every pod on
+             the old credentials — or on none — until someone restarts them.
+             Deliberately OUTSIDE the secret condition above: an operator using
+             secrets.existingSecret is exactly who is most likely to move to a
+             role, and titiler reads a stale key for as long as its pod lives —
+             observed during validation, where it kept serving with the old
+             credential until it was restarted by hand. */}}
+        checksum/serviceaccount: {{ include (print $.Template.BasePath "/serviceaccount.yaml") . | sha256sum }}
     spec:
+      serviceAccountName: {{ include "geolens.serviceAccountName" . | quote }}
       # No podSecurityContext: the upstream titiler image declares its own
       # user; the chart's uid 1001 is a backend-image contract.
       {{- with .Values.imagePullSecrets }}
@@ -155,8 +167,13 @@ spec:
             {{- end }}
             {{- if eq .Values.storage.backend "s3" }}
             # optional: tolerates a pre-created Secret that lacks these exact
-            # keys. (The backend itself hard-requires s3 credentials, so an
-            # ambient-credential-only setup cannot boot the api anyway.)
+            # keys. That is also what carries storage.s3AmbientCredentials
+            # here: the chart-managed Secret then holds no S3_* keys, both refs
+            # resolve to nothing, and GDAL falls through to the web-identity
+            # credentials the ServiceAccount's role provides — the same
+            # resolution the api gets from boto3. A key present in a
+            # pre-created Secret still wins over the role, so drop stale
+            # credentials from it when moving an install onto IRSA.
             {{- if not (has "AWS_ACCESS_KEY_ID" $extraNames) }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:

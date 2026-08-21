@@ -18,10 +18,17 @@ spec:
         app.kubernetes.io/component: worker
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- /* codex review on #29: Helm updates the ServiceAccount in place when
+             its IRSA / Pod Identity annotations change, but pods keep the
+             AWS_ROLE_ARN and token volume the webhook injected at admission.
+             Without this checksum a role change silently leaves every pod on
+             the old credentials — or on none — until someone restarts them. */}}
+        checksum/serviceaccount: {{ include (print $.Template.BasePath "/serviceaccount.yaml") . | sha256sum }}
         {{- if not .Values.secrets.existingSecret }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- end }}
     spec:
+      serviceAccountName: {{ include "geolens.serviceAccountName" . | quote }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- with .Values.imagePullSecrets }}

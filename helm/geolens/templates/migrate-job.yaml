@@ -20,6 +20,15 @@ spec:
         {{- include "geolens.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: migrate
     spec:
+      {{- /* Deliberately NOT serviceAccountName: this Job is a pre-install /
+           pre-upgrade hook and runs BEFORE regular resources exist, so a
+           chart-created ServiceAccount is not there yet — the Job is rejected
+           with "error looking up service account ... not found", creates no
+           pod at all, and the hook hangs until the timeout, failing every
+           fresh install. Same ordering rule as the DATABASE_URL_OVERRIDE note
+           below. It runs under the namespace default ServiceAccount, which is
+           what it did before serviceAccount.* existed; migrations reach only
+           the database, never object storage, so they need no cloud role. */}}
       restartPolicy: OnFailure
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -42,8 +51,31 @@ spec:
             - secretRef:
                 name: {{ .Values.secrets.existingSecret }}
           {{- end }}
-          {{- if or (not .Values.secrets.existingSecret) .Values.api.extraEnv .Values.migrate.extraEnv }}
+          {{- if or (not .Values.secrets.existingSecret) .Values.api.extraEnv .Values.migrate.extraEnv (.Values.database | default dict).sslMode }}
           env:
+            {{- /* Names the operator supplies, from either list. A generated
+                 entry below is skipped when it collides, the same way the
+                 titiler template guards its defaults — the operator's value is
+                 the one they can see (codex review on #29). */}}
+            {{- $overrideNames := list }}
+            {{- range (.Values.api.extraEnv | default list) }}
+            {{- $overrideNames = append $overrideNames .name }}
+            {{- end }}
+            {{- range (.Values.migrate.extraEnv | default list) }}
+            {{- $overrideNames = append $overrideNames .name }}
+            {{- end }}
+            {{- if not (has "DATABASE_SSL_MODE" $overrideNames) }}
+            {{- with (.Values.database | default dict).sslMode }}
+            # Inlined, not read from the -config ConfigMap: this Job is a
+            # pre-install hook and runs before regular resources exist, so it
+            # has no envFrom for them (see the DATABASE_URL_OVERRIDE note
+            # below). Without this line the api and worker would connect under
+            # the configured TLS mode while the migration connection quietly
+            # fell back to the application default.
+            - name: DATABASE_SSL_MODE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
             {{- if not .Values.secrets.existingSecret }}
             # Inlined rather than referencing the chart-managed Secret: as a
             # pre-install hook this Job runs before regular resources exist,
@@ -61,11 +93,53 @@ spec:
             - name: POSTGRES_PASSWORD
               value: "unused-database-url-override-in-use"
             {{- end }}
-            {{- with .Values.api.extraEnv }}
-            {{- toYaml . | nindent 12 }}
+            {{- /* This Job renders api.extraEnv AND migrate.extraEnv, so a name
+                 set in both would land twice in one container. The runtime
+                 takes the later value, but strategic-merge tooling keys `env`
+                 by `name` and an Argo/Helm upgrade fails on the duplicate merge
+                 key before a pod rolls — wedging the upgrade that applies the
+                 override. A migrate-specific entry wins; the api one is
+                 dropped (codex review on #29). */}}
+            {{- $migrateNames := list }}
+            {{- range (.Values.migrate.extraEnv | default list) }}
+            {{- $migrateNames = append $migrateNames .name }}
+            {{- end }}
+            {{- range (.Values.api.extraEnv | default list) }}
+            {{- if not (has .name $migrateNames) }}
+            - {{ toYaml . | nindent 14 | trim }}
+            {{- end }}
             {{- end }}
             {{- with .Values.migrate.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
+          {{- with (.Values.migrate | default dict).extraVolumeMounts }}
+          # This Job connects to the same database as the api, so anything the
+          # api must MOUNT to reach it — most often a CA bundle for
+          # DATABASE_SSL_MODE=verify-full — this Job needs too. Without it the
+          # pre-upgrade hook is the one pod that cannot be given the file, and
+          # it fails before any api pod rolls.
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- /* Only the volumes this Job actually mounts. extraVolumes is shared
+           with the api and worker, and attaching one the migration does not use
+           can wedge the hook: a ReadWriteOnce PVC already attached to another
+           node blocks scheduling, and a Secret or ConfigMap that does not exist
+           yet keeps the pod pending — either way a pre-install hook that never
+           completes fails the whole install (codex review on #29). */}}
+      {{- $mountNames := list }}
+      {{- range (.Values.migrate.extraVolumeMounts | default list) }}
+      {{- $mountNames = append $mountNames .name }}
+      {{- end }}
+      {{- $volumes := list }}
+      {{- range (.Values.extraVolumes | default list) }}
+      {{- if has .name $mountNames }}
+      {{- $volumes = append $volumes . }}
+      {{- end }}
+      {{- end }}
+      {{- with $volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- end }}

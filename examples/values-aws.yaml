@@ -1,0 +1,124 @@
+# GeoLens on AWS (EKS + S3 + RDS PostgreSQL)
+#
+# Validated end to end on a real EKS 1.33 cluster against real S3 and RDS
+# PostgreSQL 18.4. Replace every <placeholder>; nothing here carries a secret.
+#
+#   helm upgrade --install geolens geolens/geolens -f values-aws.yaml
+#
+# What this file deliberately does NOT do:
+#
+#   * It does not enable staging.persistence. On EKS that PVC would need EFS,
+#     because the chart default is ReadWriteMany and EBS cannot serve it
+#     ("Volume capabilities not supported"). With storage.backend=s3 you do not
+#     need it: uploads go to S3 under a relative key and the worker fetches
+#     them from there, so the api/worker handoff never touches a shared
+#     filesystem. Verified by ingesting vector and raster data across pods with
+#     no shared volume at all.
+#   * It puts no database password here. Point secrets.existingSecret at a
+#     Secret you manage (External Secrets, SOPS, sealed-secrets) so the DSN
+#     never lands in Git or a Helm command line.
+
+environment: production
+
+# Keyless object storage. Annotate the ServiceAccount with an IRSA role and no
+# static key is stored anywhere. Needs app images >= 1.14.2.
+#
+# For EKS Pod Identity, drop the annotation and associate the role with this
+# ServiceAccount name instead.
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::<account-id>:role/<geolens-s3-role>
+
+storage:
+  backend: s3
+  s3Bucket: <your-bucket>
+  s3Region: <region>
+  s3AmbientCredentials: true
+
+# The role above needs, scoped to the bucket:
+#   ListBucket, GetBucketLocation, ListBucketMultipartUploads   on arn:aws:s3:::<bucket>
+#   GetObject, PutObject, DeleteObject,
+#   AbortMultipartUpload, ListMultipartUploadParts              on arn:aws:s3:::<bucket>/*
+#
+# TiTiler only ever READS managed rasters. To give it a narrower principal than
+# the application, point titiler.s3Credentials at a read-only Secret — see the
+# README. Under s3AmbientCredentials both process trees share the one role.
+
+# RDS PostgreSQL. Create the extensions and schemas once with a privileged role
+# before installing (see the README's database requirements); the migrate hook
+# fails with `schema "data" does not exist` otherwise.
+#
+# RDS PostgreSQL 18 carries everything GeoLens needs: postgis 3.6.3,
+# postgis_raster, vector (pgvector) 0.8.2, pg_trgm, unaccent, and
+# pg_stat_statements is preloaded by default.
+secrets:
+  # Must hold DATABASE_URL_OVERRIDE, JWT_SECRET_KEY, GEOLENS_ADMIN_USERNAME,
+  # GEOLENS_ADMIN_PASSWORD and POSTGRES_PASSWORD (a placeholder is fine).
+  # DSN form: postgresql+asyncpg://<user>:<pw>@<endpoint>:5432/<db>
+  existingSecret: geolens-secrets
+
+database:
+  # RDS refuses unencrypted connections by default (rds.force_ssl=1 on the
+  # default.postgres18 parameter group), so `require` costs nothing here.
+  #
+  # Prefer verify-full, which also authenticates the server — it additionally
+  # needs the RDS CA bundle mounted into api, worker AND migrate, and app
+  # images >= 1.14.2 if you ingest vector data. The README's "Database TLS"
+  # section carries that recipe.
+  #
+  # Do NOT write ?sslmode=... into the DSN instead: it is stripped before
+  # asyncpg sees it and configures nothing.
+  sslMode: require
+
+api:
+  replicas: 2
+  publicAppUrl: https://<your-host>
+  publicApiUrl: https://<your-host>/api
+  # s3AmbientCredentials needs 1.14.2 or newer, and chart 0.4.25 still defaults
+  # to 1.14.1 — which refuses to boot with STORAGE_PROVIDER=s3 and no access
+  # key. Without these pins the api and worker crash-loop. Drop them once the
+  # chart's appVersion has caught up.
+  image:
+    tag: "1.14.2"
+
+worker:
+  image:
+    tag: "1.14.2"
+
+frontend:
+  replicas: 2
+  image:
+    tag: "1.14.2"
+  # The ingress controller's pod network. Without it the frontend nginx
+  # attributes every request to the controller, so the anonymous raster rate
+  # limit shares ONE bucket across all clients.
+  #
+  # On EKS this is necessary but NOT sufficient: with the default
+  # externalTrafficPolicy: Cluster, kube-proxy SNATs the client address before
+  # the controller ever sees it, so there is nothing left to recover. Preserve
+  # the source IP at the load balancer as well (externalTrafficPolicy: Local,
+  # or the AWS Load Balancer Controller in IP-target mode).
+  trustedProxyCidrs:
+    - 192.168.0.0/16
+
+titiler:
+  # Empty resources means BestEffort QoS: TiTiler is evicted first under node
+  # pressure and its RSS ratchet grows unbounded. Give it a ceiling.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 2Gi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: <your-host>
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+  tls:
+    - hosts:
+        - <your-host>
+      secretName: geolens-tls

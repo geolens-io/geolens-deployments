@@ -3,6 +3,37 @@ fullnameOverride: ""
 
 imagePullSecrets: []
 
+# ServiceAccount for the api, worker and titiler pods. Its reason to exist is
+# cloud credentials: annotate it and the platform injects credentials the
+# AWS/Azure SDKs resolve on their own, so no long-lived key ever lands in a
+# Secret.
+#
+# `create: false` is the default deliberately. Every release before this value
+# existed ran under the namespace's `default` ServiceAccount, and switching an
+# existing install to a fresh one on an ordinary upgrade would silently drop
+# whatever that account carries — imagePullSecrets, RBAC bindings, its own
+# workload-identity annotations — which surfaces as ImagePullBackOff or lost
+# access rather than as anything pointing back at this value. Opting in is the
+# safe direction; being opted in by an upgrade is not.
+#
+# On EKS (IRSA), create one and annotate it, alongside
+# storage.s3AmbientCredentials=true:
+#
+#   serviceAccount:
+#     create: true
+#     annotations:
+#       eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/geolens-s3
+#
+# EKS Pod Identity needs no annotation at all — associate the role with this
+# ServiceAccount name instead. To adopt a ServiceAccount you manage yourself
+# (eksctl, Terraform), keep `create: false` and set `name`.
+serviceAccount:
+  create: false
+  # With create: true, defaults to the release fullname when empty.
+  # With create: false, empty means the namespace's `default` account.
+  name: ""
+  annotations: {}
+
 # Deployment security posture, passed to the backend as ENVIRONMENT (SEC-005).
 # "production" hides /docs and /redoc and marks the OAuth session cookie
 # Secure. Set "development" only on throwaway clusters.
@@ -147,6 +178,11 @@ migrate:
   enabled: true
   backoffLimit: 2
   extraEnv: []
+  # Mounts from `extraVolumes` for the migrate Job. It talks to the same
+  # database as the api, so a CA bundle needed for DATABASE_SSL_MODE=verify-full
+  # has to reach this pod as well — it runs as a pre-install/pre-upgrade hook,
+  # before the api rolls, so a missing mount fails the whole upgrade here.
+  extraVolumeMounts: []
 
 service:
   api:
@@ -169,6 +205,31 @@ ingress:
   annotations: {}
   host: geolens.example.com
   tls: []
+
+database:
+  # TLS mode for the external database: "" | disable | prefer | require |
+  # verify-full. Empty leaves the application default, which is `prefer` —
+  # encryption is used when the server offers it and SILENTLY SKIPPED when it
+  # does not.
+  #
+  # An `?sslmode=` parameter written into secrets.databaseUrlOverride does NOT
+  # do this job. The backend strips it before handing the DSN to asyncpg (which
+  # has no such parameter) and derives TLS from this setting alone, so a DSN
+  # reading `...?sslmode=require` connects under `prefer`. Measured against
+  # RDS: the DSN said require, the client offered no encryption, and only the
+  # server's own rds.force_ssl=1 refused it.
+  #
+  # Set here rather than through extraEnv so api, worker AND the migrate hook
+  # agree — the migrate Job cannot read the chart's ConfigMap (it is a
+  # pre-install hook, ordered before regular resources), so an extraEnv on the
+  # api alone leaves migrations on the default.
+  #
+  # verify-full additionally needs the provider's CA bundle, which the backend
+  # requires as a FILE (DATABASE_SSL_CA_CERT). Create a ConfigMap holding the
+  # PEM yourself, then reference it from extraVolumes plus the api/worker/migrate
+  # extraVolumeMounts, and point DATABASE_SSL_CA_CERT at the mount path. See
+  # the README's external-database section.
+  sslMode: ""
 
 secrets:
   # Name of a pre-created Secret to use instead of the chart-managed one.
@@ -207,6 +268,21 @@ storage:
   s3Bucket: ""
   s3AccessKeyId: ""
   s3SecretAccessKey: ""
+  # Resolve S3 credentials from the runtime instead of a static key pair:
+  # EKS IRSA / Pod Identity, or any environment that supplies the AWS
+  # container-credential or web-identity variables. Requires app images
+  # >= 1.14.2 — older backends refuse to boot with STORAGE_PROVIDER=s3 and no
+  # S3_ACCESS_KEY_ID, whatever the runtime offers.
+  #
+  # With this on, s3AccessKeyId/s3SecretAccessKey stop being required, and when
+  # left empty nothing is written to the Secret and titiler's
+  # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY are left unset, so both process
+  # trees resolve the role instead. Keys set anyway are still passed through
+  # and still win — that is boto3's and GDAL's own precedence, not something
+  # the chart can reorder. Pair it with an annotated
+  # serviceAccount (above) — the chart cannot verify a role is actually
+  # attached, so a missing annotation surfaces as AccessDenied at first use.
+  s3AmbientCredentials: false
   # Reach a scheme-less s3Endpoint over http instead of https. Mirrors the
   # backend's S3_ALLOW_HTTP; an explicit scheme on s3Endpoint always wins.
   s3AllowHttp: false
@@ -217,12 +293,20 @@ storage:
   s3AddressingStyle: "auto"
 
 staging:
-  # /app/staging is a shared handoff contract (GAP-022 in the main repo's
+  # /app/staging is scratch space (GAP-022 in the main repo's
   # docker-compose.yml): the api writes uploads there, the worker reads them
   # for ingest, and titiler reads rasters under it — all at the same fixed
-  # path. Without a shared ReadWriteMany volume each pod sees its own
-  # emptyDir and ingest/raster serving cannot work across pods. Enable this
-  # (or point existingClaim at an RWX PVC) for any real deployment.
+  # path. Whether it must be SHARED depends on storage.backend:
+  #
+  #   s3    — no. An upload is written to the bucket under a relative key and
+  #           the worker fetches it from there, so the handoff never crosses a
+  #           filesystem. Measured across pods with no shared volume at all.
+  #   local — yes. The only copy lives in one pod's emptyDir, so the worker
+  #           cannot read it and stored artifacts are lost on pod restart.
+  #
+  # On EKS the defaults below cannot bind: ReadWriteMany is rejected by the EBS
+  # CSI driver, and an empty storageClass needs a cluster DEFAULT StorageClass
+  # that eksctl does not mark. RWX on AWS means EFS.
   persistence:
     enabled: false
     existingClaim: ""

@@ -145,6 +145,122 @@ jobs:
           fi
           echo "Titiler credential fallback and dedicated replacement both render correctly"
 
+      - name: Guard - the migrate hook never references a chart-created ServiceAccount
+        # The migrate Job is a pre-install/pre-upgrade hook: it runs BEFORE
+        # regular resources exist. Naming the chart's own ServiceAccount there
+        # makes the API server reject the pod ("error looking up service
+        # account ... not found"), so the Job creates NO pod, the hook hangs to
+        # its timeout, and EVERY fresh install fails. Caught on a real cluster;
+        # rendering alone looks perfectly valid, which is why this is a guard.
+        run: |
+          migrate=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --show-only templates/migrate-job.yaml)
+          if grep -q 'serviceAccountName' <<<"$migrate"; then
+            echo "migrate-job.yaml sets serviceAccountName; a pre-install hook cannot reference a resource the release has not created yet" >&2
+            exit 1
+          fi
+          # ...while the ordinary workloads must still get it.
+          for tpl in api-deployment worker-deployment titiler-deployment; do
+            if ! helm template geolens helm/geolens \
+              --set secrets.existingSecret=geolens-secrets \
+              --show-only "templates/$tpl.yaml" | grep -q 'serviceAccountName'; then
+              echo "$tpl lost its serviceAccountName; IRSA / Pod Identity has nowhere to attach" >&2
+              exit 1
+            fi
+          done
+          echo "migrate hook is SA-free; api/worker/titiler carry the ServiceAccount"
+
+      - name: Guard - the Secret uses data, so removed keys are actually removed
+        # stringData is write-only: the API server folds it into `data` and
+        # drops it, so Helm's three-way merge computes deletions against a
+        # field the live object no longer has and a removed credential SURVIVES
+        # the upgrade. Measured: with stringData a removed key was still
+        # present after `helm upgrade`; with `data` it was gone. An operator
+        # rotating out a leaked key would see a clean render and a live secret.
+        run: |
+          rendered=$(helm template geolens helm/geolens \
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://u:p@db:5432/g' \
+            --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef' \
+            --set secrets.adminUsername=admin \
+            --set secrets.adminPassword='chart-ci-only-Passw0rd!' \
+            --show-only templates/secret.yaml)
+          if grep -q '^stringData:' <<<"$rendered"; then
+            echo "secret.yaml renders stringData; removed keys would survive helm upgrade" >&2
+            exit 1
+          fi
+          grep -q '^data:' <<<"$rendered" || { echo "secret.yaml renders neither data nor stringData" >&2; exit 1; }
+          # Values must survive the base64 round-trip byte-for-byte.
+          got=$(grep -E '^  JWT_SECRET_KEY:' <<<"$rendered" | sed 's/.*: //; s/"//g' | base64 -d)
+          [ "$got" = "0123456789abcdef0123456789abcdef" ] || { echo "base64 round-trip altered a value: $got" >&2; exit 1; }
+          echo "Secret renders base64 data and round-trips exactly"
+
+      - name: Guard - ambient S3 credentials render no static keys
+        # storage.s3AmbientCredentials=true must drop the key pair entirely: a
+        # leftover key WINS over the attached role in both boto3 and GDAL, so a
+        # half-applied switch silently keeps using the long-lived credential.
+        run: |
+          rendered=$(helm template geolens helm/geolens \
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://u:p@db:5432/g' \
+            --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef' \
+            --set secrets.adminUsername=admin \
+            --set secrets.adminPassword='chart-ci-only-Passw0rd!' \
+            --set storage.backend=s3 --set storage.s3Bucket=geolens \
+            --set storage.s3AmbientCredentials=true \
+            --show-only templates/secret.yaml)
+          if grep -qE '^  S3_(ACCESS_KEY_ID|SECRET_ACCESS_KEY):' <<<"$rendered"; then
+            echo "ambient credentials still rendered a static S3 key into the Secret" >&2
+            exit 1
+          fi
+          # And the static path must still fail closed without keys.
+          if helm template geolens helm/geolens \
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://u:p@db:5432/g' \
+            --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef' \
+            --set secrets.adminUsername=admin \
+            --set secrets.adminPassword='chart-ci-only-Passw0rd!' \
+            --set storage.backend=s3 --set storage.s3Bucket=geolens \
+            > /dev/null 2>&1; then
+            echo "storage.backend=s3 without keys and without s3AmbientCredentials must still fail" >&2
+            exit 1
+          fi
+          echo "ambient credentials omit static keys; the static path still fails closed"
+
+      - name: Guard - renders when a cross-version --reuse-values omits the new maps
+        # `helm upgrade --reuse-values` coalesces the OLD release's values
+        # against the new chart, so a release installed from 0.4.24 or earlier
+        # supplies NO top-level serviceAccount or database map. Dereferencing
+        # .Values.database.sslMode then aborts rendering with a nil pointer and
+        # the upgrade fails before anything rolls. Every new parent map must be
+        # `| default dict`-guarded, the way titiler.s3Credentials already is.
+        # The upgrade step in this workflow cannot catch it: it reuses values
+        # from a release installed with this same chart.
+        run: |
+          helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set-json 'serviceAccount=null' \
+            --set-json 'database=null' \
+            > /dev/null || {
+              echo "rendering failed with the new top-level maps absent; a --reuse-values upgrade from an older chart would fail here" >&2
+              exit 1
+            }
+          echo "renders with serviceAccount/database absent (cross-version --reuse-values safe)"
+
+      - name: Guard - database.sslMode reaches the migrate hook too
+        # The migrate Job cannot read the chart ConfigMap (hook ordering), so a
+        # mode configured only there would leave migrations on the application
+        # default while api and worker used the configured one.
+        run: |
+          for tpl in configmap migrate-job; do
+            if ! helm template geolens helm/geolens \
+              --set secrets.existingSecret=geolens-secrets \
+              --set database.sslMode=verify-full \
+              --show-only "templates/$tpl.yaml" | grep -q 'DATABASE_SSL_MODE'; then
+              echo "database.sslMode did not reach $tpl" >&2
+              exit 1
+            fi
+          done
+          echo "database.sslMode reaches both the ConfigMap and the migrate hook"
+
       - name: Guard - no no-op GDAL_HTTP_FOLLOWLOCATION in rendered output
         # geolens#937: the variable is not a GDAL option and does nothing, so
         # setting it reads as a redirect defense that is not there. The main
@@ -207,7 +323,11 @@ jobs:
             --set storage.backend=s3 --set storage.s3Bucket=geolens \
             --set-json 'titiler.extraEnv=[{"name":"GDAL_VRT_ENABLE_RAWRASTERBAND","value":"YES"},{"name":"MALLOC_ARENA_MAX","value":"4"}]' \
             --set-json 'frontend.extraEnv=[{"name":"API_BASE_URL","value":"https://geo.example.com"}]' \
-            --set-json 'api.extraEnv=[{"name":"GEOLENS_API_RUN_MIGRATIONS","value":"true"}]')
+            --set-json 'api.extraEnv=[{"name":"GEOLENS_API_RUN_MIGRATIONS","value":"true"},{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"}]' \
+            --set-json 'migrate.extraEnv=[{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"}]')
+          # The migrate Job renders api.extraEnv AND migrate.extraEnv, so the
+          # same name set in both lands twice in one container — the case the
+          # README's verify-full recipe walked into (codex review on #29).
           # A name may legitimately appear once per CONTAINER, so scope the
           # count per container: container list entries (lowercase names at
           # 8-space indent) and document separators both reset the seen-set;

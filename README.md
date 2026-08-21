@@ -109,7 +109,7 @@ Keys the chart reads from an `existingSecret`:
 | `POSTGRES_PASSWORD` | yes | required by backend settings even when `DATABASE_URL_OVERRIDE` carries the real credentials — any placeholder (e.g. `unused`) satisfies it; the chart-managed Secret sets one automatically |
 | `TILE_SIGNING_SECRET` | no | signed tile URLs |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | no | AI features |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | when `storage.backend=s3` | shared object-storage credentials — the backend hard-requires them for s3 (no ambient/IRSA fallback); Titiler uses these only as the compatibility fallback described below |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | when `storage.backend=s3` and `storage.s3AmbientCredentials` is false | shared object-storage credentials; Titiler uses these only as the compatibility fallback described below. With `storage.s3AmbientCredentials=true` (app images ≥ 1.14.2) both are omitted and the SDKs resolve a role instead — see [Keyless object storage](#keyless-object-storage-irsa--pod-identity) |
 
 The chart sets `ENVIRONMENT=production` by default (API docs hidden, Secure
 session cookie). Override with `--set environment=development` only on
@@ -122,22 +122,83 @@ lands, larger uploads are rejected at the edge with 413.
 
 ### Storage & the shared staging volume
 
-`/app/staging` is a shared handoff path: the api writes uploads there, the
-worker reads them to ingest, and Titiler reads rasters under it. By default
-each pod gets its own `emptyDir`, which breaks that handoff across pods — fine
-for a quick render, not for real use. For a working deployment:
+`/app/staging` is scratch space: the api writes uploads there, the worker
+reads them to ingest, and Titiler reads rasters under it. By default each pod
+gets its own `emptyDir`. Whether that matters depends entirely on the storage
+backend:
 
-- **Enable `staging.persistence`** (a `ReadWriteMany` PVC, or point
-  `staging.persistence.existingClaim` at one), **and**
-- **use `storage.backend=s3`** for durable artifact storage.
-  `storage.backend=local` keeps stored rasters/exports inside the staging
+- **Use `storage.backend=s3`.** This is the one that matters.
+  `storage.backend=local` keeps stored rasters and exports inside the staging
   volume, so without persistence they are lost on every pod restart.
+- **`staging.persistence` is then optional.** With s3, an upload is written to
+  the bucket under a relative key and the worker fetches it from there, so the
+  api/worker handoff never crosses a filesystem — measured by ingesting vector
+  and raster data across pods with no shared volume at all. Enable it (a
+  `ReadWriteMany` PVC, or `staging.persistence.existingClaim`) only if you want
+  a shared scratch filesystem for its own sake.
+- **On EKS, do not enable it with the defaults.** `ReadWriteMany` is rejected
+  outright by the EBS CSI driver (`Volume capabilities not supported`), and an
+  empty `staging.persistence.storageClass` renders no `storageClassName`, which
+  needs a cluster *default* StorageClass that an eksctl-built cluster does not
+  mark — the claim then sits `Pending` forever. RWX on AWS means EFS.
 
 S3-compatible endpoints (MinIO, R2): raster serving resolves assets as
 `/vsis3/` paths. The chart derives GDAL's `AWS_S3_ENDPOINT`, `AWS_HTTPS`, and
 `AWS_VIRTUAL_HOSTING` settings from `storage.s3Endpoint`, `s3AllowHttp`, and
 `s3AddressingStyle`; an explicit `titiler.extraEnv` entry still overrides a
 derived value.
+
+#### Keyless object storage (IRSA / Pod Identity)
+
+On EKS you do not need to keep IAM user keys in a Secret at all. Annotate the
+chart's ServiceAccount with the role and turn off static keys:
+
+```bash
+helm upgrade --install geolens helm/geolens \
+  --set storage.backend=s3 \
+  --set storage.s3Bucket=geolens \
+  --set storage.s3Region=us-east-1 \
+  --set storage.s3AmbientCredentials=true \
+  --set serviceAccount.create=true \
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::<account>:role/geolens-s3 \
+  --set api.image.tag=1.14.2 --set worker.image.tag=1.14.2 --set frontend.image.tag=1.14.2
+```
+
+The image pins are required until the chart's appVersion reaches 1.14.2: the
+defaults are still 1.14.1, which refuses to boot with `STORAGE_PROVIDER=s3` and
+no access key, so this command without them crash-loops the api and worker.
+
+`serviceAccount.create=true` is required here: it defaults to false so that an
+upgrade never moves existing workloads off the `default` account, and without
+it the annotation is rendered nowhere while this same command removes the
+static keys — leaving the pods with no credentials at all.
+
+The api, worker and TiTiler pods then resolve the role themselves — boto3 for
+the application, GDAL for TiTiler's `/vsis3/` reads. EKS **Pod Identity** needs
+no annotation; associate the role with this ServiceAccount name instead. To
+attach a ServiceAccount you manage (eksctl, Terraform), keep
+`serviceAccount.create=false` and set `serviceAccount.name`.
+
+Requires app images **≥ 1.14.2**: earlier backends refuse to boot with
+`STORAGE_PROVIDER=s3` and no `S3_ACCESS_KEY_ID`, whatever the runtime offers.
+
+> **Migrating an existing install off static keys:** a key already stored in
+> the Secret is **not** removed by upgrading to a keyless configuration if that
+> Secret was first written by a chart older than 0.4.25 — those releases wrote
+> credentials through `stringData`, which the API server folds into `data`, so
+> Helm's deletion diff finds nothing to remove. Both boto3 and GDAL prefer a
+> static key over an attached role, so the install keeps using the old
+> credential while the rendered manifest looks clean. Remove it once, by hand:
+>
+> ```bash
+> kubectl patch secret <release>-secrets --type=json \
+>   -p '[{"op":"remove","path":"/data/S3_ACCESS_KEY_ID"},
+>        {"op":"remove","path":"/data/S3_SECRET_ACCESS_KEY"}]'
+> kubectl rollout restart deploy/<release>-api deploy/<release>-worker deploy/<release>-titiler
+> ```
+>
+> Restarting TiTiler matters: env vars are read at pod start, so a running
+> pod keeps the old key until it is replaced.
 
 #### TiTiler read-only S3 credentials
 
@@ -227,6 +288,56 @@ The externally managed PostgreSQL instance must satisfy:
   ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA data
     GRANT SELECT ON TABLES TO geolens_reader;
   ```
+
+#### Database TLS
+
+Set `database.sslMode` (`disable` | `prefer` | `require` | `verify-full`).
+Leaving it empty keeps the application default, `prefer`, which uses encryption
+when the server offers it and **silently continues without it when it does
+not**.
+
+> Writing `?sslmode=require` into `secrets.databaseUrlOverride` does **not**
+> configure TLS. The backend strips that parameter before handing the DSN to
+> asyncpg, which has no such option, and derives TLS from `database.sslMode`
+> alone. Verified against RDS: with `sslmode=require` in the DSN and the mode
+> set to `disable`, the client offered no encryption and only the server's own
+> `rds.force_ssl` refused the connection.
+
+`verify-full` additionally needs the provider's CA bundle as a file. Create a
+ConfigMap for it and mount it into all three workloads that talk to the
+database — the migrate hook included, or the upgrade fails there before any pod
+rolls:
+
+```bash
+curl -o rds-ca.pem https://truststore.pki.rds.amazonaws.com/<region>/<region>-bundle.pem
+kubectl create configmap rds-ca --from-file=rds-ca.pem
+```
+
+```yaml
+database:
+  sslMode: verify-full
+extraVolumes:
+  - name: rds-ca
+    configMap:
+      name: rds-ca
+api:
+  extraEnv: [{name: DATABASE_SSL_CA_CERT, value: /etc/ssl/db/rds-ca.pem}]
+  extraVolumeMounts: [{name: rds-ca, mountPath: /etc/ssl/db, readOnly: true}]
+worker:
+  extraEnv: [{name: DATABASE_SSL_CA_CERT, value: /etc/ssl/db/rds-ca.pem}]
+  extraVolumeMounts: [{name: rds-ca, mountPath: /etc/ssl/db, readOnly: true}]
+migrate:
+  # extraEnv is not repeated here: the migrate Job already renders
+  # api.extraEnv. Setting the same name in both is safe (the migrate value
+  # wins, and the chart drops the duplicate), but there is nothing to gain.
+  # The MOUNT is not shared, so that one does have to be repeated.
+  extraVolumeMounts: [{name: rds-ca, mountPath: /etc/ssl/db, readOnly: true}]
+```
+
+`verify-full` needs app images **≥ 1.14.2** on any deployment that ingests
+vector data: earlier builds passed the TLS mode to `ogr2ogr` without the CA
+path, so every vector ingest failed inside libpq with `root certificate file
+... does not exist` while the API itself stayed healthy.
 
 ### Backups
 

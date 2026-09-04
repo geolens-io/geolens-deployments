@@ -2,6 +2,31 @@ apiVersion: v1
 entries:
   geolens:
   - apiVersion: v2
+    appVersion: 1.18.0
+    created: "2026-09-04T18:52:32.201243798Z"
+    description: Community-maintained Helm chart for the GeoLens community edition.
+      Unsupported — Docker Compose is the supported install path.
+    digest: 1304f51233995482ecb23cf0e8aeee80793ed85d8836004503ab9e16a1aa081a
+    home: https://github.com/geolens-io/geolens-deployments
+    keywords:
+    - gis
+    - geospatial
+    - postgis
+    - data-catalog
+    - maps
+    kubeVersion: '>=1.19.0-0'
+    maintainers:
+    - name: Ian Shiland
+      url: https://github.com/ishiland
+    name: geolens
+    sources:
+    - https://github.com/geolens-io/geolens-deployments
+    - https://github.com/geolens-io/geolens
+    type: application
+    urls:
+    - https://github.com/geolens-io/geolens-deployments/releases/download/geolens-0.4.32/geolens-0.4.32.tgz
+    version: 0.4.32
+  - apiVersion: v2
     appVersion: 1.17.0
     created: "2026-08-30T16:57:46.465994384Z"
     description: Community-maintained Helm chart for the GeoLens community edition.
@@ -851,4 +876,4 @@ entries:
     urls:
     - https://github.com/geolens-io/geolens-deployments/releases/download/geolens-0.3.0/geolens-0.3.0.tgz
     version: 0.3.0
-generated: "2026-08-30T16:57:46.466223953Z"
+generated: "2026-09-04T18:52:32.201412975Z"

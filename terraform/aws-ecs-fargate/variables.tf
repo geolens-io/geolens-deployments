@@ -108,9 +108,14 @@ variable "worker_task" {
 }
 
 variable "worker_ephemeral_storage_gb" {
-  description = "Ephemeral disk for the worker task, 20 to 200 GiB. The worker pulls a raster down to /app/staging to convert it, so a large GeoTIFF plus its COG must fit here."
+  description = "Ephemeral disk for the worker task, 20 to 200 GiB. 20 is the Fargate default and is not sent explicitly; anything above it is. The worker pulls a raster down to /app/staging to convert it, so a large GeoTIFF plus its COG must fit here."
   type        = number
   default     = 20
+
+  validation {
+    condition     = var.worker_ephemeral_storage_gb >= 20 && var.worker_ephemeral_storage_gb <= 200
+    error_message = "worker_ephemeral_storage_gb must be between 20 and 200."
+  }
 }
 
 variable "worker_concurrency" {

@@ -210,8 +210,13 @@ resource "aws_ecs_task_definition" "worker" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
-  ephemeral_storage {
-    size_in_gib = var.worker_ephemeral_storage_gb
+  # Fargate accepts an explicit size only from 21 GiB up; 20 GiB is what you
+  # get by saying nothing, and saying 20 is rejected (codex review on #40).
+  dynamic "ephemeral_storage" {
+    for_each = var.worker_ephemeral_storage_gb > 20 ? [1] : []
+    content {
+      size_in_gib = var.worker_ephemeral_storage_gb
+    }
   }
 
   runtime_platform {

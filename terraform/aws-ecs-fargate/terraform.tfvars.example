@@ -34,6 +34,8 @@ geolens_version = "1.18.1"
 # Bump after rotating anything in extra_secrets so the services roll.
 # extra_secrets_revision = "1"
 
-# Teardown behaviour. Both default to the safe setting.
+# Teardown behaviour. Both default to false, the safe setting. Uncommenting
+# either is a destructive opt-in: no final RDS snapshot, and a bucket deleted
+# together with every object in it.
 # skip_final_snapshot = true
 # s3_force_destroy    = true

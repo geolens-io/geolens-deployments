@@ -370,7 +370,10 @@ resource "aws_ecs_service" "app" {
     rollback = true
   }
 
-  depends_on = [aws_lb_listener.http, terraform_data.migrate]
+  # Both listeners: with a certificate only the HTTPS one attaches the target
+  # group, and ECS rejects a service whose target group has no load balancer
+  # yet (codex review on #40).
+  depends_on = [aws_lb_listener.http, aws_lb_listener.https, terraform_data.migrate]
 }
 
 resource "aws_ecs_service" "worker" {

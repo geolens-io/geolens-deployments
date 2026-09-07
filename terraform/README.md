@@ -8,9 +8,9 @@ variables, apply.
 | Recipe | Status |
 | --- | --- |
 | [`aws-ecs-fargate`](aws-ecs-fargate/) | Validated on a real account (2026-09-07, GeoLens 1.18.1). ECS Fargate, RDS PostgreSQL 17, S3, ElastiCache Valkey, ALB. |
-| Azure | Planned, not started. |
-| Google Cloud | Planned, not started. |
-| DigitalOcean | Planned, not started. |
+| Azure | Planned, not started: [#41](https://github.com/geolens-io/geolens-deployments/issues/41). |
+| Google Cloud | Planned, not started: [#42](https://github.com/geolens-io/geolens-deployments/issues/42). |
+| DigitalOcean | Planned, not started: [#43](https://github.com/geolens-io/geolens-deployments/issues/43). |
 
 ## What a recipe has to provide
 

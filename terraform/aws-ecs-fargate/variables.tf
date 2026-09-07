@@ -41,9 +41,14 @@ variable "cache_enabled" {
 }
 
 variable "public_app_url" {
-  description = "Public URL of the deployment. Empty means http://<alb dns name>. Set this when you put a domain or CDN in front of the load balancer."
+  description = "Public URL of the deployment. Empty means http://<alb dns name>. Set this when you put a domain or CDN in front of the load balancer; with a certificate it must be the https:// origin, since it drives the S3 CORS rule and every URL the api hands out."
   type        = string
   default     = ""
+
+  validation {
+    condition     = var.acm_certificate_arn == "" || startswith(var.public_app_url, "https://")
+    error_message = "With acm_certificate_arn set, public_app_url must be the https:// origin browsers will use."
+  }
 }
 
 variable "acm_certificate_arn" {

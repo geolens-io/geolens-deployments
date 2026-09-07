@@ -79,7 +79,8 @@ acm_certificate_arn = "arn:aws:acm:us-east-1:111122223333:certificate/..."
 public_app_url      = "https://geolens.example.com"
 ```
 
-Apply, then point an alias record for your domain at the
+Both are required together: the module refuses a certificate without an
+`https://` public URL. Apply, then point an alias record for your domain at the
 `load_balancer_dns_name` output. Port 80 becomes a redirect to 443. Set
 `public_app_url` in the same apply: it drives the S3 CORS origin and the URLs
 the api hands out, and a mismatch breaks browser uploads.

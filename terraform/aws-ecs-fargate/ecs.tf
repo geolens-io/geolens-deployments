@@ -385,9 +385,22 @@ resource "aws_ecs_service" "app" {
     container_port   = 8080
   }
 
+  # The api waits on the database at boot and its own health check grants it
+  # 60 s; without a grace period the target check can kill a cold task first.
+  health_check_grace_period_seconds = 180
+
   deployment_circuit_breaker {
     enable   = true
     rollback = true
+  }
+
+  # Block until the rollout is stable, so a task that never becomes healthy
+  # fails the apply instead of rolling back after Terraform reported success.
+  wait_for_steady_state = true
+
+  timeouts {
+    create = "20m"
+    update = "20m"
   }
 
   # Both listeners: with a certificate only the HTTPS one attaches the target
@@ -412,6 +425,15 @@ resource "aws_ecs_service" "worker" {
   deployment_circuit_breaker {
     enable   = true
     rollback = true
+  }
+
+  # Block until the rollout is stable, so a task that never becomes healthy
+  # fails the apply instead of rolling back after Terraform reported success.
+  wait_for_steady_state = true
+
+  timeouts {
+    create = "20m"
+    update = "20m"
   }
 
   depends_on = [terraform_data.migrate]

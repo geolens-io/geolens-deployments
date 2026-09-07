@@ -28,6 +28,10 @@ locals {
     { name = "REDIS_URL", value = "redis://${aws_elasticache_replication_group.this[0].primary_endpoint_address}:6379/0" },
   ] : []
 
+  # Pinned to the secret VERSION, not just the secret. ECS reads secrets only
+  # at task start, so an unversioned reference would leave running tasks on a
+  # rotated DSN or JWT key. Naming the version changes every task definition
+  # whenever the secret changes, which rolls the services and re-runs migrate.
   backend_secrets = [
     for key in [
       "DATABASE_URL_OVERRIDE",
@@ -36,7 +40,7 @@ locals {
       "GEOLENS_ADMIN_PASSWORD",
       ] : {
       name      = key
-      valueFrom = "${aws_secretsmanager_secret.app.arn}:${key}::"
+      valueFrom = "${aws_secretsmanager_secret.app.arn}:${key}::${aws_secretsmanager_secret_version.app.version_id}"
     }
   ]
 
@@ -267,10 +271,15 @@ resource "aws_ecs_task_definition" "migrate" {
 }
 
 # ECS has no "run this task and wait" resource, so the AWS CLI does it. Runs on
-# the first apply and again whenever the task definition changes, which is
-# every image bump. Needs the AWS CLI and the same credentials Terraform uses.
+# the first apply and again whenever the task definition changes (every image
+# bump and every secret change) or the database instance is replaced, so a
+# recovered or rebuilt RDS is bootstrapped before the services reach it. Needs
+# the AWS CLI and the same credentials Terraform uses.
 resource "terraform_data" "migrate" {
-  triggers_replace = aws_ecs_task_definition.migrate.arn
+  triggers_replace = [
+    aws_ecs_task_definition.migrate.arn,
+    aws_db_instance.this.resource_id,
+  ]
 
   provisioner "local-exec" {
     interpreter = ["/bin/sh", "-c"]

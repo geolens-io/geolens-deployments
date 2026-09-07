@@ -17,9 +17,15 @@ resource "random_password" "jwt" {
   special = false
 }
 
+# The backend rejects passwords with fewer than three character classes, and
+# a plain alphanumeric draw skips a class often enough to matter (about 1.5%
+# of 24-character draws have no digit), so each class is forced.
 resource "random_password" "admin" {
-  length  = 24
-  special = false
+  length      = 24
+  special     = false
+  min_upper   = 1
+  min_lower   = 1
+  min_numeric = 1
 }
 
 # ponytail: the RDS master user is the application user, so migrations can

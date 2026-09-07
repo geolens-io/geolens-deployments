@@ -108,10 +108,13 @@ stay at the baked 500m, rejecting larger uploads at the edge with 413.
 
 ### Rotating the stored-secret encryption key
 
-Pods read the Secret only when they start, and with `secrets.existingSecret`
-nothing restarts them for you: the `checksum/secret` annotation that rolls the
-api and worker exists only for the chart-managed Secret. So each step below
-ends with a restart.
+Both backend images must be 1.18.2 or newer before you start. The chart
+checks that only for the `secrets.*` values; a key placed in your own Secret
+is invisible to it, and an older image ignores the key silently, so the
+rotation below would not happen. Pods also read the Secret only when they
+start, and with `secrets.existingSecret` nothing restarts them for you: the
+`checksum/secret` annotation that rolls the api and worker exists only for
+the chart-managed Secret. So each step below ends with a restart.
 
 1. Add the new key as `SECRET_ENCRYPTION_KEY` and move the old one to
    `SECRET_ENCRYPTION_KEY_PREVIOUS` in your Secret (or set the matching

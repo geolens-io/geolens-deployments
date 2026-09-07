@@ -1,5 +1,7 @@
 locals {
-  public_app_url = var.public_app_url != "" ? var.public_app_url : "http://${aws_lb.this.dns_name}"
+  # Trailing slash stripped: browsers send the origin without one, so S3's
+  # CORS comparison would reject uploads, and PUBLIC_API_URL would read //api.
+  public_app_url = var.public_app_url != "" ? trimsuffix(var.public_app_url, "/") : "http://${aws_lb.this.dns_name}"
 
   # The backend reads DATABASE_URL_OVERRIDE verbatim, so anything that needs
   # percent-encoding in the password breaks the DSN. Generating without special

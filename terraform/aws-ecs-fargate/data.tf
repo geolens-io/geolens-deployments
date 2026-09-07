@@ -43,7 +43,7 @@ resource "aws_db_instance" "this" {
   # Naming the major version alone lets RDS pick the current minor.
   engine         = "postgres"
   engine_version = "17"
-  instance_class = "db.t4g.micro"
+  instance_class = var.db_instance_class
 
   allocated_storage = 20
   storage_type      = "gp3"

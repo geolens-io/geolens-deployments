@@ -3,36 +3,36 @@ locals {
   frontend_image = "ghcr.io/geolens-io/geolens-frontend:${var.geolens_version}"
   titiler_image  = "ghcr.io/developmentseed/titiler:${var.titiler_version}"
 
-  # Shared by api, worker and the migrate task.
-  backend_env = [
-    { name = "ENVIRONMENT", value = "production" },
-    { name = "LOG_JSON", value = "true" },
-    { name = "PUBLIC_APP_URL", value = local.public_app_url },
-    { name = "PUBLIC_API_URL", value = "${local.public_app_url}/api" },
-    { name = "CORS_ALLOWED_ORIGINS", value = "" },
-    { name = "UPLOAD_MAX_SIZE_MB", value = "500" },
-    { name = "UPLOAD_STAGING_DIR", value = "/app/staging" },
-    { name = "STORAGE_PROVIDER", value = "s3" },
-    { name = "S3_BUCKET", value = aws_s3_bucket.this.id },
-    { name = "S3_REGION", value = var.region },
+  # Shared by api, worker and the migrate task. Maps rather than lists so a
+  # later merge can override a name instead of emitting it twice; ECS does not
+  # define which duplicate wins.
+  backend_env = merge({
+    ENVIRONMENT          = "production"
+    LOG_JSON             = "true"
+    PUBLIC_APP_URL       = local.public_app_url
+    PUBLIC_API_URL       = "${local.public_app_url}/api"
+    CORS_ALLOWED_ORIGINS = ""
+    UPLOAD_MAX_SIZE_MB   = tostring(var.upload_max_size_mb)
+    UPLOAD_STAGING_DIR   = "/app/staging"
+    STORAGE_PROVIDER     = "s3"
+    S3_BUCKET            = aws_s3_bucket.this.id
+    S3_REGION            = var.region
     # No S3 keys: the images detect the task role through the container
     # credential endpoint. A static key would win over the role if one leaked in.
-    { name = "DATABASE_SSL_MODE", value = "require" },
+    DATABASE_SSL_MODE = "require"
     # Settings insists on this even though DATABASE_URL_OVERRIDE carries the
     # real credential, so it is a placeholder rather than a secret.
-    { name = "POSTGRES_PASSWORD", value = "unused-database-url-override-in-use" },
-    { name = "PROCRASTINATE_SCHEMA", value = "catalog" },
-  ]
-
-  cache_env = var.cache_enabled ? [
-    { name = "REDIS_URL", value = "redis://${aws_elasticache_replication_group.this[0].primary_endpoint_address}:6379/0" },
-  ] : []
+    POSTGRES_PASSWORD    = "unused-database-url-override-in-use"
+    PROCRASTINATE_SCHEMA = "catalog"
+    }, var.cache_enabled ? {
+    REDIS_URL = "redis://${aws_elasticache_replication_group.this[0].primary_endpoint_address}:6379/0"
+  } : {})
 
   # Pinned to the secret VERSION, not just the secret. ECS reads secrets only
   # at task start, so an unversioned reference would leave running tasks on a
   # rotated DSN or JWT key. Naming the version changes every task definition
   # whenever the secret changes, which rolls the services and re-runs migrate.
-  backend_secrets = [
+  app_secrets = [
     for key in [
       "DATABASE_URL_OVERRIDE",
       "JWT_SECRET_KEY",
@@ -43,6 +43,26 @@ locals {
       valueFrom = "${aws_secretsmanager_secret.app.arn}:${key}::${aws_secretsmanager_secret_version.app.version_id}"
     }
   ]
+
+  backend_secrets = concat(local.app_secrets, [
+    for name, value_from in var.extra_secrets : { name = name, valueFrom = value_from }
+  ])
+
+  # One awslogs block per container, all in the same shape.
+  log = { for name, group in {
+    frontend = aws_cloudwatch_log_group.app.name
+    api      = aws_cloudwatch_log_group.app.name
+    titiler  = aws_cloudwatch_log_group.app.name
+    worker   = aws_cloudwatch_log_group.worker.name
+    migrate  = aws_cloudwatch_log_group.migrate.name
+    } : name => {
+    logDriver = "awslogs"
+    options = {
+      awslogs-group         = group
+      awslogs-region        = var.region
+      awslogs-stream-prefix = name
+    }
+  } }
 
   titiler_env = [
     { name = "GDAL_CACHEMAX", value = "200" },
@@ -84,8 +104,8 @@ resource "aws_ecs_task_definition" "app" {
   family                   = "${var.name}-app"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = 1024
-  memory                   = 3072
+  cpu                      = var.app_task.cpu
+  memory                   = var.app_task.memory
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
@@ -109,20 +129,13 @@ resource "aws_ecs_task_definition" "app" {
         { name = "PUBLIC_APP_URL", value = local.public_app_url },
         # Must match the api's UPLOAD_MAX_SIZE_MB or nginx rejects the upload
         # before the api ever sees it.
-        { name = "CLIENT_MAX_BODY_SIZE", value = "500m" },
+        { name = "CLIENT_MAX_BODY_SIZE", value = "${var.upload_max_size_mb}m" },
         # Without this the edge treats the load balancer as the client, so
         # every request shares one rate-limit bucket and logs one IP.
         { name = "TRUSTED_PROXY_CIDRS", value = var.vpc_cidr },
       ]
 
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.app.name
-          awslogs-region        = var.region
-          awslogs-stream-prefix = "frontend"
-        }
-      }
+      logConfiguration = local.log.frontend
     },
     {
       name      = "api"
@@ -135,25 +148,18 @@ resource "aws_ecs_task_definition" "app" {
 
       # Migrations run once in the migrate task instead. The entrypoint has no
       # advisory lock, so several api tasks starting together would race.
-      environment = concat(local.backend_env, local.cache_env, [
-        { name = "GEOLENS_API_RUN_MIGRATIONS", value = "false" },
-        { name = "TITILER_BASE_URL", value = "http://127.0.0.1:8081" },
+      environment = [for k, v in merge(local.backend_env, {
+        GEOLENS_API_RUN_MIGRATIONS = "false"
+        TITILER_BASE_URL           = "http://127.0.0.1:8081"
         # Only the api runs multiple uvicorn workers, and only its entrypoint
         # creates this directory. Setting it for the worker or the migrate task
         # crashes them on the first Counter() with a missing-file error.
-        { name = "PROMETHEUS_MULTIPROC_DIR", value = "/tmp/prometheus-multiproc" },
-      ])
+        PROMETHEUS_MULTIPROC_DIR = "/tmp/prometheus-multiproc"
+      }, var.extra_env) : { name = k, value = v }]
 
       secrets = local.backend_secrets
 
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.app.name
-          awslogs-region        = var.region
-          awslogs-stream-prefix = "api"
-        }
-      }
+      logConfiguration = local.log.api
     },
     {
       name      = "titiler"
@@ -166,14 +172,7 @@ resource "aws_ecs_task_definition" "app" {
 
       environment = local.titiler_env
 
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.app.name
-          awslogs-region        = var.region
-          awslogs-stream-prefix = "titiler"
-        }
-      }
+      logConfiguration = local.log.titiler
     },
   ])
 }
@@ -182,8 +181,8 @@ resource "aws_ecs_task_definition" "worker" {
   family                   = "${var.name}-worker"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = 1024
-  memory                   = 4096
+  cpu                      = var.worker_task.cpu
+  memory                   = var.worker_task.memory
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.task.arn
 
@@ -208,23 +207,16 @@ resource "aws_ecs_task_definition" "worker" {
       # storage-key helpers from that module and renders quicklooks
       # in-process, as in the prod compose file, which also leaves the worker
       # without it (codex review on #40).
-      environment = concat(local.backend_env, local.cache_env, [
-        { name = "GEOLENS_API_RUN_MIGRATIONS", value = "false" },
-        { name = "WORKER_CONCURRENCY", value = "1" },
-        { name = "WORKER_QUEUES", value = "priority,ingest,raster,ingest-auth-v2" },
-        { name = "WORKER_SHUTDOWN_TIMEOUT", value = "30" },
-      ])
+      environment = [for k, v in merge(local.backend_env, {
+        GEOLENS_API_RUN_MIGRATIONS = "false"
+        WORKER_CONCURRENCY         = tostring(var.worker_concurrency)
+        WORKER_QUEUES              = "priority,ingest,raster,ingest-auth-v2"
+        WORKER_SHUTDOWN_TIMEOUT    = "30"
+      }, var.extra_env) : { name = k, value = v }]
 
       secrets = local.backend_secrets
 
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.worker.name
-          awslogs-region        = var.region
-          awslogs-stream-prefix = "worker"
-        }
-      }
+      logConfiguration = local.log.worker
     },
   ])
 }
@@ -255,21 +247,14 @@ resource "aws_ecs_task_definition" "migrate" {
       # through JSON and sh is a losing game.
       command = ["sh", "-c", "echo \"$GEOLENS_BOOTSTRAP_B64\" | base64 -d > /tmp/bootstrap.py && uv run --no-dev python /tmp/bootstrap.py && uv run --no-dev alembic upgrade heads"]
 
-      environment = concat(local.backend_env, local.cache_env, [
-        { name = "GEOLENS_API_RUN_MIGRATIONS", value = "false" },
-        { name = "GEOLENS_BOOTSTRAP_B64", value = base64encode(file("${path.module}/migrate.py")) },
-      ])
+      environment = [for k, v in merge(local.backend_env, {
+        GEOLENS_API_RUN_MIGRATIONS = "false"
+        GEOLENS_BOOTSTRAP_B64      = base64encode(file("${path.module}/migrate.py"))
+      }, var.extra_env) : { name = k, value = v }]
 
       secrets = local.backend_secrets
 
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.migrate.name
-          awslogs-region        = var.region
-          awslogs-stream-prefix = "migrate"
-        }
-      }
+      logConfiguration = local.log.migrate
     },
   ])
 }

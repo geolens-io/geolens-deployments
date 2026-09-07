@@ -83,14 +83,50 @@ migration runs again against the new image, and only then do the services roll.
 The circuit breaker rolls a failed deployment back to the previous task
 definition.
 
+## Configuration
+
+The variables cover the infrastructure and the application settings that a
+first install usually changes. Everything else GeoLens reads from the
+environment goes through two escape hatches, the same way the Helm chart's
+`extraEnv` and `existingSecret` work.
+
+`extra_env` is a map of plain settings applied to the api, worker and migrate
+containers. An entry overrides a default of the same name. `extra_secrets`
+maps an env name to an ECS `valueFrom`: a Secrets Manager ARN, with an
+optional `:json-key::` suffix to pick one key out of a JSON secret. The
+execution role is granted read on each secret you list.
+
+```hcl
+extra_env = {
+  REGISTRATION_ENABLED = "true"
+  OPENAI_MODEL         = "gpt-4o"
+  SMTP_HOST            = "email-smtp.us-east-1.amazonaws.com"
+  SMTP_FROM_ADDRESS    = "geolens@example.com"
+}
+
+extra_secrets = {
+  OPENAI_API_KEY = "arn:aws:secretsmanager:us-east-1:111122223333:secret:geolens/ai-AbCdEf:OPENAI_API_KEY::"
+  SMTP_PASSWORD  = "arn:aws:secretsmanager:us-east-1:111122223333:secret:geolens/smtp-XyZ123"
+}
+```
+
+The [configuration reference](https://docs.getgeolens.com/guides/quickstart/configuration/)
+lists every setting. Do not put `S3_ACCESS_KEY_ID` or `S3_SECRET_ACCESS_KEY`
+in either map: a static key wins over the task role and defeats the keyless
+setup.
+
+`upload_max_size_mb` is rendered into both the api and the frontend edge, so
+the two limits cannot drift apart.
+
 ## Scaling
 
 - `app_desired_count` adds app tasks behind the load balancer. The api is
   stateless, so this scales reads.
-- The worker is fixed at one task. Raise `WORKER_CONCURRENCY` in `ecs.tf`, or
-  the worker service `desired_count`, for more ingestion throughput.
-- Task sizes are `cpu` and `memory` on the two task definitions in `ecs.tf`.
-- The database is `db.t4g.micro` and the cache is `cache.t4g.micro`, both in
+- `worker_concurrency` adds parallel job slots in the one worker task. Raise
+  `worker_task.cpu` with it.
+- `app_task` and `worker_task` set Fargate CPU units and memory. The worker
+  default is 4 GB because GDAL ingestion of large rasters needs it.
+- `db_instance_class` sizes the database. The cache is `cache.t4g.micro` in
   `data.tf`.
 
 ## What is deliberately simplified

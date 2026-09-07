@@ -20,7 +20,8 @@ resource "aws_iam_role_policy_attachment" "execution" {
 }
 
 # The execution role, not the task role, is what reads the `secrets` entries in
-# a container definition.
+# a container definition. An extra_secrets valueFrom may carry a :key:stage:id
+# suffix, so the policy names the bare secret ARN in front of it.
 resource "aws_iam_role_policy" "execution_secrets" {
   name_prefix = "secrets-"
   role        = aws_iam_role.execution.id
@@ -28,9 +29,11 @@ resource "aws_iam_role_policy" "execution_secrets" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["secretsmanager:GetSecretValue"]
-      Resource = [aws_secretsmanager_secret.app.arn]
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = distinct(concat([aws_secretsmanager_secret.app.arn], [
+        for v in values(var.extra_secrets) : regex("^(arn:[^:]+:secretsmanager:[^:]*:[^:]*:secret:[^:]+)", v)[0]
+      ]))
     }]
   })
 }

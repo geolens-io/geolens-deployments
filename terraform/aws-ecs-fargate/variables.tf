@@ -82,3 +82,48 @@ variable "s3_force_destroy" {
   type        = bool
   default     = false
 }
+
+variable "upload_max_size_mb" {
+  description = "Largest upload the api and the frontend edge accept, in MB. Rendered into both so they cannot drift apart."
+  type        = number
+  default     = 500
+}
+
+variable "db_instance_class" {
+  description = "RDS instance class."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "app_task" {
+  description = "Fargate CPU units and memory (MiB) for the app task: frontend, api and titiler together."
+  type        = object({ cpu = number, memory = number })
+  default     = { cpu = 1024, memory = 3072 }
+}
+
+variable "worker_task" {
+  description = "Fargate CPU units and memory (MiB) for the worker task. GDAL ingestion is memory hungry."
+  type        = object({ cpu = number, memory = number })
+  default     = { cpu = 1024, memory = 4096 }
+}
+
+variable "worker_concurrency" {
+  description = "Parallel job slots in the worker. Keep 1 per vCPU."
+  type        = number
+  default     = 1
+}
+
+# The two escape hatches that make every other GeoLens option reachable, the
+# same way the Helm chart's extraEnv and existingSecret do. The configuration
+# reference is https://docs.getgeolens.com/guides/quickstart/configuration/.
+variable "extra_env" {
+  description = "Extra plain environment for the api, worker and migrate containers, for example REGISTRATION_ENABLED, OPENAI_MODEL, SMTP_HOST or CORS_ALLOWED_ORIGINS. An entry here overrides a default of the same name."
+  type        = map(string)
+  default     = {}
+}
+
+variable "extra_secrets" {
+  description = "Extra secrets for the api, worker and migrate containers: env name to an ECS valueFrom, that is a Secrets Manager ARN with an optional :json-key:: suffix. Use it for OPENAI_API_KEY, ANTHROPIC_API_KEY, SMTP_PASSWORD, OAuth client secrets and TILE_SIGNING_SECRET. The execution role is granted read on each secret."
+  type        = map(string)
+  default     = {}
+}

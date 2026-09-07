@@ -86,10 +86,8 @@ spec:
             httpGet:
               path: /health
               port: http
-          # Liveness is process-only (#36, geolens#1804, app images >= 1.18.0).
-          # /health also probes the database, so on /health a DB outage made
-          # kubelet restart every api pod in a loop and hid the real cause.
-          # Readiness stays on /health so the pod leaves the Service instead.
+          # fix(#36): liveness is the process-only /health/live (app images
+          # >= 1.18.0); a dependency outage leaves the pod unready, never restarted.
           livenessProbe:
             httpGet:
               path: /health/live

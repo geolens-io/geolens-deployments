@@ -152,6 +152,9 @@ resource "aws_elasticache_replication_group" "this" {
 resource "aws_secretsmanager_secret" "app" {
   name_prefix = "${var.name}/app-"
   description = "GeoLens application credentials"
+  # Stated explicitly because the README promises it; the provider default
+  # is 30 days.
+  recovery_window_in_days = 7
 }
 
 resource "aws_secretsmanager_secret_version" "app" {

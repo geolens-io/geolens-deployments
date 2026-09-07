@@ -30,6 +30,8 @@ geolens_version = "1.18.1"
 # extra_secrets = {
 #   OPENAI_API_KEY = "arn:aws:secretsmanager:us-east-1:111122223333:secret:geolens/ai-AbCdEf:OPENAI_API_KEY::"
 # }
+# Bump after rotating anything in extra_secrets so the services roll.
+# extra_secrets_revision = "1"
 
 # Teardown behaviour. Both default to the safe setting.
 # skip_final_snapshot = true

@@ -127,3 +127,9 @@ variable "extra_secrets" {
   type        = map(string)
   default     = {}
 }
+
+variable "extra_secrets_revision" {
+  description = "Bump after rotating a secret named in extra_secrets. ECS reads secrets only at task start, and Terraform does not track their versions (the one data source that could would copy the values into state), so this value is rendered into the task definitions and changing it rolls the api, worker and migrate task onto the new values."
+  type        = string
+  default     = "1"
+}

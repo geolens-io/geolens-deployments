@@ -115,6 +115,13 @@ lists every setting. Do not put `S3_ACCESS_KEY_ID` or `S3_SECRET_ACCESS_KEY`
 in either map: a static key wins over the task role and defeats the keyless
 setup.
 
+Secrets are read when a task starts. After rotating a secret named in
+`extra_secrets`, bump `extra_secrets_revision` and apply: that changes every
+task definition and rolls the services onto the new value. The recipe's own
+secret needs no bump, its version is pinned into the task definitions. A
+secret under a customer-managed KMS key works too; the execution role is
+granted decrypt on that key.
+
 `upload_max_size_mb` is rendered into both the api and the frontend edge, so
 the two limits cannot drift apart.
 

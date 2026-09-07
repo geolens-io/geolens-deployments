@@ -19,22 +19,46 @@ resource "aws_iam_role_policy_attachment" "execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# An extra_secrets valueFrom may carry a :key:stage:id suffix; the bare secret
+# ARN in front of it is what IAM and the metadata lookup need.
+locals {
+  extra_secret_arns = distinct([
+    for v in values(var.extra_secrets) : regex("^(arn:[^:]+:secretsmanager:[^:]*:[^:]*:secret:[^:]+)", v)[0]
+  ])
+}
+
+# Metadata only, never the value: enough to learn whether the secret sits
+# under a customer-managed KMS key, which GetSecretValue then also needs
+# kms:Decrypt on (codex review on #40).
+data "aws_secretsmanager_secret" "extra" {
+  for_each = toset(local.extra_secret_arns)
+  arn      = each.value
+}
+
+data "aws_kms_key" "extra" {
+  for_each = toset(distinct([
+    for s in data.aws_secretsmanager_secret.extra : s.kms_key_id if s.kms_key_id != null && s.kms_key_id != ""
+  ]))
+  key_id = each.value
+}
+
 # The execution role, not the task role, is what reads the `secrets` entries in
-# a container definition. An extra_secrets valueFrom may carry a :key:stage:id
-# suffix, so the policy names the bare secret ARN in front of it.
+# a container definition.
 resource "aws_iam_role_policy" "execution_secrets" {
   name_prefix = "secrets-"
   role        = aws_iam_role.execution.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = ["secretsmanager:GetSecretValue"]
-      Resource = distinct(concat([aws_secretsmanager_secret.app.arn], [
-        for v in values(var.extra_secrets) : regex("^(arn:[^:]+:secretsmanager:[^:]*:[^:]*:secret:[^:]+)", v)[0]
-      ]))
-    }]
+    Statement = concat([{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = concat([aws_secretsmanager_secret.app.arn], local.extra_secret_arns)
+      }], length(data.aws_kms_key.extra) == 0 ? [] : [{
+      Effect   = "Allow"
+      Action   = ["kms:Decrypt"]
+      Resource = [for k in data.aws_kms_key.extra : k.arn]
+    }])
   })
 }
 

@@ -24,6 +24,9 @@ locals {
     # real credential, so it is a placeholder rather than a secret.
     POSTGRES_PASSWORD    = "unused-database-url-override-in-use"
     PROCRASTINATE_SCHEMA = "catalog"
+    # Not read by the app. Changing it changes every task definition, which is
+    # the redeploy that makes a rotated extra secret take effect.
+    EXTRA_SECRETS_REVISION = var.extra_secrets_revision
     }, var.cache_enabled ? {
     REDIS_URL = "redis://${aws_elasticache_replication_group.this[0].primary_endpoint_address}:6379/0"
   } : {})

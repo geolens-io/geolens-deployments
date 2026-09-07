@@ -203,9 +203,13 @@ resource "aws_ecs_task_definition" "worker" {
       entryPoint = ["/app/scripts/worker-entrypoint.sh"]
       command    = ["sh", "-c", "uv run --no-dev python -m app.worker"]
 
+      # No TITILER_BASE_URL here: only api-side code calls titiler (the tiles
+      # router and the STAC source resolver). The worker imports the
+      # storage-key helpers from that module and renders quicklooks
+      # in-process, as in the prod compose file, which also leaves the worker
+      # without it (codex review on #40).
       environment = concat(local.backend_env, local.cache_env, [
         { name = "GEOLENS_API_RUN_MIGRATIONS", value = "false" },
-        { name = "TITILER_BASE_URL", value = "http://127.0.0.1:8081" },
         { name = "WORKER_CONCURRENCY", value = "1" },
         { name = "WORKER_QUEUES", value = "priority,ingest,raster,ingest-auth-v2" },
         { name = "WORKER_SHUTDOWN_TIMEOUT", value = "30" },

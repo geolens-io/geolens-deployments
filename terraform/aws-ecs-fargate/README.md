@@ -174,7 +174,9 @@ recovery window rather than disappearing.
 
 ## Validated
 
-Deployed, smoke tested and destroyed against a real AWS account on 2026-09-07
-with GeoLens 1.18.1: dataset upload through the CLI, ingestion by the worker,
-objects written to S3, and features read back from the collection items
-endpoint.
+Deployed, smoke tested and destroyed against a real AWS account twice on
+2026-09-07 with GeoLens 1.18.1. The first run proved the data path: dataset
+upload through the CLI, ingestion by the worker, objects written to S3, and
+features read back from the collection items endpoint. The second run, on the
+final module, signed in through the browser and read the admin overview, which
+reported the external database, S3 storage and Redis cache all healthy.

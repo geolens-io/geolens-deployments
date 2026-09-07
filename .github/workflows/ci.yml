@@ -411,7 +411,7 @@ jobs:
             --set-json 'api.extraEnv=[{"name":"SECRET_ENCRYPTION_KEY","value":"from-extra-env"}]' \
             --show-only templates/migrate-job.yaml)
           n=$(printf '%s\n' "$overridden" | grep -c 'name: SECRET_ENCRYPTION_KEY$')
-          if [ "$n" -ne 1 ] || ! printf '%s\n' "$overridden" | grep -q 'value: "from-extra-env"'; then
+          if [ "$n" -ne 1 ] || ! printf '%s\n' "$overridden" | grep -Eq 'value: "?from-extra-env"?'; then
             echo "SECRET_ENCRYPTION_KEY rendered $n times in the migrate hook, or the extraEnv value did not win" >&2
             exit 1
           fi

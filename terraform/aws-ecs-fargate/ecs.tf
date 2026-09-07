@@ -162,6 +162,17 @@ resource "aws_ecs_task_definition" "app" {
 
       secrets = local.backend_secrets
 
+      # Process-only, like the chart's liveness probe: /health also probes the
+      # database and object store, and restarting the api for a dependency
+      # outage would hide the cause. The ALB's /api/health is the readiness view.
+      healthCheck = {
+        command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')\" || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 60
+      }
+
       logConfiguration = local.log.api
     },
     {

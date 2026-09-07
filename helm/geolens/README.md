@@ -28,6 +28,11 @@ blocking the unauthenticated `/api/metrics` endpoint, rate-limiting anonymous
 raster traffic, and redacting credentialed paths from its access log. Don't
 route around it.
 
+Probes: the api's readiness probe is the deep `/health` check, so a pod
+leaves the Service while the database or object store is unreachable. Its
+liveness probe is the process-only `/health/live` (app images 1.18.0 and
+later), so a dependency outage is not turned into a restart loop.
+
 Known limitation behind an ingress controller: the frontend nginx overwrites
 forwarded headers (deliberate anti-spoofing when it is the true edge), so the
 controller's IP becomes "the client" — the anonymous raster rate limit shares
@@ -87,6 +92,8 @@ Keys the chart reads from an `existingSecret`:
 | `POSTGRES_PASSWORD` | yes | required by backend settings even when `DATABASE_URL_OVERRIDE` carries the real credentials — any placeholder (e.g. `unused`) satisfies it; the chart-managed Secret sets one automatically |
 | `TILE_SIGNING_SECRET` | no | signed tile URLs |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | no | AI features |
+| `SECRET_ENCRYPTION_KEY` | no | dedicated key for the secrets GeoLens stores; empty derives it from `JWT_SECRET_KEY` (app images ≥ 1.18.2) |
+| `SECRET_ENCRYPTION_KEY_PREVIOUS` | no | the previous key during a rotation; never set it without `SECRET_ENCRYPTION_KEY`, the backend refuses to boot |
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | when `storage.backend=s3` and `storage.s3AmbientCredentials` is false | shared object-storage credentials; Titiler uses these only as the compatibility fallback described below. With `storage.s3AmbientCredentials=true` (app images ≥ 1.14.2) both are omitted and the SDKs resolve a role instead — see [Keyless object storage](#keyless-object-storage-irsa--pod-identity) |
 
 The chart sets `ENVIRONMENT=production` by default (API docs hidden, Secure
@@ -98,6 +105,15 @@ Upload sizes: `api.uploadMaxSizeMb` is rendered onto the frontend edge as
 ([geolens#580](https://github.com/geolens-io/geolens/issues/580), shipped in
 frontend 1.4.10). Frontend images older than 1.4.10 ignore that variable and
 stay at the baked 500m, rejecting larger uploads at the edge with 413.
+
+### Rotating the stored-secret encryption key
+
+Add the new key as `SECRET_ENCRYPTION_KEY` and move the old one to
+`SECRET_ENCRYPTION_KEY_PREVIOUS` (or the matching `secrets.*` values), upgrade,
+run `backend/scripts/rotate_secrets.py` inside an api pod with `kubectl exec`,
+then remove the previous key and upgrade again so the pods roll. The full
+procedure is section 11 of the GeoLens
+[RUNBOOK](https://github.com/geolens-io/geolens/blob/main/RUNBOOK.md).
 
 ## Storage and the shared staging volume
 

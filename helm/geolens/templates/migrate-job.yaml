@@ -92,6 +92,17 @@ spec:
             # carries the real credentials (see secret.yaml).
             - name: POSTGRES_PASSWORD
               value: "unused-database-url-override-in-use"
+            {{- /* Same rules as secret.yaml (#39): the migration constructs
+                 Settings, which rejects a previous key without a current one. */}}
+            {{- include "geolens.validateEncryptionKeys" . }}
+            {{- with .Values.secrets.secretEncryptionKey }}
+            - name: SECRET_ENCRYPTION_KEY
+              value: {{ . | toString | quote }}
+            {{- end }}
+            {{- with .Values.secrets.secretEncryptionKeyPrevious }}
+            - name: SECRET_ENCRYPTION_KEY_PREVIOUS
+              value: {{ . | toString | quote }}
+            {{- end }}
             {{- end }}
             {{- /* This Job renders api.extraEnv AND migrate.extraEnv, so a name
                  set in both would land twice in one container. The runtime

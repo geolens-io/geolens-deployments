@@ -63,7 +63,11 @@ static path still fails closed without them; rendering survives
 upgrade); `database.sslMode` reaches both the ConfigMap and the migrate hook;
 no `GDAL_HTTP_FOLLOWLOCATION` appears anywhere; an empty install fails;
 `GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE` holds a token GDAL accepts; and
-`extraEnv` overrides render exactly once per container and win.
+`extraEnv` overrides render exactly once per container and win; the api
+liveness probe is `/health/live` while readiness stays `/health`; and the
+stored-secret encryption keys reach both the Secret and the migrate hook while
+a previous key without a current one, or a key against an api tag older than
+1.18.2, fails to render.
 
 `install-test` needs that job, creates a kind cluster, applies
 `.github/ci/postgres.yaml`, runs `helm install --wait` at the chart's default

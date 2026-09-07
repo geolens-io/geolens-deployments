@@ -251,6 +251,19 @@ secrets:
   tileSigningSecret: ""
   openaiApiKey: ""
   anthropicApiKey: ""
+  # Dedicated key for the secrets GeoLens stores (connector credentials and
+  # the like), decoupled from JWT_SECRET_KEY (#39, geolens#1882, app images
+  # >= 1.18.2; the chart refuses to render it against an older api tag,
+  # where it would be silently ignored). Empty derives the key from
+  # JWT_SECRET_KEY as before. Generate with:
+  #   openssl rand -base64 32 | tr '+/' '-_'
+  secretEncryptionKey: ""
+  # The previous key, kept readable while rotating to a new one. Set it only
+  # alongside a new secretEncryptionKey, run backend/scripts/rotate_secrets.py
+  # in an api pod, then clear it and roll the pods. The backend refuses to
+  # boot with the previous key set and the current one empty, and so does
+  # this chart. Runbook: GeoLens RUNBOOK.md section 11, Secret rotation.
+  secretEncryptionKeyPrevious: ""
 
 redis:
   # Optional Redis-compatible tile/query cache (the compose stack ships

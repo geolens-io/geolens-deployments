@@ -86,9 +86,13 @@ spec:
             httpGet:
               path: /health
               port: http
+          # Liveness is process-only (#36, geolens#1804, app images >= 1.18.0).
+          # /health also probes the database, so on /health a DB outage made
+          # kubelet restart every api pod in a loop and hid the real cause.
+          # Readiness stays on /health so the pod leaves the Service instead.
           livenessProbe:
             httpGet:
-              path: /health
+              path: /health/live
               port: http
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}

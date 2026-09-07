@@ -44,7 +44,8 @@ runs `alembic upgrade heads`. It runs before the services start.
   ElastiCache, S3, IAM and Secrets Manager resources
 - A remote state backend for anything beyond a trial. The module declares
   none, so state is local until you add an S3 backend block; that state holds
-  the generated database password and JWT secret.
+  the database password, the JWT secret and the admin password, generated or
+  supplied.
 
 ## Quick start
 

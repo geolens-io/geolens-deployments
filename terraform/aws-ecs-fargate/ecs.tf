@@ -175,6 +175,16 @@ resource "aws_ecs_task_definition" "app" {
 
       environment = local.titiler_env
 
+      # The ALB probe covers the api's dependencies, not a hung tile renderer.
+      # Same /healthz the chart's liveness probe uses (codex review on #40).
+      healthCheck = {
+        command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8081/healthz')\" || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 30
+      }
+
       logConfiguration = local.log.titiler
     },
   ])
@@ -304,7 +314,20 @@ resource "terraform_data" "migrate" {
         --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
         --query 'tasks[0].taskArn' --output text)
       echo "migrate task $task"
-      aws ecs wait tasks-stopped --region "$REGION" --cluster "$CLUSTER" --tasks "$task"
+      # Not `aws ecs wait tasks-stopped`: that waiter gives up after ten
+      # minutes with exit 255, and a retry would start a second migration next
+      # to one still running (codex review on #40). Poll for up to an hour.
+      deadline=$(( $(date +%s) + 3600 ))
+      while :; do
+        status=$(aws ecs describe-tasks --region "$REGION" --cluster "$CLUSTER" --tasks "$task" \
+          --query 'tasks[0].lastStatus' --output text)
+        [ "$status" = "STOPPED" ] && break
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+          echo "migration still $status after 1h; inspect it before retrying: aws ecs describe-tasks --cluster $CLUSTER --tasks $task" >&2
+          exit 1
+        fi
+        sleep 10
+      done
       code=$(aws ecs describe-tasks --region "$REGION" --cluster "$CLUSTER" --tasks "$task" \
         --query 'tasks[0].containers[0].exitCode' --output text)
       if [ "$code" != "0" ]; then

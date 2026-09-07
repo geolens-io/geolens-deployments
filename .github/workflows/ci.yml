@@ -381,32 +381,39 @@ jobs:
         # does a key against an api image too old to read it.
         run: |
           base="--set secrets.databaseUrlOverride=postgresql+asyncpg://g:p@db/g --set secrets.jwtSecretKey=0123456789abcdef0123456789abcdef --set secrets.adminUsername=admin --set secrets.adminPassword=chart-ci-only-Passw0rd!"
-          rendered=$(helm template geolens helm/geolens $base \
-            --set api.image.tag=1.18.2 \
+          both="--set api.image.tag=1.18.2 --set worker.image.tag=1.18.2"
+          rendered=$(helm template geolens helm/geolens $base $both \
             --set secrets.secretEncryptionKey=new-key --set secrets.secretEncryptionKeyPrevious=old-key)
           secret=$(printf '%s\n' "$rendered" | awk '/^kind: Secret$/{f=1} f' | awk '/^---$/{exit} {print}')
           for k in SECRET_ENCRYPTION_KEY SECRET_ENCRYPTION_KEY_PREVIOUS; do
             printf '%s\n' "$secret" | grep -q "^  $k:" || { echo "$k missing from the Secret" >&2; exit 1; }
           done
-          migrate=$(helm template geolens helm/geolens $base --set api.image.tag=1.18.2 \
+          migrate=$(helm template geolens helm/geolens $base $both \
             --set secrets.secretEncryptionKey=new-key --set secrets.secretEncryptionKeyPrevious=old-key \
             --show-only templates/migrate-job.yaml)
           for k in SECRET_ENCRYPTION_KEY SECRET_ENCRYPTION_KEY_PREVIOUS; do
             printf '%s\n' "$migrate" | grep -q "name: $k$" || { echo "$k missing from the migrate hook" >&2; exit 1; }
           done
-          if helm template geolens helm/geolens $base --set api.image.tag=1.18.2 \
+          if helm template geolens helm/geolens $base $both \
                --set secrets.secretEncryptionKeyPrevious=old-key >/dev/null 2>&1; then
             echo "a previous key without a current key rendered; the backend would refuse to boot" >&2
             exit 1
           fi
-          if helm template geolens helm/geolens $base --set api.image.tag=1.18.1 \
+          if helm template geolens helm/geolens $base --set api.image.tag=1.18.1 --set worker.image.tag=1.18.1 \
                --set secrets.secretEncryptionKey=new-key >/dev/null 2>&1; then
             echo "secretEncryptionKey rendered against api 1.18.1, which silently ignores it" >&2
             exit 1
           fi
+          # The worker reads the same Secret: a new api with an old worker
+          # would encrypt with a key the worker does not know.
+          if helm template geolens helm/geolens $base --set api.image.tag=1.18.2 --set worker.image.tag=1.18.1 \
+               --set secrets.secretEncryptionKey=new-key >/dev/null 2>&1; then
+            echo "secretEncryptionKey rendered with worker 1.18.1 behind api 1.18.2" >&2
+            exit 1
+          fi
           # An install that already carried the key through extraEnv must not
           # get it twice in the migrate container when it adopts the value.
-          overridden=$(helm template geolens helm/geolens $base --set api.image.tag=1.18.2 \
+          overridden=$(helm template geolens helm/geolens $base $both \
             --set secrets.secretEncryptionKey=new-key \
             --set-json 'api.extraEnv=[{"name":"SECRET_ENCRYPTION_KEY","value":"from-extra-env"}]' \
             --show-only templates/migrate-job.yaml)

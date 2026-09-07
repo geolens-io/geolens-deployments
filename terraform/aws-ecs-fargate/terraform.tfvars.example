@@ -1,0 +1,41 @@
+# Copy to terraform.tfvars and edit.
+
+name   = "geolens"
+region = "us-east-1"
+
+# Pin the release you want. Bumping this re-runs migrations, then rolls the
+# services.
+geolens_version = "1.18.1"
+
+# Leave empty to use the load balancer's DNS name over plain HTTP.
+# Set both of these to serve a domain over HTTPS.
+# public_app_url      = "https://geolens.example.com"
+# acm_certificate_arn = "arn:aws:acm:us-east-1:111122223333:certificate/..."
+
+# admin_username = "admin"
+# admin_password = ""   # empty generates one into Secrets Manager
+
+# app_desired_count  = 1
+# cache_enabled      = true
+# upload_max_size_mb = 500
+# worker_concurrency = 1
+# db_instance_class  = "db.t4g.micro"
+# app_task           = { cpu = 1024, memory = 3072 }
+# worker_task        = { cpu = 1024, memory = 4096 }
+# worker_ephemeral_storage_gb = 20
+
+# Any other GeoLens setting. Plain values here, secrets by Secrets Manager ARN.
+# extra_env = {
+#   REGISTRATION_ENABLED = "true"
+# }
+# extra_secrets = {
+#   OPENAI_API_KEY = "arn:aws:secretsmanager:us-east-1:111122223333:secret:geolens/ai-AbCdEf:OPENAI_API_KEY::"
+# }
+# Bump after rotating anything in extra_secrets so the services roll.
+# extra_secrets_revision = "1"
+
+# Teardown behaviour. Both default to false, the safe setting. Uncommenting
+# either is a destructive opt-in: no final RDS snapshot, and a bucket deleted
+# together with every object in it.
+# skip_final_snapshot = true
+# s3_force_destroy    = true

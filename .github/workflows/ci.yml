@@ -359,6 +359,71 @@ jobs:
   # classes static rendering provably cannot catch (hook ordering, Job
   # immutability on upgrade, probe budgets, FQDN proxy resolution through the
   # frontend edge). Uses the published GHCR images at the chart's default tags.
+      - name: Guard - api liveness is process-only, readiness is deep
+        # #36 / geolens#1804: on /health a database outage made kubelet
+        # restart every api pod in a loop. Liveness must be /health/live and
+        # readiness must stay /health.
+        run: |
+          api=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --show-only templates/api-deployment.yaml)
+          live=$(printf '%s\n' "$api" | awk '/livenessProbe:/{f=1} f && /path:/{print $2; exit}')
+          ready=$(printf '%s\n' "$api" | awk '/readinessProbe:/{f=1} f && /path:/{print $2; exit}')
+          if [ "$live" != "/health/live" ] || [ "$ready" != "/health" ]; then
+            echo "api probes drifted: liveness=$live readiness=$ready (want /health/live and /health)" >&2
+            exit 1
+          fi
+          echo "api liveness=/health/live readiness=/health"
+
+      - name: Guard - stored-secret encryption keys are threaded and validated
+        # #39 / geolens#1882: both keys reach the Secret AND the migrate hook,
+        # a previous key without a current one fails at template time, and so
+        # does a key against an api image too old to read it.
+        run: |
+          base="--set secrets.databaseUrlOverride=postgresql+asyncpg://g:p@db/g --set secrets.jwtSecretKey=0123456789abcdef0123456789abcdef --set secrets.adminUsername=admin --set secrets.adminPassword=chart-ci-only-Passw0rd!"
+          both="--set api.image.tag=1.18.2 --set worker.image.tag=1.18.2"
+          rendered=$(helm template geolens helm/geolens $base $both \
+            --set secrets.secretEncryptionKey=new-key --set secrets.secretEncryptionKeyPrevious=old-key)
+          secret=$(printf '%s\n' "$rendered" | awk '/^kind: Secret$/{f=1} f' | awk '/^---$/{exit} {print}')
+          for k in SECRET_ENCRYPTION_KEY SECRET_ENCRYPTION_KEY_PREVIOUS; do
+            printf '%s\n' "$secret" | grep -q "^  $k:" || { echo "$k missing from the Secret" >&2; exit 1; }
+          done
+          migrate=$(helm template geolens helm/geolens $base $both \
+            --set secrets.secretEncryptionKey=new-key --set secrets.secretEncryptionKeyPrevious=old-key \
+            --show-only templates/migrate-job.yaml)
+          for k in SECRET_ENCRYPTION_KEY SECRET_ENCRYPTION_KEY_PREVIOUS; do
+            printf '%s\n' "$migrate" | grep -q "name: $k$" || { echo "$k missing from the migrate hook" >&2; exit 1; }
+          done
+          if helm template geolens helm/geolens $base $both \
+               --set secrets.secretEncryptionKeyPrevious=old-key >/dev/null 2>&1; then
+            echo "a previous key without a current key rendered; the backend would refuse to boot" >&2
+            exit 1
+          fi
+          if helm template geolens helm/geolens $base --set api.image.tag=1.18.1 --set worker.image.tag=1.18.1 \
+               --set secrets.secretEncryptionKey=new-key >/dev/null 2>&1; then
+            echo "secretEncryptionKey rendered against api 1.18.1, which silently ignores it" >&2
+            exit 1
+          fi
+          # The worker reads the same Secret: a new api with an old worker
+          # would encrypt with a key the worker does not know.
+          if helm template geolens helm/geolens $base --set api.image.tag=1.18.2 --set worker.image.tag=1.18.1 \
+               --set secrets.secretEncryptionKey=new-key >/dev/null 2>&1; then
+            echo "secretEncryptionKey rendered with worker 1.18.1 behind api 1.18.2" >&2
+            exit 1
+          fi
+          # An install that already carried the key through extraEnv must not
+          # get it twice in the migrate container when it adopts the value.
+          overridden=$(helm template geolens helm/geolens $base $both \
+            --set secrets.secretEncryptionKey=new-key \
+            --set-json 'api.extraEnv=[{"name":"SECRET_ENCRYPTION_KEY","value":"from-extra-env"}]' \
+            --show-only templates/migrate-job.yaml)
+          n=$(printf '%s\n' "$overridden" | grep -c 'name: SECRET_ENCRYPTION_KEY$')
+          if [ "$n" -ne 1 ] || ! printf '%s\n' "$overridden" | grep -Eq 'value: "?from-extra-env"?'; then
+            echo "SECRET_ENCRYPTION_KEY rendered $n times in the migrate hook, or the extraEnv value did not win" >&2
+            exit 1
+          fi
+          echo "encryption keys threaded, invalid combinations rejected, extraEnv override wins once"
+
   install-test:
     name: kind install test
     runs-on: ubuntu-latest
@@ -408,3 +473,20 @@ jobs:
             kubectl logs "$c" --all-containers --tail=100 || true
           done
           kubectl logs -l app=geolens-ci-db --tail=50 || true
+
+  terraform-validate:
+    name: terraform validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive terraform/aws-ecs-fargate
+
+      - name: terraform validate
+        working-directory: terraform/aws-ecs-fargate
+        run: |
+          terraform init -backend=false
+          terraform validate

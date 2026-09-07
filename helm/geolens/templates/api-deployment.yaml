@@ -86,9 +86,11 @@ spec:
             httpGet:
               path: /health
               port: http
+          # fix(#36): liveness is the process-only /health/live (app images
+          # >= 1.18.0); a dependency outage leaves the pod unready, never restarted.
           livenessProbe:
             httpGet:
-              path: /health
+              path: /health/live
               port: http
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}

@@ -10,6 +10,16 @@ Bump the three ghcr.io/geolens-io/* image tags to >= 1.4.9 as soon as that
 release is published (the weekly version-drift CI in this repo flags it).
 {{- end }}
 {{- end }}
+{{- $apiTag := .Values.api.image.tag | toString }}
+{{- if regexMatch "^v?\\d+\\.\\d+\\.\\d+$" $apiTag }}
+{{- if semverCompare "<1.18.0-0" $apiTag }}
+
+WARNING: api image {{ $apiTag }} predates the /health/live endpoint (GeoLens
+1.18.0), which this chart's api livenessProbe now uses (#36). Older images
+answer 404 there, so kubelet WILL restart the api pods in a loop. Bump the
+three ghcr.io/geolens-io/* image tags to >= 1.18.0.
+{{- end }}
+{{- end }}
 
 {{- if .Values.ingress.enabled }}
 

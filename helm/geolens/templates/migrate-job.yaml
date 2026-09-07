@@ -92,6 +92,21 @@ spec:
             # carries the real credentials (see secret.yaml).
             - name: POSTGRES_PASSWORD
               value: "unused-database-url-override-in-use"
+            {{- /* fix(#39): same checks as secret.yaml, and each entry is
+                 skipped when extraEnv already carries the name. */}}
+            {{- include "geolens.validateEncryptionKeys" . }}
+            {{- if not (has "SECRET_ENCRYPTION_KEY" $overrideNames) }}
+            {{- with .Values.secrets.secretEncryptionKey }}
+            - name: SECRET_ENCRYPTION_KEY
+              value: {{ . | toString | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if not (has "SECRET_ENCRYPTION_KEY_PREVIOUS" $overrideNames) }}
+            {{- with .Values.secrets.secretEncryptionKeyPrevious }}
+            - name: SECRET_ENCRYPTION_KEY_PREVIOUS
+              value: {{ . | toString | quote }}
+            {{- end }}
+            {{- end }}
             {{- end }}
             {{- /* This Job renders api.extraEnv AND migrate.extraEnv, so a name
                  set in both would land twice in one container. The runtime

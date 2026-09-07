@@ -77,3 +77,19 @@ it each pod gets its own emptyDir and cross-pod handoff cannot work.
   emptyDir: {}
 {{- end }}
 {{- end -}}
+
+{{/* fix(#39): one set of encryption-key checks, shared by the Secret and
+     the migrate hook so the two can never disagree. */}}
+{{- define "geolens.validateEncryptionKeys" -}}
+{{- $cur := .Values.secrets.secretEncryptionKey | default "" | toString -}}
+{{- $prev := .Values.secrets.secretEncryptionKeyPrevious | default "" | toString -}}
+{{- if and $prev (not $cur) -}}
+{{- fail "secrets.secretEncryptionKeyPrevious is set but secrets.secretEncryptionKey is empty; the backend refuses that at boot. Set the new key alongside the previous one." -}}
+{{- end -}}
+{{- /* Both backend images read the key from the Secret, so both must be new enough. */ -}}
+{{- range $name, $tag := dict "api" (.Values.api.image.tag | toString) "worker" (.Values.worker.image.tag | toString) -}}
+{{- if and $cur (regexMatch "^v?\\d+\\.\\d+\\.\\d+$" $tag) (semverCompare "<1.18.2-0" $tag) -}}
+{{- fail (printf "secrets.secretEncryptionKey needs app images >= 1.18.2 (geolens#1882); %s tag %s would silently ignore it" $name $tag) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

@@ -1,0 +1,23 @@
+# Copy to terraform.tfvars and edit.
+
+name   = "geolens"
+region = "us-east-1"
+
+# Pin the release you want. Bumping this re-runs migrations, then rolls the
+# services.
+geolens_version = "1.18.1"
+
+# Leave empty to use the load balancer's DNS name over plain HTTP.
+# Set both of these to serve a domain over HTTPS.
+# public_app_url      = "https://geolens.example.com"
+# acm_certificate_arn = "arn:aws:acm:us-east-1:111122223333:certificate/..."
+
+# admin_username = "admin"
+# admin_password = ""   # empty generates one into Secrets Manager
+
+# app_desired_count = 1
+# cache_enabled     = true
+
+# Teardown behaviour. Both default to the safe setting.
+# skip_final_snapshot = true
+# s3_force_destroy    = true

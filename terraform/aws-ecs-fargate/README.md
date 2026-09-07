@@ -1,0 +1,137 @@
+# GeoLens on AWS ECS Fargate
+
+Terraform for running [GeoLens](https://github.com/geolens-io/geolens) on AWS
+with managed services only. There is no cluster to operate and no server to
+patch, and it pulls the published images straight from ghcr.io.
+
+This is a community recipe, maintained on a best-effort basis like the Helm
+chart. Docker Compose is still the primary documented install path.
+
+## What it deploys
+
+```
+                    internet
+                       |
+              Application Load Balancer  :80 (:443 with a certificate)
+                       |
+   +-------------------+------------------- ECS Fargate ------------+
+   |  app service (1 task, 1 vCPU / 3 GB)                           |
+   |    frontend  nginx :8080   <- the load balancer target         |
+   |    api       uvicorn :8000 <- reached over 127.0.0.1           |
+   |    titiler   uvicorn :8081 <- reached over 127.0.0.1           |
+   |                                                                |
+   |  worker service (1 task, 1 vCPU / 4 GB)                        |
+   +----------------------------------------------------------------+
+                       |
+     RDS PostgreSQL 17     ElastiCache Valkey      S3 bucket
+     (private subnets)     (private subnets)       (datasets, rasters)
+```
+
+The frontend container is the application edge. It serves the single-page app,
+proxies `/api` and `/raster-tiles` to the api, blocks `/api/metrics`, and rate
+limits anonymous raster traffic. The load balancer sends everything to it and
+never reaches the api directly.
+
+A one-shot migrate task creates the extensions, schemas and reader role, then
+runs `alembic upgrade heads`. It runs before the services start.
+
+## Prerequisites
+
+- Terraform 1.9 or newer
+- AWS CLI v2, on the machine running Terraform. The migrate step shells out to
+  it, using the same credentials Terraform has.
+- An AWS account and credentials with permission to create VPC, ECS, RDS,
+  ElastiCache, S3, IAM and Secrets Manager resources
+
+## Quick start
+
+```sh
+cp terraform.tfvars.example terraform.tfvars
+terraform init
+terraform apply
+```
+
+The first apply takes eight to ten minutes, most of it waiting for RDS.
+
+Then read the generated admin password and open the app:
+
+```sh
+eval "$(terraform output -raw admin_password_command)"
+terraform output app_url
+```
+
+Log in as the user in `admin_username`, default `admin`.
+
+## Custom domain and TLS
+
+Request an ACM certificate in the same region, then set both of these:
+
+```hcl
+acm_certificate_arn = "arn:aws:acm:us-east-1:111122223333:certificate/..."
+public_app_url      = "https://geolens.example.com"
+```
+
+Apply, then point a DNS alias record at the load balancer's `app_url` hostname.
+Port 80 becomes a redirect to 443. Set `public_app_url` in the same apply:
+it drives the S3 CORS origin and the URLs the api hands out, and a mismatch
+breaks browser uploads.
+
+## Upgrading GeoLens
+
+Bump `geolens_version` and apply. The migrate task definition changes, so the
+migration runs again against the new image, and only then do the services roll.
+The circuit breaker rolls a failed deployment back to the previous task
+definition.
+
+## Scaling
+
+- `app_desired_count` adds app tasks behind the load balancer. The api is
+  stateless, so this scales reads.
+- The worker is fixed at one task. Raise `WORKER_CONCURRENCY` in `ecs.tf`, or
+  the worker service `desired_count`, for more ingestion throughput.
+- Task sizes are `cpu` and `memory` on the two task definitions in `ecs.tf`.
+- The database is `db.t4g.micro` and the cache is `cache.t4g.micro`, both in
+  `data.tf`.
+
+## What is deliberately simplified
+
+Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
+
+- The frontend, api and titiler run in one task. They share a network
+  namespace and talk over loopback, so there is no service discovery to run,
+  but they cannot scale independently. Split them into separate services with
+  ECS Service Connect when that matters.
+- There is no NAT gateway. Tasks run in public subnets with a public IP so they
+  can pull images from ghcr.io, and their security group only accepts port 8080
+  from the load balancer. A NAT gateway costs about $32 a month and buys you
+  private task IPs.
+- The RDS master user is the application user, so migrations can create
+  schemas and extensions without a second role.
+- One task role is shared by every container, which lets titiler write to the
+  bucket even though it only reads.
+- The database is single-AZ, the cache is one node, and the bucket has
+  versioning off.
+
+## Cost
+
+Roughly $100 a month at the defaults: about $12 for RDS, $12 for ElastiCache,
+$60 for 2 vCPU and 7 GB of Fargate, $16 and up for the load balancer, and a few
+dollars for S3 and logs. Omitting the NAT gateway saves about $32.
+
+## Teardown
+
+```sh
+terraform destroy
+```
+
+Two defaults will stop it, on purpose. Set `skip_final_snapshot = true` to let
+RDS go without a snapshot, and `s3_force_destroy = true` to delete the bucket
+while it still holds data. The Secrets Manager secret enters a seven-day
+recovery window rather than disappearing.
+
+## Validated
+
+Deployed, smoke tested and destroyed against a real AWS account on 2026-09-07
+with GeoLens 1.18.1: dataset upload through the CLI, ingestion by the worker,
+objects written to S3, and features read back from the collection items
+endpoint.

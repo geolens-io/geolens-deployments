@@ -408,3 +408,20 @@ jobs:
             kubectl logs "$c" --all-containers --tail=100 || true
           done
           kubectl logs -l app=geolens-ci-db --tail=50 || true
+
+  terraform-validate:
+    name: terraform validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive terraform/aws-ecs-fargate
+
+      - name: terraform validate
+        working-directory: terraform/aws-ecs-fargate
+        run: |
+          terraform init -backend=false
+          terraform validate

@@ -92,10 +92,8 @@ spec:
             # carries the real credentials (see secret.yaml).
             - name: POSTGRES_PASSWORD
               value: "unused-database-url-override-in-use"
-            {{- /* Same rules as secret.yaml (#39): the migration constructs
-                 Settings, which rejects a previous key without a current one.
-                 Skipped when the operator already sets the name in extraEnv,
-                 like every other generated entry here. */}}
+            {{- /* fix(#39): same checks as secret.yaml, and each entry is
+                 skipped when extraEnv already carries the name. */}}
             {{- include "geolens.validateEncryptionKeys" . }}
             {{- if not (has "SECRET_ENCRYPTION_KEY" $overrideNames) }}
             {{- with .Values.secrets.secretEncryptionKey }}

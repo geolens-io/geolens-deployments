@@ -66,8 +66,8 @@ no `GDAL_HTTP_FOLLOWLOCATION` appears anywhere; an empty install fails;
 `extraEnv` overrides render exactly once per container and win; the api
 liveness probe is `/health/live` while readiness stays `/health`; and the
 stored-secret encryption keys reach both the Secret and the migrate hook while
-a previous key without a current one, or a key against an api tag older than
-1.18.2, fails to render.
+a previous key without a current one, or a key against an api or worker tag
+older than 1.18.2, fails to render.
 
 `install-test` needs that job, creates a kind cluster, applies
 `.github/ci/postgres.yaml`, runs `helm install --wait` at the chart's default

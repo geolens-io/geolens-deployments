@@ -88,8 +88,11 @@ here so the Secret and the migrate hook apply the same rules.
 {{- if and $prev (not $cur) -}}
 {{- fail "secrets.secretEncryptionKeyPrevious is set but secrets.secretEncryptionKey is empty; the backend refuses that at boot. Set the new key alongside the previous one." -}}
 {{- end -}}
-{{- $tag := .Values.api.image.tag | toString -}}
+{{- /* The api and the worker both read the key from the Secret, so both
+     backend images must understand it, or the two disagree on the key. */ -}}
+{{- range $name, $tag := dict "api" (.Values.api.image.tag | toString) "worker" (.Values.worker.image.tag | toString) -}}
 {{- if and $cur (regexMatch "^v?\\d+\\.\\d+\\.\\d+$" $tag) (semverCompare "<1.18.2-0" $tag) -}}
-{{- fail (printf "secrets.secretEncryptionKey needs app images >= 1.18.2 (geolens#1882); api tag %s would silently ignore it" $tag) -}}
+{{- fail (printf "secrets.secretEncryptionKey needs app images >= 1.18.2 (geolens#1882); %s tag %s would silently ignore it" $name $tag) -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}

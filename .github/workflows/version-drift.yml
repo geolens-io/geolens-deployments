@@ -39,4 +39,11 @@ jobs:
             echo "::error file=helm/geolens/values.yaml::image tags behind $latest: $mismatch"
             fail=1
           fi
+          # The Terraform recipe pins the same release as its default.
+          tf="$(awk '/^variable "geolens_version"/ {f=1} f && /default/ {gsub(/"/, "", $3); print $3; exit}' terraform/aws-ecs-fargate/variables.tf)"
+          echo "terraform geolens_version default: $tf"
+          if [ "$tf" != "$latest" ]; then
+            echo "::error file=terraform/aws-ecs-fargate/variables.tf::geolens_version default $tf != latest GeoLens release $latest"
+            fail=1
+          fi
           exit "$fail"

@@ -42,6 +42,9 @@ runs `alembic upgrade heads`. It runs before the services start.
   it, using the same credentials Terraform has.
 - An AWS account and credentials with permission to create VPC, ECS, RDS,
   ElastiCache, S3, IAM and Secrets Manager resources
+- A remote state backend for anything beyond a trial. The module declares
+  none, so state is local until you add an S3 backend block; that state holds
+  the generated database password and JWT secret.
 
 ## Quick start
 
@@ -61,6 +64,11 @@ terraform output app_url
 ```
 
 Log in as the user in `admin_username`, default `admin`.
+
+Without a certificate the load balancer serves plain HTTP, so that password
+crosses the internet in clear text, and OAuth sign-in will not work because
+the production cookie flag requires HTTPS. Treat an HTTP deployment as a trial
+and add a certificate before real use.
 
 ## Custom domain and TLS
 
@@ -134,7 +142,13 @@ the two limits cannot drift apart.
 - `app_task` and `worker_task` set Fargate CPU units and memory. The worker
   default is 4 GB because GDAL ingestion of large rasters needs it.
 - `db_instance_class` sizes the database. The cache is `cache.t4g.micro` in
-  `data.tf`.
+  `data.tf`. A `db.t4g.micro` allows roughly 100 connections and each api
+  task is tuned for a budget of about 70, so raising `app_desired_count` past
+  two, or the uvicorn worker count, needs a larger class or an external
+  pooler.
+- `worker_ephemeral_storage_gb` is the worker's scratch disk. With S3 storage
+  the api never keeps an upload, but the worker pulls a raster down to convert
+  it, so a large GeoTIFF plus its COG must fit; Fargate allows up to 200 GiB.
 
 ## What is deliberately simplified
 
@@ -161,6 +175,14 @@ Roughly $100 a month at the defaults: about $12 for RDS, $12 for ElastiCache,
 $60 for 2 vCPU and 7 GB of Fargate, $16 and up for the load balancer, and a few
 dollars for S3 and logs. Omitting the NAT gateway saves about $32.
 
+## Backups and restore
+
+RDS keeps seven days of automated backups and the bucket has no versioning.
+Restoring means a point-in-time restore of the RDS instance and, if objects
+were deleted, whatever you have kept outside this module. The procedure for a
+managed PostgreSQL is section 3 of the GeoLens
+[RUNBOOK](https://github.com/geolens-io/geolens/blob/main/RUNBOOK.md).
+
 ## Teardown
 
 ```sh
@@ -177,9 +199,11 @@ it off.
 
 ## Validated
 
-Deployed, smoke tested and destroyed against a real AWS account twice on
-2026-09-07 with GeoLens 1.18.1. The first run proved the data path: dataset
+Deployed, smoke tested and destroyed against a real AWS account three times
+on 2026-09-07 with GeoLens 1.18.1. The first run proved the data path: dataset
 upload through the CLI, ingestion by the worker, objects written to S3, and
-features read back from the collection items endpoint. The second run, on the
-final module, signed in through the browser and read the admin overview, which
-reported the external database, S3 storage and Redis cache all healthy.
+features read back from the collection items endpoint. The last run, on the
+final module, saw the api, titiler and worker containers pass their health
+checks, both deployments complete without a rollback, and a browser sign-in
+whose admin overview reported the external database, S3 storage and Redis
+cache all healthy.

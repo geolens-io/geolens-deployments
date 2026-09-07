@@ -4,6 +4,9 @@ resource "aws_lb" "this" {
   internal           = false
   subnets            = aws_subnet.public[*].id
   security_groups    = [aws_security_group.alb.id]
+
+  # A large export or a slow multipart handshake outlives the 60 s default.
+  idle_timeout = 300
 }
 
 # Everything goes through the frontend container. It is the application edge:

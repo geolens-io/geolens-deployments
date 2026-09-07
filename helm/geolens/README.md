@@ -108,11 +108,24 @@ stay at the baked 500m, rejecting larger uploads at the edge with 413.
 
 ### Rotating the stored-secret encryption key
 
-Add the new key as `SECRET_ENCRYPTION_KEY` and move the old one to
-`SECRET_ENCRYPTION_KEY_PREVIOUS` (or the matching `secrets.*` values), upgrade,
-run `backend/scripts/rotate_secrets.py` inside an api pod with `kubectl exec`,
-then remove the previous key and upgrade again so the pods roll. The full
-procedure is section 11 of the GeoLens
+Pods read the Secret only when they start, and with `secrets.existingSecret`
+nothing restarts them for you: the `checksum/secret` annotation that rolls the
+api and worker exists only for the chart-managed Secret. So each step below
+ends with a restart.
+
+1. Add the new key as `SECRET_ENCRYPTION_KEY` and move the old one to
+   `SECRET_ENCRYPTION_KEY_PREVIOUS` in your Secret (or set the matching
+   `secrets.*` values and `helm upgrade`).
+2. Restart both consumers so every pod holds both keys:
+   `kubectl rollout restart deploy/<release>-api deploy/<release>-worker`,
+   and wait for the rollout to finish.
+3. Run `backend/scripts/rotate_secrets.py` inside one api pod with
+   `kubectl exec`.
+4. Remove `SECRET_ENCRYPTION_KEY_PREVIOUS` and restart both again. A pod that
+   starts after this step with the old configuration cannot decrypt anything
+   the script re-encrypted, which is why step 2 must have completed first.
+
+The full procedure is section 11 of the GeoLens
 [RUNBOOK](https://github.com/geolens-io/geolens/blob/main/RUNBOOK.md).
 
 ## Storage and the shared staging volume

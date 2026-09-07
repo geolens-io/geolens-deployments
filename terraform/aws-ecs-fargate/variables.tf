@@ -107,6 +107,12 @@ variable "worker_task" {
   default     = { cpu = 1024, memory = 4096 }
 }
 
+variable "worker_ephemeral_storage_gb" {
+  description = "Ephemeral disk for the worker task, 20 to 200 GiB. The worker pulls a raster down to /app/staging to convert it, so a large GeoTIFF plus its COG must fit here."
+  type        = number
+  default     = 20
+}
+
 variable "worker_concurrency" {
   description = "Parallel job slots in the worker. Keep 1 per vCPU."
   type        = number

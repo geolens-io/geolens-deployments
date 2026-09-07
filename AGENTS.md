@@ -85,7 +85,7 @@ dispatch.
 ## Versioning
 
 - Bump `Chart.yaml` `version` for every chart change that should be released. Landing that bump on `main` is what cuts the release: `release-charts` packages the chart with chart-releaser, attaches it to a GitHub Release, updates `gh-pages`, and pushes the same package to `ghcr.io/geolens-io/charts/geolens`. Both legs probe first, so a rerun or a non-bump edit under `helm/` republishes nothing.
-- `appVersion` and the three `ghcr.io/geolens-io/*` tags in `values.yaml` track GeoLens releases and move together. `version-drift` fails when `appVersion` or any of those tags is behind the latest GeoLens release.
+- `appVersion`, the three `ghcr.io/geolens-io/*` tags in `values.yaml`, and the `geolens_version` default in `terraform/aws-ecs-fargate/variables.tf` track GeoLens releases and move together. `version-drift` fails when any of them is behind the latest GeoLens release.
 - The `ghcr.io/developmentseed/titiler` tag is bumped deliberately, not on a schedule. Upstream ships security fixes as ordinary bugfix releases with no advisory (geolens#1190).
 
 ## Conventions

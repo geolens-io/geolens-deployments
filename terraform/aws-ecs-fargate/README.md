@@ -71,10 +71,10 @@ acm_certificate_arn = "arn:aws:acm:us-east-1:111122223333:certificate/..."
 public_app_url      = "https://geolens.example.com"
 ```
 
-Apply, then point a DNS alias record at the load balancer's `app_url` hostname.
-Port 80 becomes a redirect to 443. Set `public_app_url` in the same apply:
-it drives the S3 CORS origin and the URLs the api hands out, and a mismatch
-breaks browser uploads.
+Apply, then point an alias record for your domain at the
+`load_balancer_dns_name` output. Port 80 becomes a redirect to 443. Set
+`public_app_url` in the same apply: it drives the S3 CORS origin and the URLs
+the api hands out, and a mismatch breaks browser uploads.
 
 ## Upgrading GeoLens
 
@@ -167,10 +167,13 @@ dollars for S3 and logs. Omitting the NAT gateway saves about $32.
 terraform destroy
 ```
 
-Two defaults will stop it, on purpose. Set `skip_final_snapshot = true` to let
-RDS go without a snapshot, and `s3_force_destroy = true` to delete the bucket
-while it still holds data. The Secrets Manager secret enters a seven-day
-recovery window rather than disappearing.
+What the defaults do on destroy: RDS takes a final snapshot and is then
+deleted (`skip_final_snapshot = true` skips the snapshot), the bucket is
+deleted only if it is empty (`s3_force_destroy = true` deletes it with its
+objects), and the Secrets Manager secret enters a seven-day recovery window.
+Nothing stops the database from going. On an install you care about, set
+`deletion_protection = true` so destroy refuses the database until you turn
+it off.
 
 ## Validated
 

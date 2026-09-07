@@ -48,34 +48,33 @@ frontend images have no trusted-proxy support at all; the change landed as
 ## Required values
 
 The backend refuses to boot without admin credentials, a JWT secret, and a
-database URL. Provide them either inline:
+database URL. Keep them off the Helm command line: arguments show up in shell
+history, process listings and CI logs. Write them to a file only you can read,
+create a Secret from it, and point the chart at that Secret:
 
 ```bash
+cat > /secure/path/geolens.env <<EOF
+DATABASE_URL_OVERRIDE=postgresql+asyncpg://geolens:change-me@postgres.internal:5432/geolens
+JWT_SECRET_KEY=$(openssl rand -hex 32)
+GEOLENS_ADMIN_USERNAME=admin
+GEOLENS_ADMIN_PASSWORD=a-strong-unique-password
+POSTGRES_PASSWORD=unused
+EOF
+kubectl create secret generic geolens-secrets --from-env-file=/secure/path/geolens.env
+
 helm upgrade --install geolens helm/geolens \
-  --set secrets.databaseUrlOverride='postgresql+asyncpg://geolens:change-me@postgres.internal:5432/geolens' \
-  --set secrets.jwtSecretKey="$(openssl rand -hex 32)" \
-  --set secrets.adminUsername='admin' \
-  --set secrets.adminPassword='a-strong-unique-password' \
+  --set secrets.existingSecret=geolens-secrets \
   --set api.publicAppUrl=https://maps.example.com \
   --set api.publicApiUrl=https://maps.example.com/api \
   --set ingress.enabled=true --set ingress.host=maps.example.com
 ```
 
-or via a pre-created Secret:
-
-```bash
-kubectl create secret generic geolens-secrets \
-  --from-literal=DATABASE_URL_OVERRIDE='postgresql+asyncpg://geolens:change-me@postgres.internal:5432/geolens' \
-  --from-literal=JWT_SECRET_KEY="$(openssl rand -hex 32)" \
-  --from-literal=GEOLENS_ADMIN_USERNAME='admin' \
-  --from-literal=GEOLENS_ADMIN_PASSWORD='a-strong-unique-password' \
-  --from-literal=POSTGRES_PASSWORD='unused'
-
-helm upgrade --install geolens helm/geolens \
-  --set secrets.existingSecret=geolens-secrets \
-  --set api.publicAppUrl=https://maps.example.com \
-  --set api.publicApiUrl=https://maps.example.com/api
-```
+An External Secrets, SOPS or sealed-secrets controller that produces the same
+Secret works the same way. The chart also accepts the credentials directly as
+`secrets.databaseUrlOverride`, `secrets.jwtSecretKey`, `secrets.adminUsername`
+and `secrets.adminPassword`, which it writes into a chart-managed Secret. That
+is for a values file you never commit, or a throwaway cluster; do not pass
+them as `--set` arguments.
 
 Keys the chart reads from an `existingSecret`:
 
@@ -339,6 +338,8 @@ To upgrade GeoLens: bump the three `ghcr.io/geolens-io/*` image tags (they
 track GeoLens releases; a weekly CI check flags drift) and `helm upgrade`.
 
 ## Render locally
+
+The values below are placeholders for a template render, not credentials.
 
 ```bash
 helm template geolens helm/geolens \

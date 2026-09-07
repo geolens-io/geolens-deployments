@@ -3,6 +3,11 @@ output "app_url" {
   value       = local.public_app_url
 }
 
+output "load_balancer_dns_name" {
+  description = "Hostname of the load balancer. Point your domain's alias record here when public_app_url is set."
+  value       = aws_lb.this.dns_name
+}
+
 output "admin_username" {
   description = "Bootstrap admin username."
   value       = var.admin_username

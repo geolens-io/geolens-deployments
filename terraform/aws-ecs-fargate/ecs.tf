@@ -216,6 +216,19 @@ resource "aws_ecs_task_definition" "worker" {
 
       secrets = local.backend_secrets
 
+      # Nothing else watches the worker: no load balancer target, and a hung
+      # job runner keeps the process alive. Same probe the image HEALTHCHECK
+      # and the chart's liveness probe use; failing it stops the task and the
+      # service replaces it (codex review on #40). The health server only
+      # starts after schema sync and storage bootstrap, hence the start period.
+      healthCheck = {
+        command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live')\" || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 120
+      }
+
       logConfiguration = local.log.worker
     },
   ])

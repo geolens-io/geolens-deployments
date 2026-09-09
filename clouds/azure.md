@@ -95,6 +95,11 @@ namespace, so the loopback layout from the AWS recipe carries over: the
 frontend, the api and titiler in one app, the worker as a second app with no
 ingress.
 
+Give the worker app a minimum of one replica. Container Apps scales to zero by
+default, and an app with no ingress has no HTTP trigger to scale it back up, so
+a worker left on the default sits at zero replicas and queued imports are never
+picked up. Either pin `--min-replicas 1` or attach a queue-based KEDA scaler.
+
 Titiler defaults to port 8000, which the api already holds. Override its
 command to move it, as
 [`terraform/aws-ecs-fargate`](../terraform/aws-ecs-fargate/) does, then point
@@ -156,3 +161,6 @@ this surfaces at first use rather than at startup.
 
 **Raster tiles fail while vector data works.** Titiler is missing its own
 `AZURE_STORAGE_*` variables. It does not inherit the api's.
+
+**Imports stay queued and nothing processes them.** The worker app scaled to
+zero and has nothing to wake it.

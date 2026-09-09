@@ -27,14 +27,32 @@ gcloud sql databases create geolens --instance=geolens-db
 gcloud sql users create geolens --instance=geolens-db --password=<password>
 ```
 
-Connect through the Cloud SQL Auth Proxy or a direct IP, then run the
-bootstrap SQL from the
+Connect through the Cloud SQL Auth Proxy, then run the bootstrap SQL from the
 [cloud deployment guide](https://docs.getgeolens.com/guides/quickstart/cloud-deployment/).
 
 ```bash
 cloud-sql-proxy geolens-project:us-central1:geolens-db &
 psql -h 127.0.0.1 -U geolens -d geolens
 ```
+
+### Reaching the instance from Cloud Run
+
+A Cloud SQL instance is not reachable from Cloud Run by default, and this is
+the step that gets skipped. Pick one of two shapes.
+
+Run the Auth Proxy as a sidecar in the same multi-container service. It listens
+on loopback, holds the encrypted connection to Cloud SQL itself, and the
+application dials `127.0.0.1:5432` with `DATABASE_SSL_MODE=disable`, because
+the hop it is disabling is the one inside the container. Grant the service
+account `roles/cloudsql.client`. The worker needs its own copy of the sidecar,
+since it is a separate service.
+
+Or give the instance a private IP and reach it over the VPC. That needs private
+services access configured on the network, the instance attached to it, and
+Direct VPC egress or a Serverless VPC Access connector on every Cloud Run
+service that talks to the database. The same connector then serves Memorystore.
+Neither the instance-creation commands above nor `REDIS_URL` set any of that up
+for you.
 
 Use `DATABASE_SSL_MODE=require`. The server CA is downloadable, but the
 instance certificate identifies the instance connection name rather than the
@@ -57,8 +75,21 @@ provider.
 
 ```bash
 gcloud storage buckets create gs://geolens-uploads --location=us-central1
+
+gcloud storage buckets add-iam-policy-binding gs://geolens-uploads \
+  --member=serviceAccount:<service-account>@<project>.iam.gserviceaccount.com \
+  --role=roles/storage.objectAdmin
+
 gcloud storage hmac create <service-account>@<project>.iam.gserviceaccount.com
 ```
+
+The IAM binding is the step that is easy to miss. An HMAC key carries the
+permissions of the service account it belongs to and grants nothing by itself,
+so a key created against an account with no binding on the bucket returns 403
+on every upload and every tile read while looking perfectly well formed.
+`roles/storage.objectAdmin` covers the object reads, writes, deletes and
+multipart operations the application performs; scope it to the bucket rather
+than the project.
 
 The HMAC key's `accessId` and `secret` become `S3_ACCESS_KEY_ID` and
 `S3_SECRET_ACCESS_KEY`. A service account key in JSON form is not a
@@ -185,4 +216,8 @@ points at `http://api:8000`, or the api service is private and the frontend's
 proxied request carries no ID token.
 
 **The cache connection times out.** The Cloud Run service has no VPC connector
-or Direct VPC egress, so it cannot reach Memorystore's private address.
+or Direct VPC egress, so it cannot reach Memorystore's private address. A
+private-IP Cloud SQL connection fails the same way for the same reason.
+
+**Storage returns 403 with a well-formed HMAC key.** The key's service account
+has no IAM binding on the bucket.

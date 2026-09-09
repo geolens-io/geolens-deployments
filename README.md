@@ -8,9 +8,10 @@ Kubernetes and cloud deployment packaging for
 
 GeoLens installs on a single host with Docker Compose, and that is the path the
 [quickstart](https://docs.getgeolens.com/guides/quickstart/install/) documents.
-This repo covers the deployments that need more than one host: a Helm chart for
-Kubernetes, and a Terraform recipe for AWS ECS Fargate. Both run the same
-Apache-2.0 GeoLens images the compose stack runs.
+This repo covers everything past that: a Helm chart for Kubernetes, Terraform
+recipes, and the per-cloud guidance for provisioning the managed database,
+bucket and cache those deployments sit on. All of it runs the same Apache-2.0
+GeoLens images the compose stack runs.
 
 Everything here is community maintained and support is best effort. CI installs
 every change into a throwaway [kind](https://kind.sigs.k8s.io/) cluster, sends a
@@ -26,11 +27,13 @@ what backs the chart. Issues and pull requests are welcome.
 | [`helm/geolens`](helm/geolens/) | Helm chart for Kubernetes: API, worker, frontend edge, Titiler, and an Alembic migration hook Job. Values, required secrets, storage, database, and upgrade notes are in the [chart README](helm/geolens/README.md). |
 | [`examples/`](examples/) | Values files to adapt. [`values-aws.yaml`](examples/values-aws.yaml) is an EKS install with S3 and RDS PostgreSQL, validated on a real cluster. |
 | [`terraform/aws-ecs-fargate`](terraform/aws-ecs-fargate/) | Terraform recipe: ECS Fargate, RDS PostgreSQL, S3, ElastiCache Valkey, and an ALB. Validated against a real AWS account, then torn down. See its own README. Azure, Google Cloud and DigitalOcean recipes are planned; [`terraform/README.md`](terraform/README.md) has the notes. |
+| [`clouds/`](clouds/) | Provisioning the managed database, bucket and cache on [AWS](clouds/aws.md), [Azure](clouds/azure.md), [Google Cloud](clouds/google-cloud.md) and [DigitalOcean](clouds/digitalocean.md), with the environment variables each one needs. Each page sits beside the recipe for the same cloud. |
 
-If you want compose on a single host backed by a managed database, bucket, and
-cache, that is documented on the docs site instead: the
+The docs site's
 [cloud deployment guide](https://docs.getgeolens.com/guides/quickstart/cloud-deployment/)
-covers AWS, Google Cloud, and DigitalOcean.
+is the companion piece and holds what is true on every cloud: the environment
+contract, the database bootstrap, when migrations run, and the health and
+metrics endpoints. Read it first, then pick a cloud in [`clouds/`](clouds/).
 
 ## Install
 

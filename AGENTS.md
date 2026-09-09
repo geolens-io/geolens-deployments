@@ -25,6 +25,11 @@ ElastiCache Valkey, ALB. `terraform fmt -check` and `terraform validate` are its
 gates. A real apply needs an AWS profile, and the migrate step runs a one-shot
 ECS task through `aws ecs run-task` from a `local-exec` provisioner.
 
+`clouds/` is prose, one page per cloud, covering the managed database, bucket
+and cache a deployment sits on plus that cloud's environment deltas. It is the
+manual counterpart to the recipe for the same cloud, so keep the two in step.
+Provider-neutral material stays on the docs site.
+
 `.github/ci/postgres.yaml` is a CI-only PostGIS + pgvector deployment for the
 kind test. It is not a production manifest.
 

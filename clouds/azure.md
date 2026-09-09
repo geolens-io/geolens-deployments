@@ -116,8 +116,10 @@ edge: it proxies `/api`, maps `/raster-tiles`, blocks unauthenticated
 
 Container Apps terminates TLS on its own `*.azurecontainerapps.io` hostname
 and provisions a managed certificate for a custom domain you bind to the app.
-Set `PUBLIC_APP_URL` and `PUBLIC_API_URL` to that public hostname afterwards,
-or OGC self-links and OAuth redirects point at the wrong host.
+Afterwards, `PUBLIC_APP_URL` is the public hostname and
+`PUBLIC_API_URL` is that hostname plus `/api`. Both feed OGC self-links, OAuth
+redirects and generated distribution URLs, so dropping the suffix points
+API links at the frontend root.
 
 ## Environment delta
 

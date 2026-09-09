@@ -14,9 +14,17 @@ point.
 doctl databases create geolens-db \
   --engine pg --version 15 --region nyc1 \
   --size db-s-1vcpu-1gb --num-nodes 1
+
+doctl databases db create <db-id> geolens
+doctl databases user create <db-id> geolens
 ```
 
-Two things differ from the other clouds and both bite early.
+A new cluster comes with a `doadmin` user and a `defaultdb` database and
+nothing else, so the second and third commands are what make the `geolens`
+database and login in the DSN below exist. `doctl databases user create` prints
+the generated password once; take it from there rather than setting one.
+
+Two more things differ from the other clouds and both bite early.
 
 **The cluster rejects every connection until you add a trusted source.** This
 is not a network misconfiguration, it is the default. Add the Droplet, the App
@@ -123,8 +131,10 @@ and cache pointed elsewhere.
 
 App Platform provisions and renews a Let's Encrypt certificate when you bind a
 custom domain. On a Droplet, put Caddy or Traefik in front of the frontend
-container on port 8080 and let it handle issuance. Set `PUBLIC_APP_URL` and
-`PUBLIC_API_URL` to the public hostname afterwards.
+container on port 8080 and let it handle issuance. Afterwards, `PUBLIC_APP_URL` is the public hostname and
+`PUBLIC_API_URL` is that hostname plus `/api`. Both feed OGC self-links, OAuth
+redirects and generated distribution URLs, so dropping the suffix points
+API links at the frontend root.
 
 ## Environment delta
 
@@ -158,6 +168,10 @@ the client. Add the App Platform app or the Droplet, not just your laptop.
 
 **The connection is refused on port 5432.** Managed PostgreSQL listens on
 25060.
+
+**The login or the database does not exist.** Creating the cluster creates
+`doadmin` and `defaultdb`. The `geolens` database and user are separate
+commands.
 
 **Vector data works and raster tiles do not.** The titiler component is missing
 its `AWS_*` variables, so GDAL is resolving against AWS.

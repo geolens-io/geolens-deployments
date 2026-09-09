@@ -179,8 +179,10 @@ raster tiles.
 
 Cloud Run terminates TLS on its own `*.run.app` hostnames. For a custom
 domain, use a Cloud Run domain mapping or an HTTPS load balancer with a
-Google-managed certificate. Set `PUBLIC_APP_URL` and `PUBLIC_API_URL` to the
-public hostname afterwards.
+Google-managed certificate. Afterwards, `PUBLIC_APP_URL` is the public hostname and
+`PUBLIC_API_URL` is that hostname plus `/api`. Both feed OGC self-links, OAuth
+redirects and generated distribution URLs, so dropping the suffix points
+API links at the frontend root.
 
 ## Environment delta
 

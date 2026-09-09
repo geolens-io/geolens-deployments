@@ -5,12 +5,12 @@ Each directory is a self-contained root module that runs the published
 services. No registry modules, no shared wrapper: copy the directory, set the
 variables, apply.
 
-| Recipe | Status |
-| --- | --- |
-| [`aws-ecs-fargate`](aws-ecs-fargate/) | Validated on a real account (2026-09-07, GeoLens 1.18.1). ECS Fargate, RDS PostgreSQL 17, S3, ElastiCache Valkey, ALB. |
-| Azure | Planned, not started: [#41](https://github.com/geolens-io/geolens-deployments/issues/41). |
-| Google Cloud | Planned, not started: [#42](https://github.com/geolens-io/geolens-deployments/issues/42). |
-| DigitalOcean | Planned, not started: [#43](https://github.com/geolens-io/geolens-deployments/issues/43). |
+| Recipe | Status | Manual path |
+| --- | --- | --- |
+| [`aws-ecs-fargate`](aws-ecs-fargate/) | Validated on a real account (2026-09-07, GeoLens 1.18.1). ECS Fargate, RDS PostgreSQL 17, S3, ElastiCache Valkey, ALB. | [`clouds/aws.md`](../clouds/aws.md) |
+| Azure | Planned, not started: [#41](https://github.com/geolens-io/geolens-deployments/issues/41). | [`clouds/azure.md`](../clouds/azure.md) |
+| Google Cloud | Planned, not started: [#42](https://github.com/geolens-io/geolens-deployments/issues/42). | [`clouds/google-cloud.md`](../clouds/google-cloud.md) |
+| DigitalOcean | Planned, not started: [#43](https://github.com/geolens-io/geolens-deployments/issues/43). | [`clouds/digitalocean.md`](../clouds/digitalocean.md) |
 
 ## What a recipe has to provide
 
@@ -32,32 +32,23 @@ cloud:
 
 ## Notes for the planned recipes
 
-These are the shapes worth trying first, with the things already known to
-matter.
+[`clouds/`](../clouds/) covers the managed services themselves, one page per
+cloud, with the environment variables each one needs. What is left here is the
+container topology each runtime forces, which is a recipe decision rather than
+a provisioning one.
 
-Azure: Container Apps for the four containers, PostgreSQL Flexible Server (it
-ships PostGIS, pgvector, pg_trgm and unaccent as allow-listed extensions), Blob
-Storage through the backend's native Azure provider and titiler's `/vsiaz/`
-reads, Azure Cache for Redis. Container Apps supports sidecars in one app, so
-the loopback layout from the AWS recipe carries over.
+Azure: Container Apps supports several containers in one app, so the loopback
+layout from the AWS recipe carries over, with the worker as a second app.
 
-Google Cloud: Cloud Run for the api and frontend, Cloud SQL for PostgreSQL
-(PostGIS and pgvector are supported flags), a GCS bucket reached through the
-S3-compatible XML API with HMAC keys and `S3_ENDPOINT=https://storage.googleapis.com`,
-Memorystore for Valkey. The worker is a long-running process, so it belongs in
-a Cloud Run service with CPU always allocated and min instances 1, or on a
-small GCE VM. Cloud Run multi-container services cover the frontend, api and
-titiler sidecar layout.
+Google Cloud: Cloud Run multi-container services cover the frontend, api and
+titiler. The worker is a long-running process, so it belongs in its own
+service with CPU always allocated and minimum instances 1, or on a small GCE
+VM. Reaching a private Cloud Run service needs a Google-signed ID token that
+neither the nginx proxy hop nor the api's titiler client mints.
 
-DigitalOcean: App Platform for the containers, Managed PostgreSQL (PostGIS and
-pgvector are available; check the version supports pgvector 0.5+), Spaces with
-`S3_ENDPOINT=https://<region>.digitaloceanspaces.com`, optional Managed Valkey.
-App Platform has no sidecar concept, so the api and titiler become separate
-components with internal routing and `TITILER_BASE_URL` pointed at the
-titiler component.
+DigitalOcean: App Platform has no sidecar concept, so the api and titiler
+become separate components with internal routing and `TITILER_BASE_URL`
+pointed at the titiler component.
 
-The docs site's
-[cloud deployment guide](https://docs.getgeolens.com/guides/quickstart/cloud-deployment/)
-already documents the environment variables for each provider's managed
-database, bucket and cache; the recipes should reuse those values rather than
-invent new ones.
+A recipe landing is the moment to correct the cloud page beside it, since the
+recipe is what proves the prose.

@@ -13,7 +13,18 @@ starting point and open an issue when a step is wrong.
 
 ## Database: PostgreSQL Flexible Server
 
-Create a Flexible Server on PostgreSQL 15 or newer.
+Create a Flexible Server on PostgreSQL 15 or newer, naming the database and the
+administrator login as you go. A server carries a `postgres` database and
+whatever administrator you asked for, so the `geolens` database in the DSN
+below has to be created explicitly, either here or with
+`az postgres flexible-server db create` afterwards.
+
+```bash
+az postgres flexible-server create \
+  --resource-group <resource-group> --name <server> \
+  --version 15 --database-name geolens \
+  --admin-user geolens --admin-password "$DB_PASSWORD"
+```
 
 **Allow-list the extensions before anything else.** Flexible Server refuses
 `CREATE EXTENSION` for any extension missing from the `azure.extensions`
@@ -157,6 +168,10 @@ AZURE_STORAGE_ACCESS_KEY=<account-key>
 ```
 
 ## When it goes wrong
+
+**`psql` reports that the `geolens` database does not exist.** The server was
+created without `--database-name`. Add it with
+`az postgres flexible-server db create`.
 
 **`CREATE EXTENSION` is refused and the message mentions an allow list.** The
 extension is not in `azure.extensions`. Add it, wait for the parameter

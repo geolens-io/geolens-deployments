@@ -15,6 +15,20 @@ Create an instance on PostgreSQL 15 or newer. 13 is the application floor, but
 pgvector arrives on RDS at 15.2 and 14.7, and semantic search needs pgvector
 0.5+.
 
+Set the initial database name and the master username when you create the
+instance, because RDS creates no database at all unless you ask for one and the
+master username defaults to `postgres`. The recipe uses `geolens` for both, and
+so does every DSN on this page.
+
+```bash
+aws rds create-db-instance \
+  --db-instance-identifier geolens-db \
+  --engine postgres --engine-version 15 \
+  --db-instance-class db.t4g.medium --allocated-storage 20 \
+  --db-name geolens --master-username geolens \
+  --master-user-password "$DB_PASSWORD"
+```
+
 PostGIS is in the default RDS parameter group, and `pg_trgm`, `unaccent` and
 `vector` are available on those engine versions. None of them are created for
 you. Connect with `psql` as the master user and run the bootstrap SQL from the
@@ -179,6 +193,10 @@ REDIS_URL=redis://geolens-cache.abc123.0001.use1.cache.amazonaws.com:6379/0
 ```
 
 ## When it goes wrong
+
+**`psql` reports that the database does not exist.** The instance was created
+without `--db-name`, so RDS made none. Create one with `CREATE DATABASE geolens`
+as the master user before running the bootstrap.
 
 **The migration aborts on a missing extension.** The bootstrap SQL did not
 run, or it ran against a different database on the same instance. PostGIS

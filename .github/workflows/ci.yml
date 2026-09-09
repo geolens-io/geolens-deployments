@@ -439,6 +439,16 @@ jobs:
           kubectl apply -f .github/ci/postgres.yaml
           kubectl rollout status deployment/geolens-ci-db --timeout=300s
 
+      - name: Diagnose CI PostgreSQL rollout failure
+        # fix(#47): geolens-ci-db has no app.kubernetes.io/instance=geolens
+        # label, so the job-level Diagnostics step below never sees it; name
+        # the failure here instead of leaving a bare rollout timeout.
+        if: failure()
+        run: |
+          kubectl get pods -l app=geolens-ci-db -o wide
+          kubectl describe pods -l app=geolens-ci-db
+          kubectl logs -l app=geolens-ci-db --all-containers --tail=200 --prefix
+
       - name: helm install --wait
         run: |
           helm install geolens helm/geolens \

@@ -47,13 +47,16 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgis/postgis:17-3.5
+          # postgis/postgis:18-3.6, pinned by digest (geolens#704). 17-3.5 was
+          # Debian bullseye, whose security repo's Release file is now
+          # permanently expired (EOL); apt-get update failed closed (fix #47).
+          image: postgis/postgis@sha256:60f6ad1d21ea86a67d47780b9a0d1e1d200500f62b19293fa834d0dea80b8677
           command:
             - /bin/sh
             - -ec
             - |
               apt-get update -qq
-              apt-get install -y -qq --no-install-recommends postgresql-17-pgvector
+              apt-get install -y -qq --no-install-recommends postgresql-18-pgvector
               exec docker-entrypoint.sh postgres
           env:
             - name: POSTGRES_DB
@@ -68,7 +71,10 @@ spec:
             - name: initdb
               mountPath: /docker-entrypoint-initdb.d
             - name: pgdata
-              mountPath: /var/lib/postgresql/data
+              # geolens#704: PG 18+ images require a single mount at
+              # /var/lib/postgresql (PGDATA moves to <major>/docker inside);
+              # the legacy .../data path makes the entrypoint refuse to boot.
+              mountPath: /var/lib/postgresql
           readinessProbe:
             # -h 127.0.0.1 forces TCP: during first init the entrypoint runs a
             # socket-only temporary server for init scripts, and a socket

@@ -30,6 +30,12 @@ the containers reach each other on that cloud's runtime, then the environment
 variables that differ from the neutral set. The last section is the one to
 diff against the guide; everything else in `.env` stays as the guide has it.
 
+The database password goes into a URL, so percent-encode it or generate one
+without URI delimiters. A `#`, `?`, `@`, `/` or `%` in the raw password changes
+where the parser thinks the host begins, and the API, worker and migration all
+fail to connect. The AWS recipe sidesteps this by generating a password with no
+special characters at all, which is the easier habit.
+
 Every `DATABASE_URL_OVERRIDE` here uses the plain `postgresql://` form. The
 backend rewrites it to `postgresql+asyncpg://` and strips any `sslmode`
 parameter, since `DATABASE_SSL_MODE` owns that setting. An explicit

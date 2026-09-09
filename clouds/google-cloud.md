@@ -36,14 +36,18 @@ cloud-sql-proxy geolens-project:us-central1:geolens-db &
 psql -h 127.0.0.1 -U geolens -d geolens
 ```
 
-Cloud SQL hands you the server CA directly, so `verify-full` is worth using
-here. Fetch the certificate, mount it into the containers, and set
-`DATABASE_SSL_CA_CERT` alongside `DATABASE_SSL_MODE=verify-full`.
-`DATABASE_SSL_MODE=require` works too and needs no certificate.
+Use `DATABASE_SSL_MODE=require`. The server CA is downloadable, but the
+instance certificate identifies the instance connection name rather than the
+IP address you connect to, so `verify-full` fails hostname verification against
+a bare Cloud SQL IP no matter which CA is mounted. Reach for `verify-full` only
+if you front the instance with a name the certificate carries.
 
 ```bash
 gcloud sql ssl server-ca-certs list --instance=geolens-db --format="value(cert)" > server-ca.pem
 ```
+
+That certificate is still worth having for pinning the CA in tools that check
+it independently.
 
 ## Storage: Cloud Storage
 
@@ -155,8 +159,7 @@ has it.
 
 ```bash
 DATABASE_URL_OVERRIDE=postgresql://geolens:<password>@10.20.30.40:5432/geolens
-DATABASE_SSL_MODE=verify-full
-DATABASE_SSL_CA_CERT=/certs/server-ca.pem
+DATABASE_SSL_MODE=require
 
 STORAGE_PROVIDER=s3
 S3_ENDPOINT=https://storage.googleapis.com

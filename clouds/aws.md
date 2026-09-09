@@ -59,8 +59,11 @@ aws s3api put-bucket-cors --bucket geolens-uploads --cors-configuration '{
 }'
 ```
 
-The application principal needs object read, write and delete on the bucket
-plus `ListBucket`:
+The application principal needs object read, write and delete, plus the
+multipart actions. Uploads above `PRESIGNED_MULTIPART_THRESHOLD_MB`, which
+defaults to 100 MB, are multipart, and without `AbortMultipartUpload` a
+cancelled upload leaves parts in the bucket that nothing can clean up. This is
+the same split the Terraform recipe applies:
 
 ```json
 {
@@ -68,15 +71,31 @@ plus `ListBucket`:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
-      "Resource": [
-        "arn:aws:s3:::geolens-uploads",
-        "arn:aws:s3:::geolens-uploads/*"
-      ]
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:ListBucketMultipartUploads"
+      ],
+      "Resource": ["arn:aws:s3:::geolens-uploads"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ],
+      "Resource": ["arn:aws:s3:::geolens-uploads/*"]
     }
   ]
 }
 ```
+
+Add a lifecycle rule with `AbortIncompleteMultipartUpload` as a backstop, since
+an upload that is neither completed nor aborted leaves parts no application
+sweep can see.
 
 Give Titiler a second, read-only principal scoped to `rasters/*` and
 `tenants/*/rasters/*`, and set `TITILER_S3_ACCESS_KEY_ID` and

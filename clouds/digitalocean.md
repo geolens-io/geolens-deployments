@@ -91,6 +91,11 @@ Managed Valkey where the region offers it, otherwise Valkey on a Droplet. The
 application uses redis-py, which speaks to either. Skip it entirely for a
 single instance, where the in-process cache is the right answer.
 
+A managed cluster requires TLS and a password on port 25061, so its URL is
+`rediss://default:<password>@<host>:25061/0`. Take it from the console rather
+than assembling one. A plain `redis://` URL is for a cache you run yourself on
+a Droplet's private network.
+
 ## Containers
 
 App Platform has no sidecar concept, so the four containers become four
@@ -138,8 +143,9 @@ S3_REGION=nyc3
 S3_ACCESS_KEY_ID=<spaces-key>
 S3_SECRET_ACCESS_KEY=<spaces-secret>
 
-# Optional, only with a managed or self-hosted cache.
-# REDIS_URL=redis://geolens-cache-do-user-123456-0.db.ondigitalocean.com:25061/0
+# Optional. Managed Valkey is TLS and password authenticated on 25061:
+# REDIS_URL=rediss://default:<password>@geolens-cache-do-user-123456-0.db.ondigitalocean.com:25061/0
+# A Valkey you run yourself on the private network is a plain redis:// URL.
 ```
 
 An `sslmode` parameter in the connection string is harmless. The application

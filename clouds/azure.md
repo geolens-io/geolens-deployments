@@ -77,16 +77,22 @@ No CORS policy is needed. Presigned uploads are an S3-only path, so with
 them to the container. Large uploads therefore traverse the api, and any body
 size limit on the ingress applies to them.
 
-## Cache: Azure Cache for Redis
+## Cache
 
-Optional, and only worth provisioning for more than one API instance. Create
-an instance reachable from the Container Apps environment and set `REDIS_URL`.
-With it unset the application caches in process memory, which is correct for a
-single instance and wrong for several.
+Optional, and only worth provisioning for more than one API instance. With
+`REDIS_URL` unset the application caches in process memory, which is correct
+for a single instance and wrong for several.
 
-A new cache has the non-TLS port disabled and access-key authentication on, so
-the URL is `rediss://` on port 6380 with the access key as the password. A
-plain `redis://` on 6379 will not connect.
+Azure Managed Redis is the service to create for a new deployment. Azure Cache
+for Redis is on a retirement path, and its Basic, Standard and Premium tiers
+are already unavailable to subscriptions that have never used it, so check what
+your subscription can actually create before planning around either.
+
+Whichever you land on, expect TLS and key authentication rather than an open
+port: the URL is `rediss://` with the access key as the password, on 6380 for a
+legacy Cache for Redis instance and on the port the portal shows for a Managed
+Redis one. A plain `redis://` on 6379 will not connect. Take the hostname and
+port from the resource rather than assembling them.
 
 ## Containers
 
@@ -139,7 +145,8 @@ AZURE_STORAGE_CONNECTION_STRING=<connection-string>
 # AZURE_STORAGE_ACCOUNT_URL=https://<account>.blob.core.windows.net
 # AZURE_STORAGE_ACCOUNT_KEY=<account-key>
 
-REDIS_URL=rediss://:<access-key>@<cache>.redis.cache.windows.net:6380/0
+# Host and port come from the cache resource; 6380 is the legacy default.
+REDIS_URL=rediss://:<access-key>@<cache-hostname>:6380/0
 ```
 
 On the Titiler container instead:

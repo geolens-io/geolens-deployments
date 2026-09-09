@@ -159,6 +159,13 @@ service sharing a network namespace. The worker is a long-running process, so
 it needs its own service with CPU always allocated and minimum instances 1, or
 a small Compute Engine VM.
 
+A Cloud Run service has to listen on the port it is configured with, which
+defaults to 8080. The worker image serves its health and metrics endpoints on
+8001 and nothing on 8080, so deploy it with `--port 8001` or Cloud Run fails
+the container's startup probe and never runs a job. That probe only answers
+after schema sync and storage bootstrap, so allow a startup period of a couple
+of minutes.
+
 Set `API_UPSTREAM` on the frontend and `TITILER_BASE_URL` on the api. Within
 one multi-container service both are loopback addresses, and titiler has to
 move off port 8000 because the api holds it. Across separate services they are
@@ -216,6 +223,9 @@ its `AWS_*` variables, so GDAL is resolving against AWS.
 **`/api` returns an nginx upstream error on Cloud Run.** `API_UPSTREAM` still
 points at `http://api:8000`, or the api service is private and the frontend's
 proxied request carries no ID token.
+
+**The worker never starts on Cloud Run.** The service is on the default port
+8080 and the worker only listens on 8001.
 
 **The cache connection times out.** The Cloud Run service has no VPC connector
 or Direct VPC egress, so it cannot reach Memorystore's private address. A

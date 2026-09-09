@@ -25,9 +25,13 @@ aws rds create-db-instance \
   --db-instance-identifier geolens-db \
   --engine postgres --engine-version 15 \
   --db-instance-class db.t4g.medium --allocated-storage 20 \
+  --storage-type gp3 --storage-encrypted \
   --db-name geolens --master-username geolens \
   --master-user-password "$DB_PASSWORD"
 ```
+
+Keep `--storage-encrypted`. Encryption cannot be turned on in place afterwards;
+undoing the omission means a snapshot copy and a restore.
 
 PostGIS is in the default RDS parameter group, and `pg_trgm`, `unaccent` and
 `vector` are available on those engine versions. None of them are created for

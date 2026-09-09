@@ -24,6 +24,20 @@ nothing else, so the second and third commands are what make the `geolens`
 database and login in the DSN below exist. `doctl databases user create` prints
 the generated password once; take it from there rather than setting one.
 
+The two logins do different jobs. Run the bootstrap as `doadmin`, because
+creating extensions and the `geolens_reader` role needs privileges a login made
+with `doctl databases user create` does not have. Then hand the database to the
+runtime login, which is what Alembic connects as:
+
+```sql
+ALTER DATABASE geolens OWNER TO geolens;
+ALTER SCHEMA catalog OWNER TO geolens;
+ALTER SCHEMA data OWNER TO geolens;
+```
+
+Without that transfer the schemas stay owned by `doadmin` and the first
+migration fails trying to create tables in them.
+
 Two more things differ from the other clouds and both bite early.
 
 **The cluster rejects every connection until you add a trusted source.** This
@@ -39,9 +53,11 @@ string from the console or `doctl databases connection <db-id> --format URI`
 rather than assembling one by hand.
 
 Confirm the engine version you picked carries pgvector 0.5 or newer before
-committing to it; the HNSW index the application builds needs it. Then connect
-with `psql` and run the bootstrap SQL from the
-[cloud deployment guide](https://docs.getgeolens.com/guides/quickstart/cloud-deployment/).
+committing to it; the HNSW index the application builds needs it. Then run the
+bootstrap script from the
+[cloud deployment guide](https://docs.getgeolens.com/guides/quickstart/cloud-deployment/)
+as `doadmin` against the `geolens` database, and apply the ownership transfer
+above.
 
 ## Storage: Spaces
 
@@ -172,6 +188,12 @@ the client. Add the App Platform app or the Droplet, not just your laptop.
 **The login or the database does not exist.** Creating the cluster creates
 `doadmin` and `defaultdb`. The `geolens` database and user are separate
 commands.
+
+**The bootstrap fails creating an extension or a role.** It is running as the
+`geolens` login rather than `doadmin`.
+
+**The first migration fails creating tables.** The schemas are still owned by
+`doadmin`. Run the three `ALTER` statements above.
 
 **Vector data works and raster tiles do not.** The titiler component is missing
 its `AWS_*` variables, so GDAL is resolving against AWS.

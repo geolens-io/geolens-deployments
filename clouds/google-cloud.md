@@ -80,6 +80,10 @@ gcloud storage buckets add-iam-policy-binding gs://geolens-uploads \
   --member=serviceAccount:<service-account>@<project>.iam.gserviceaccount.com \
   --role=roles/storage.objectAdmin
 
+gcloud storage buckets add-iam-policy-binding gs://geolens-uploads \
+  --member=serviceAccount:<service-account>@<project>.iam.gserviceaccount.com \
+  --role=roles/storage.legacyBucketReader
+
 gcloud storage hmac create <service-account>@<project>.iam.gserviceaccount.com
 ```
 
@@ -88,8 +92,10 @@ permissions of the service account it belongs to and grants nothing by itself,
 so a key created against an account with no binding on the bucket returns 403
 on every upload and every tile read while looking perfectly well formed.
 `roles/storage.objectAdmin` covers the object reads, writes, deletes and
-multipart operations the application performs; scope it to the bucket rather
-than the project.
+multipart operations the application performs. It does not carry
+`storage.buckets.get`, which the XML API needs for the bucket metadata call
+behind `s3:GetBucketLocation`, so `roles/storage.legacyBucketReader` goes
+alongside it. Scope both to the bucket rather than the project.
 
 The HMAC key's `accessId` and `secret` become `S3_ACCESS_KEY_ID` and
 `S3_SECRET_ACCESS_KEY`. A service account key in JSON form is not a
@@ -232,4 +238,6 @@ or Direct VPC egress, so it cannot reach Memorystore's private address. A
 private-IP Cloud SQL connection fails the same way for the same reason.
 
 **Storage returns 403 with a well-formed HMAC key.** The key's service account
-has no IAM binding on the bucket.
+has no IAM binding on the bucket. A 403 during storage bootstrap while object
+reads work is the bucket metadata call, which needs
+`roles/storage.legacyBucketReader` on top of `objectAdmin`.

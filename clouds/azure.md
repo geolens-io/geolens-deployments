@@ -105,6 +105,11 @@ legacy Cache for Redis instance and on the port the portal shows for a Managed
 Redis one. A plain `redis://` on 6379 will not connect. Take the hostname and
 port from the resource rather than assembling them.
 
+Percent-encode the access key before putting it in the URL. These keys are
+base64 and can contain `/`, which a URL parser reads as the start of a path
+rather than as part of the password, so an otherwise valid cache fails to
+connect. `/` becomes `%2F`, and `+` becomes `%2B`.
+
 ## Containers
 
 Container Apps supports several containers in one app sharing a network
@@ -157,7 +162,7 @@ AZURE_STORAGE_CONNECTION_STRING=<connection-string>
 # AZURE_STORAGE_ACCOUNT_KEY=<account-key>
 
 # Host and port come from the cache resource; 6380 is the legacy default.
-REDIS_URL=rediss://:<access-key>@<cache-hostname>:6380/0
+REDIS_URL=rediss://:<percent-encoded-access-key>@<cache-hostname>:6380/0
 ```
 
 On the Titiler container instead:

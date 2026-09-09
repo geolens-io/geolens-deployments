@@ -84,6 +84,10 @@ an instance reachable from the Container Apps environment and set `REDIS_URL`.
 With it unset the application caches in process memory, which is correct for a
 single instance and wrong for several.
 
+A new cache has the non-TLS port disabled and access-key authentication on, so
+the URL is `rediss://` on port 6380 with the access key as the password. A
+plain `redis://` on 6379 will not connect.
+
 ## Containers
 
 Container Apps supports several containers in one app sharing a network
@@ -128,7 +132,7 @@ AZURE_STORAGE_CONNECTION_STRING=<connection-string>
 # AZURE_STORAGE_ACCOUNT_URL=https://<account>.blob.core.windows.net
 # AZURE_STORAGE_ACCOUNT_KEY=<account-key>
 
-REDIS_URL=redis://<cache>.redis.cache.windows.net:6379/0
+REDIS_URL=rediss://:<access-key>@<cache>.redis.cache.windows.net:6380/0
 ```
 
 On the Titiler container instead:

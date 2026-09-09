@@ -90,6 +90,13 @@ IRSA-annotated ServiceAccount and leave `S3_ACCESS_KEY_ID` and
 `S3_SECRET_ACCESS_KEY` unset. The backend detects the ambient credential and
 lets boot proceed.
 
+TiTiler runs no GeoLens code, so it never sees the `S3_*` names. It reads
+through GDAL's `/vsis3/` driver, which wants `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY` and `AWS_DEFAULT_REGION`, or the task role. Native S3
+needs no `AWS_S3_ENDPOINT`, which is the one thing that makes AWS simpler than
+the S3-compatible stores. The bundled Compose entrypoint and the chart set
+these for you; assembling containers by hand means setting them yourself.
+
 Leave `S3_ENDPOINT` unset. The SDK picks the right regional endpoint on its
 own, and setting it is how people accidentally pin the wrong region.
 

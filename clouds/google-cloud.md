@@ -11,9 +11,11 @@ starting point.
 
 ## Database: Cloud SQL for PostgreSQL
 
-Create an instance on PostgreSQL 15 or newer with the `postgis` database flag
-enabled. pgvector is offered on 15 and later; confirm it in your region before
-committing to an instance, because the baseline migration aborts without it.
+Create an instance on PostgreSQL 15 or newer. PostGIS, `pg_trgm` and
+`unaccent` can be created directly once the instance exists. pgvector is the
+one to check: confirm it is offered for the engine version and region you are
+about to pick, because the baseline migration aborts without it and no
+parameter adds it later.
 
 ```bash
 gcloud sql instances create geolens-db \
@@ -34,9 +36,10 @@ cloud-sql-proxy geolens-project:us-central1:geolens-db &
 psql -h 127.0.0.1 -U geolens -d geolens
 ```
 
-Cloud SQL is the one cloud here where `verify-full` is straightforward, since
-the server CA is downloadable. Fetch it, mount it into the containers, and set
+Cloud SQL hands you the server CA directly, so `verify-full` is worth using
+here. Fetch the certificate, mount it into the containers, and set
 `DATABASE_SSL_CA_CERT` alongside `DATABASE_SSL_MODE=verify-full`.
+`DATABASE_SSL_MODE=require` works too and needs no certificate.
 
 ```bash
 gcloud sql ssl server-ca-certs list --instance=geolens-db --format="value(cert)" > server-ca.pem
@@ -79,6 +82,27 @@ Set `S3_ENDPOINT=https://storage.googleapis.com` and `S3_REGION=auto`.
 Multipart uploads through the XML API are the part worth exercising before you
 commit: test an upload above `PRESIGNED_MULTIPART_THRESHOLD_MB`, which
 defaults to 100 MB, rather than assuming it behaves like S3.
+
+### TiTiler reads through GDAL
+
+TiTiler runs no GeoLens code, so it never sees `S3_ENDPOINT` or the `S3_*`
+credentials. It reads objects through GDAL's `/vsis3/` driver, which uses AWS's
+own variable names. The bundled Compose entrypoint and the Helm chart translate
+them for you. Assembling containers by hand means doing it yourself, on the
+TiTiler container only:
+
+```bash
+AWS_S3_ENDPOINT=storage.googleapis.com
+AWS_ACCESS_KEY_ID=<hmac-access-id>
+AWS_SECRET_ACCESS_KEY=<hmac-secret>
+AWS_DEFAULT_REGION=auto
+```
+
+`AWS_S3_ENDPOINT` takes a host with no scheme. GDAL assumes HTTPS unless
+`AWS_HTTPS=NO` says otherwise, which is right here. Add
+`AWS_VIRTUAL_HOSTING=FALSE` only if you set `S3_ADDRESSING_STYLE=path` on the
+api. Skip this and raster tiles are read from AWS instead of Cloud Storage,
+while uploads keep working, so the symptom looks unrelated to the endpoint.
 
 ## Cache: Memorystore
 
@@ -149,6 +173,9 @@ REDIS_URL=redis://10.0.0.5:6379/0
 **Storage returns 403 or an invalid-signature error.** Either `S3_ENDPOINT` is
 unset, so the SDK is talking to AWS, or the credentials are a service account
 key rather than an HMAC pair.
+
+**Vector data works and raster tiles do not.** The TiTiler container is missing
+its `AWS_*` variables, so GDAL is resolving against AWS.
 
 **`/api` returns an nginx upstream error on Cloud Run.** `API_UPSTREAM` still
 points at `http://api:8000`, or the api service is private and the frontend's

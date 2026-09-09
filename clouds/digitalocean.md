@@ -66,6 +66,25 @@ aws s3api put-bucket-cors \
   }'
 ```
 
+### TiTiler reads through GDAL
+
+TiTiler runs no GeoLens code, so it never sees `S3_ENDPOINT` or the `S3_*`
+credentials. It reads objects through GDAL's `/vsis3/` driver, which uses AWS's
+own variable names. The bundled Compose entrypoint and the Helm chart translate
+them for you. Assembling containers by hand means doing it yourself, on the
+TiTiler container only:
+
+```bash
+AWS_S3_ENDPOINT=nyc3.digitaloceanspaces.com
+AWS_ACCESS_KEY_ID=<spaces-key>
+AWS_SECRET_ACCESS_KEY=<spaces-secret>
+AWS_DEFAULT_REGION=nyc3
+```
+
+`AWS_S3_ENDPOINT` takes a host with no scheme, and GDAL assumes HTTPS unless
+`AWS_HTTPS=NO` says otherwise. Without these, raster reads go to AWS while
+uploads keep working, so the symptom looks unrelated to the endpoint.
+
 ## Cache
 
 Managed Valkey where the region offers it, otherwise Valkey on a Droplet. The
@@ -133,6 +152,9 @@ the client. Add the App Platform app or the Droplet, not just your laptop.
 
 **The connection is refused on port 5432.** Managed PostgreSQL listens on
 25060.
+
+**Vector data works and raster tiles do not.** The titiler component is missing
+its `AWS_*` variables, so GDAL is resolving against AWS.
 
 **The baseline migration aborts on `vector`.** The cluster's engine version
 does not offer pgvector. There is no parameter that adds it, so this is a

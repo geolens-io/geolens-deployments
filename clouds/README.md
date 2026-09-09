@@ -30,6 +30,12 @@ the containers reach each other on that cloud's runtime, then the environment
 variables that differ from the neutral set. The last section is the one to
 diff against the guide; everything else in `.env` stays as the guide has it.
 
+Every `DATABASE_URL_OVERRIDE` here uses the plain `postgresql://` form. The
+backend rewrites it to `postgresql+asyncpg://` and strips any `sslmode`
+parameter, since `DATABASE_SSL_MODE` owns that setting. An explicit
+`postgresql+asyncpg://`, which is what the AWS recipe emits, is accepted
+unchanged.
+
 ## Which path
 
 A cloud page describes provisioning by hand, through the console or the CLI.

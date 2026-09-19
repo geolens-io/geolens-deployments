@@ -1,0 +1,5 @@
+# Copy to backend.tf for a pilot deployment, then configure it with the
+# per-organization pilot.backend.hcl file before running terraform init.
+terraform {
+  backend "s3" {}
+}

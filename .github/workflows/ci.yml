@@ -491,6 +491,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
       - name: terraform fmt
         run: terraform fmt -check -recursive terraform/aws-ecs-fargate
@@ -500,3 +502,4 @@ jobs:
         run: |
           terraform init -backend=false
           terraform validate
+          bash test-pilot-profile.sh

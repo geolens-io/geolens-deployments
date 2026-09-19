@@ -5,10 +5,11 @@ region = "us-east-1"
 
 # Pin the release you want. Bumping this re-runs migrations, then rolls the
 # services.
-geolens_version = "1.18.1"
+geolens_version = "1.20.0"
 
 # Leave empty to use the load balancer's DNS name over plain HTTP.
-# Set both of these to serve a domain over HTTPS.
+# Set both of these to serve a domain over HTTPS. Hosted pilot data requires
+# the stricter profile in pilot.tfvars.example instead of these trial defaults.
 # public_app_url      = "https://geolens.example.com"
 # acm_certificate_arn = "arn:aws:acm:us-east-1:111122223333:certificate/..."
 

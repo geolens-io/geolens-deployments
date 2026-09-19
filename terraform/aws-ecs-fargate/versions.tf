@@ -17,9 +17,12 @@ provider "aws" {
   region = var.region
 
   default_tags {
-    tags = {
-      Project   = "geolens"
-      ManagedBy = "terraform"
-    }
+    tags = merge(
+      {
+        Project   = "geolens"
+        ManagedBy = "terraform"
+      },
+      var.pilot_profile ? { Deployment = var.name } : {}
+    )
   }
 }

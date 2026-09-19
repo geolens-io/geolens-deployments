@@ -30,9 +30,9 @@ resource "random_password" "admin" {
   min_numeric = 1
 }
 
-# ponytail: the RDS master user is the application user, so migrations can
-# create schemas and extensions without a second role. Add a least-privilege
-# runtime user when the database is shared with anything else.
+# ponytail: the RDS master user is both the migration and application login.
+# Keep this stack on one dedicated instance per organization; the current
+# recipe does not run GeoLens' canonical managed-Postgres role reconciler.
 resource "aws_db_subnet_group" "this" {
   name_prefix = "${var.name}-"
   subnet_ids  = aws_subnet.private[*].id
@@ -47,7 +47,7 @@ resource "aws_db_instance" "this" {
   engine_version = "17"
   instance_class = var.db_instance_class
 
-  allocated_storage = 20
+  allocated_storage = var.db_allocated_storage_gb
   storage_type      = "gp3"
   storage_encrypted = true
 
@@ -59,8 +59,9 @@ resource "aws_db_instance" "this" {
   vpc_security_group_ids = [aws_security_group.data.id]
   publicly_accessible    = false
   multi_az               = false
+  copy_tags_to_snapshot  = var.pilot_profile
 
-  backup_retention_period = 7
+  backup_retention_period = var.backup_retention_days
   apply_immediately       = true
   skip_final_snapshot     = var.skip_final_snapshot
   deletion_protection     = var.deletion_protection
@@ -110,8 +111,45 @@ resource "aws_s3_bucket_cors_configuration" "this" {
   }
 }
 
-# ponytail: versioning is off. Turn it on if you want undelete, and add a
-# lifecycle rule to expire noncurrent versions.
+resource "aws_s3_bucket_versioning" "this" {
+  count = var.s3_versioning_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.this.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "this" {
+  count = var.s3_versioning_enabled ? 1 : 0
+
+  bucket = aws_s3_bucket.this.id
+
+  rule {
+    id     = "expire-noncurrent-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = var.s3_noncurrent_version_expiration_days
+    }
+  }
+
+  rule {
+    id     = "abort-incomplete-multipart-uploads"
+    status = "Enabled"
+
+    filter {}
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.this]
+}
 
 resource "aws_elasticache_subnet_group" "this" {
   count = var.cache_enabled ? 1 : 0

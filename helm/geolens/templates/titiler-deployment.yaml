@@ -49,8 +49,13 @@ spec:
         checksum/serviceaccount: {{ include (print $.Template.BasePath "/serviceaccount.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "geolens.serviceAccountName" . | quote }}
-      # No podSecurityContext: the upstream titiler image declares its own
-      # user; the chart's uid 1001 is a backend-image contract.
+      {{- /* fix(#52): the upstream image declares no USER, so titiler ran as root.
+           uid 1001 serves tiles under this read-only rootfs and can read
+           what the api writes to a shared staging claim. */}}
+      {{- with .Values.titiler.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

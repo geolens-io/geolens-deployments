@@ -17,7 +17,7 @@ for Kubernetes and AWS. No application code lives here.
 - `migrate-job.yaml`: Alembic `upgrade heads` as a pre-install/pre-upgrade hook.
 - `staging-pvc.yaml`: optional shared `/app/staging` claim.
 - `ingress.yaml`: single route, everything to the frontend edge.
-- `NOTES.txt`: post-install URL plus warnings for old frontend tags and disabled staging persistence.
+- `NOTES.txt`: post-install URL plus warnings for old frontend and api tags and for `storage.backend=local` without staging persistence.
 
 `examples/` holds values files to adapt (`values-aws.yaml`, an EKS install).
 `terraform/aws-ecs-fargate/` is a root module: ECS Fargate, RDS PostgreSQL, S3,
@@ -68,20 +68,22 @@ static path still fails closed without them; rendering survives
 upgrade); `database.sslMode` reaches both the ConfigMap and the migrate hook;
 no `GDAL_HTTP_FOLLOWLOCATION` appears anywhere; an empty install fails;
 `GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE` holds a token GDAL accepts; and
-`extraEnv` overrides render exactly once per container and win; the api
-liveness probe is `/health/live` while readiness stays `/health`; and the
-stored-secret encryption keys reach both the Secret and the migrate hook while
-a previous key without a current one, or a key against an api or worker tag
-older than 1.18.2, fails to render.
+`extraEnv` overrides render exactly once per container and win; all three api
+probes are `/health/live`; the api sets `FORWARDED_ALLOW_IPS` once and an
+`extraEnv` value replaces it; and the stored-secret encryption keys reach both
+the Secret and the migrate hook while a previous key without a current one, or
+a key against an api or worker tag older than 1.18.2, fails to render.
 
 `install-test` needs that job, creates a kind cluster, applies
 `.github/ci/postgres.yaml`, runs `helm install --wait` at the chart's default
-tags, curls `http://geolens-frontend/api/health` from a pod, then runs
+tags into a `geolens` namespace that enforces Pod Security `restricted`, curls
+`http://geolens-frontend.geolens/api/health` from a pod, then runs
 `helm upgrade --reuse-values --wait` to re-exercise the migrate hook.
 
-`terraform-validate` runs `terraform fmt -check -recursive` and
-`terraform init -backend=false && terraform validate` in
-`terraform/aws-ecs-fargate`. It never touches an AWS account.
+`terraform-validate` runs `terraform fmt -check -recursive`,
+`terraform init -backend=false && terraform validate`, and
+`test-pilot-profile.sh` in `terraform/aws-ecs-fargate`. It never touches an AWS
+account.
 
 `release-charts.yml` runs on pushes to `main` under `helm/**` and on
 `workflow_dispatch`. `version-drift.yml` runs weekly (Mondays 06:17 UTC) and on
@@ -108,6 +110,7 @@ history behind it belongs in the PR or issue the anchor names.
 - `serviceAccount.create` defaults to false on purpose: flipping an existing install to a fresh account would silently drop the `default` account's imagePullSecrets, RBAC, and annotations.
 - Every new top-level values map must be dereferenced through `| default dict`. A `--reuse-values` upgrade from a release installed before the map existed supplies nothing, and a bare dereference aborts rendering.
 - The Secret renders `data` with `b64enc`, never `stringData`, or removed keys survive `helm upgrade`.
+- Every container stays within Pod Security `restricted` (`geolens.containerSecurityContext` plus a non-root user); `install-test` enforces it, so a new container or hook fails CI rather than a hardened cluster.
 - The ingress routes everything to the frontend edge. Do not add a path that reaches the api directly; that bypasses the metrics block, the anonymous raster rate limit, and log redaction.
 - Add a CI guard for anything a render can pass while a real cluster fails.
 

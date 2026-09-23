@@ -40,6 +40,8 @@ spec:
         - name: migrate
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          securityContext:
+            {{- include "geolens.containerSecurityContext" . | nindent 12 }}
           # `upgrade heads` (plural) matches the api entrypoint and stays
           # correct should the migration graph ever carry multiple heads.
           command:

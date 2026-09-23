@@ -17,7 +17,8 @@ metadata:
     {{- include "geolens.labels" $ | nindent 4 }}
     app.kubernetes.io/component: {{ . }}
 spec:
-  maxUnavailable: {{ $pdb.maxUnavailable | default 1 }}
+  {{- /* codex review on #53: `default` would turn an explicit 0 into 1. */}}
+  maxUnavailable: {{ ternary $pdb.maxUnavailable 1 (hasKey $pdb "maxUnavailable") }}
   selector:
     matchLabels:
       {{- include "geolens.selectorLabels" $ | nindent 6 }}

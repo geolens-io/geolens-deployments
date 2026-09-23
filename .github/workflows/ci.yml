@@ -311,6 +311,18 @@ jobs:
           fi
           echo "policies render only when enabled; the api admits only the frontend"
 
+      - name: Guard - PodDisruptionBudgets keep an explicit maxUnavailable
+        # codex review on #53: 0 is how an operator blocks voluntary evictions,
+        # and a `default` fallback silently turned it into 1.
+        run: |
+          render() { helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets "$@"; }
+          [ "$(render | grep -c '^  maxUnavailable: 1$')" -eq 3 ] || { echo "want three PDBs at maxUnavailable 1 by default" >&2; exit 1; }
+          [ "$(render --set podDisruptionBudget.maxUnavailable=0 | grep -c '^  maxUnavailable: 0$')" -eq 3 ] || {
+            echo "podDisruptionBudget.maxUnavailable=0 did not render as 0" >&2
+            exit 1
+          }
+          echo "PDBs default to maxUnavailable 1 and keep an explicit 0"
+
       - name: Guard - placement reaches its pods, and the migrate hook takes the api's
         # #53: a hook left off a tainted node pool stays Pending and times out
         # the install, so the api's tolerations must reach it too.

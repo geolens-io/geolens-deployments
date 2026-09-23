@@ -81,8 +81,8 @@ jobs:
         # no-op — it still leaves packaged .tgz files behind, and Helm derives
         # the OCI tag from the chart version. Probe the registry first so a
         # rerun or non-bump merge never re-pushes an existing version.
-        # #53: sign the digest helm push reports, never a tag, so the signature
-        # covers exactly the bytes pushed.
+        # #53: sign the digest helm reports, never a tag, so the signature
+        # covers exactly the bytes in the registry.
         env:
           CHARTS: ghcr.io/${{ github.repository_owner }}/charts
         run: |
@@ -95,21 +95,35 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
             --username "${{ github.actor }}" --password-stdin
           version=$(awk '/^version:/ {print $2}' helm/geolens/Chart.yaml)
-          if helm pull "oci://$CHARTS/geolens" \
-              --version "$version" -d "$(mktemp -d)" >/dev/null 2>&1; then
-            echo "geolens-$version already in GHCR — skipping OCI push"
-            exit 0
-          fi
-          for pkg in "${pkgs[@]}"; do
-            out=$(helm push "$pkg" "oci://$CHARTS" 2>&1)
-            echo "$out"
+          identity="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/.github/workflows/release-charts.yml@refs/heads/main"
+          if out=$(helm pull "oci://$CHARTS/geolens" --version "$version" -d "$(mktemp -d)" 2>&1); then
+            # codex review on #53: a run that pushed but died before signing
+            # leaves this version unsigned, and every rerun lands here, so an
+            # existing version is verified and signed if it is not.
             digest=$(sed -n 's/^Digest: //p' <<<"$out")
             if [ -z "$digest" ]; then
-              echo "::error::helm push reported no digest for $pkg; refusing to publish it unsigned"
+              echo "::error::helm pull reported no digest for geolens-$version"
               exit 1
             fi
-            cosign sign --yes "$CHARTS/geolens@$digest"
-          done
+            if cosign verify "$CHARTS/geolens@$digest" --certificate-identity "$identity" \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null 2>&1; then
+              echo "geolens-$version is already in GHCR and signed"
+            else
+              echo "geolens-$version is in GHCR but unsigned; signing it"
+              cosign sign --yes "$CHARTS/geolens@$digest"
+            fi
+          else
+            for pkg in "${pkgs[@]}"; do
+              out=$(helm push "$pkg" "oci://$CHARTS" 2>&1)
+              echo "$out"
+              digest=$(sed -n 's/^Digest: //p' <<<"$out")
+              if [ -z "$digest" ]; then
+                echo "::error::helm push reported no digest for $pkg; refusing to publish it unsigned"
+                exit 1
+              fi
+              cosign sign --yes "$CHARTS/geolens@$digest"
+            done
+          fi
           echo "signed=$version" >> "$GITHUB_OUTPUT"
 
       - name: Verify anonymous OCI pull and signature

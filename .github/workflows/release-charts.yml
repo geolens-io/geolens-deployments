@@ -98,10 +98,11 @@ jobs:
             --username "${{ github.actor }}" --password-stdin
           version=$(awk '/^version:/ {print $2}' helm/geolens/Chart.yaml)
           identity="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/.github/workflows/release-charts.yml@refs/heads/main"
-          if out=$(helm pull "oci://$CHARTS/geolens" --version "$version" -d "$(mktemp -d)" 2>&1); then
+          pulled=$(mktemp -d)
+          if out=$(helm pull "oci://$CHARTS/geolens" --version "$version" -d "$pulled" 2>&1); then
             # codex review on #53: a run that pushed but died before signing
-            # leaves this version unsigned, and every rerun lands here, so an
-            # existing version is verified and signed if it is not.
+            # leaves this version unsigned, and every rerun lands here. Sign it
+            # only if its files match this commit's (helm 3 tarballs differ by mtime).
             digest=$(sed -n 's/^Digest: //p' <<<"$out")
             if [ -z "$digest" ]; then
               echo "::error::helm pull reported no digest for geolens-$version"
@@ -111,7 +112,14 @@ jobs:
                 --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null 2>&1; then
               echo "geolens-$version is already in GHCR and signed"
             else
-              echo "geolens-$version is in GHCR but unsigned; signing it"
+              mkdir "$pulled/registry" "$pulled/commit"
+              tar -xzf "$pulled/geolens-$version.tgz" -C "$pulled/registry"
+              tar -xzf ".cr-release-packages/geolens-$version.tgz" -C "$pulled/commit"
+              if ! diff -rq "$pulled/registry" "$pulled/commit"; then
+                echo "::error::geolens-$version in GHCR is unsigned and differs from the chart this commit packages; not signing it"
+                exit 1
+              fi
+              echo "geolens-$version is in GHCR unsigned and matches this commit's chart; signing it"
               cosign sign --yes "$CHARTS/geolens@$digest"
             fi
           else

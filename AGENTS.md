@@ -100,8 +100,10 @@ frontend but not the api, titiler or worker, then runs
 account.
 
 `release-charts.yml` runs when `chart-ci` succeeds on a push to `main`, from
-the commit CI tested, and on `workflow_dispatch`. It signs each OCI chart it
-pushes with keyless cosign and verifies the signature anonymously.
+the commit CI tested, and on `workflow_dispatch` from `main`. It signs each OCI
+chart it pushes with keyless cosign, signs an existing unsigned version only
+when its files match the tested commit's package, and verifies the signature
+anonymously.
 `version-drift.yml` runs weekly (Mondays 06:17 UTC) and on dispatch.
 
 ## Versioning

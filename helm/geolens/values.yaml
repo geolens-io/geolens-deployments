@@ -67,6 +67,22 @@ api:
   # your pod CIDR here, e.g. [{name: FORWARDED_ALLOW_IPS, value: 10.42.0.0/16}].
   extraEnv: []
   extraVolumeMounts: []
+  # Placement for the api pods. The migrate hook Job uses the same values, so
+  # a toleration for a dedicated node pool reaches the hook too; without it
+  # the hook stays Pending and the install or upgrade times out. Spread
+  # constraints need their own labelSelector, e.g.
+  #   topologySpreadConstraints:
+  #     - maxSkew: 1
+  #       topologyKey: kubernetes.io/hostname
+  #       whenUnsatisfiable: ScheduleAnyway
+  #       labelSelector:
+  #         matchLabels:
+  #           app.kubernetes.io/instance: geolens
+  #           app.kubernetes.io/component: api
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
 
 worker:
   replicas: 1
@@ -82,6 +98,13 @@ worker:
   terminationGracePeriodSeconds: 35
   extraEnv: []
   extraVolumeMounts: []
+  # Placement, as for api.nodeSelector and friends. Large raster ingests are
+  # the most memory-hungry work in the stack, so this is the pod most worth
+  # pinning to bigger nodes.
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
 
 frontend:
   replicas: 2
@@ -129,6 +152,11 @@ frontend:
     runAsGroup: 101
   resources: {}
   extraEnv: []
+  # Placement, as for api.nodeSelector and friends.
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
 
 titiler:
   # Raster (COG) tile rendering, part of the standard GeoLens topology.
@@ -199,6 +227,11 @@ titiler:
   #
   # Anything set here still wins: extraEnv is emitted after the derived block.
   extraEnv: []
+  # Placement, as for api.nodeSelector and friends.
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
 
 migrate:
   # Run Alembic migrations as a pre-install/pre-upgrade hook Job, before any
@@ -357,6 +390,40 @@ staging:
       - ReadWriteMany
     size: 20Gi
 
+# Containers run with a read-only root filesystem, as compose runs these images.
+# The api, worker and migrate hook get emptyDirs at /tmp and /home/appuser, the
+# frontend at /tmp and /var/cache/nginx (its raster tile cache), and titiler at
+# /tmp; that is everything they write outside /app/staging. Set false only if
+# something you add writes elsewhere. Titiler keeps its read-only root either
+# way.
+readOnlyRootFilesystem: true
+
+# PodDisruptionBudgets for the api, frontend and titiler, so a node drain evicts
+# one pod of each at a time. maxUnavailable rather than minAvailable: with a
+# single replica the pod can still be evicted, where minAvailable: 1 would
+# block the drain forever.
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+# NetworkPolicies, off by default because they only work with a CNI that
+# enforces them and the frontend's rule depends on where your ingress
+# controller runs. When enabled, only this release's frontend reaches the api
+# (so nothing can route around the edge or feed the api a forged
+# X-Forwarded-For), only the api reaches titiler, and nothing reaches the
+# worker. Kubelet probes are unaffected. Egress is left open: the database,
+# bucket and cache live wherever you put them.
+networkPolicy:
+  enabled: false
+  # Peers allowed to scrape /metrics on the api and worker, e.g.
+  #   - namespaceSelector:
+  #       matchLabels:
+  #         kubernetes.io/metadata.name: monitoring
+  metricsFrom: []
+  # Peers allowed to reach the frontend, typically the ingress controller's
+  # namespace. Empty leaves the frontend open to the whole cluster.
+  frontendFrom: []
+
 # Applied to api, worker, and migrate pods (uid 1001 matches the appuser baked
 # into the backend images). The frontend and titiler have their own
 # podSecurityContext above. Every container also drops all capabilities, runs
@@ -368,4 +435,7 @@ podSecurityContext:
   runAsGroup: 1001
   fsGroup: 1001
 
+# Volumes for the api, worker and migrate pods to mount through their
+# extraVolumeMounts. The chart already uses the names staging, tmp, home and
+# nginx-cache; pick others.
 extraVolumes: []

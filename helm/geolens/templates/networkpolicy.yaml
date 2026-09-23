@@ -1,0 +1,105 @@
+{{- $np := .Values.networkPolicy | default dict }}
+{{- if $np.enabled }}
+{{- /* #53: enforce "everything through the edge" below the ingress too. Only
+     this release's frontend reaches the api, so no other pod can bypass the
+     edge or hand the api a forged X-Forwarded-For (FORWARDED_ALLOW_IPS="*"). */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "geolens.fullname" . }}-api
+  labels:
+    {{- include "geolens.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "geolens.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "geolens.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: frontend
+      ports:
+        - port: http
+    {{- with $np.metricsFrom }}
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - port: http
+    {{- end }}
+{{- if .Values.titiler.enabled }}
+---
+# Only the api calls titiler (TITILER_BASE_URL); raster tiles reach it through
+# the api's proxy, never directly from the edge.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "geolens.fullname" . }}-titiler
+  labels:
+    {{- include "geolens.labels" . | nindent 4 }}
+    app.kubernetes.io/component: titiler
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "geolens.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: titiler
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "geolens.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: api
+      ports:
+        - port: http
+{{- end }}
+---
+# The worker serves nothing but its health and metrics port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "geolens.fullname" . }}-worker
+  labels:
+    {{- include "geolens.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "geolens.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  policyTypes: [Ingress]
+  {{- with $np.metricsFrom }}
+  ingress:
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - port: health
+  {{- else }}
+  ingress: []
+  {{- end }}
+{{- with $np.frontendFrom }}
+---
+# The edge. Left open unless frontendFrom names who may reach it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "geolens.fullname" $ }}-frontend
+  labels:
+    {{- include "geolens.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "geolens.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - port: http
+{{- end }}
+{{- end }}

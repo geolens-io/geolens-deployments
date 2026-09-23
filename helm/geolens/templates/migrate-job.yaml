@@ -36,6 +36,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* #53: the api's placement; a hook left off tainted nodes never runs. */}}
+      {{- with include "geolens.scheduling" .Values.api | trim }}
+      {{- . | nindent 6 }}
+      {{- end }}
       containers:
         - name: migrate
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
@@ -130,15 +134,16 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
-          {{- with (.Values.migrate | default dict).extraVolumeMounts }}
-          # This Job connects to the same database as the api, so anything the
-          # api must MOUNT to reach it — most often a CA bundle for
-          # DATABASE_SSL_MODE=verify-full — this Job needs too. Without it the
-          # pre-upgrade hook is the one pod that cannot be given the file, and
-          # it fails before any api pod rolls.
           volumeMounts:
+            {{- include "geolens.backendScratchMounts" . | nindent 12 }}
+            {{- with (.Values.migrate | default dict).extraVolumeMounts }}
+            # This Job connects to the same database as the api, so anything the
+            # api must MOUNT to reach it — most often a CA bundle for
+            # DATABASE_SSL_MODE=verify-full — this Job needs too. Without it the
+            # pre-upgrade hook is the one pod that cannot be given the file, and
+            # it fails before any api pod rolls.
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
       {{- /* Only the volumes this Job actually mounts. extraVolumes is shared
            with the api and worker, and attaching one the migration does not use
            can wedge the hook: a ReadWriteOnce PVC already attached to another
@@ -155,8 +160,9 @@ spec:
       {{- $volumes = append $volumes . }}
       {{- end }}
       {{- end }}
-      {{- with $volumes }}
       volumes:
+        {{- include "geolens.backendScratchVolumes" . | nindent 8 }}
+        {{- with $volumes }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
 {{- end }}

@@ -31,6 +31,9 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with include "geolens.scheduling" .Values.frontend | trim }}
+      {{- . | nindent 6 }}
+      {{- end }}
       containers:
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
@@ -93,6 +96,14 @@ spec:
             {{- with .Values.frontend.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          # #53: what nginx writes under the read-only root, as compose mounts
+          # them: the runtime SPA copy, config, pid and temp files in /tmp,
+          # and the raster tile proxy cache.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
           readinessProbe:
             httpGet:
               path: /
@@ -103,3 +114,8 @@ spec:
               port: http
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}

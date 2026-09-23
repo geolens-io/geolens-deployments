@@ -1,0 +1,26 @@
+{{- /* #53: a node drain evicts one pod of each serving component at a time.
+     maxUnavailable, not minAvailable, so a single replica can still be evicted
+     and a drain never deadlocks. An absent map (--reuse-values) means enabled. */}}
+{{- $pdb := .Values.podDisruptionBudget | default (dict "enabled" true "maxUnavailable" 1) }}
+{{- if $pdb.enabled }}
+{{- $components := list "api" "frontend" }}
+{{- if .Values.titiler.enabled }}
+{{- $components = append $components "titiler" }}
+{{- end }}
+{{- range $components }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "geolens.fullname" $ }}-{{ . }}
+  labels:
+    {{- include "geolens.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ . }}
+spec:
+  maxUnavailable: {{ $pdb.maxUnavailable | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "geolens.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ . }}
+{{- end }}
+{{- end }}

@@ -8,7 +8,7 @@ for Kubernetes and AWS. No application code lives here.
 `helm/geolens/` is the chart. `Chart.yaml` carries `version` and `appVersion`,
 `values.yaml` documents every value inline, and `templates/` holds:
 
-- `_helpers.tpl`: name, fullname, label, secret-name and ServiceAccount-name helpers.
+- `_helpers.tpl`: name, fullname, label, secret-name and ServiceAccount-name helpers, plus the shared container security context, scratch volumes, and per-component placement.
 - `configmap.yaml`: non-secret app env (`ENVIRONMENT`, public URLs, `STORAGE_PROVIDER`, S3 settings, `DATABASE_SSL_MODE`).
 - `secret.yaml`: chart-managed Secret, rendered only when `secrets.existingSecret` is empty.
 - `serviceaccount.yaml`: optional ServiceAccount for IRSA / Pod Identity.
@@ -17,6 +17,8 @@ for Kubernetes and AWS. No application code lives here.
 - `migrate-job.yaml`: Alembic `upgrade heads` as a pre-install/pre-upgrade hook.
 - `staging-pvc.yaml`: optional shared `/app/staging` claim.
 - `ingress.yaml`: single route, everything to the frontend edge.
+- `pdb.yaml`: PodDisruptionBudgets (`maxUnavailable: 1`) for the api, frontend and titiler.
+- `networkpolicy.yaml`: opt-in NetworkPolicies; only the frontend reaches the api, only the api reaches titiler.
 - `NOTES.txt`: post-install URL plus warnings for old frontend and api tags and for `storage.backend=local` without staging persistence.
 
 `examples/` holds values files to adapt (`values-aws.yaml`, an EKS install).
@@ -31,7 +33,11 @@ manual counterpart to the recipe for the same cloud, so keep the two in step.
 Provider-neutral material stays on the docs site.
 
 `.github/ci/postgres.yaml` is a CI-only PostGIS + pgvector deployment for the
-kind test. It is not a production manifest.
+kind test. It is not a production manifest. `.github/ci/kind-calico.yaml`
+creates that cluster without kindnet, `ingest-smoke.sh` pushes a vector file and
+`smoke.tif` through a running install's edge and fetches a raster tile, and
+`.github/dependabot.yml` keeps the SHA-pinned actions and the Terraform
+providers current.
 
 ## Build, Test, and Validate Commands
 
@@ -56,31 +62,35 @@ template matrix uses.
 
 ### What CI runs
 
-`ci.yml` (push to main, and every PR) has three jobs. `lint-and-template` lints,
-renders three configurations (defaults; `existingSecret` + ingress + staging
-persistence; Titiler disabled + S3), then runs guards that each pin a bug that
-rendering alone would not catch: Titiler picks exactly one S3 credential source
-and quotes scalar-looking Secret selectors; the migrate hook sets no
-`serviceAccountName` while api/worker/titiler all do; the Secret renders `data`
-and not `stringData`; `s3AmbientCredentials` emits no static keys while the
-static path still fails closed without them; rendering survives
-`serviceAccount=null` and `database=null` (a cross-version `--reuse-values`
-upgrade), and the templates rendered against the latest published chart's
-`values.yaml` (what `--reuse-values` renders against) still run titiler and the
-frontend non-root; `database.sslMode` reaches both the ConfigMap and the
-migrate hook; no `GDAL_HTTP_FOLLOWLOCATION` appears anywhere; an empty install
-fails;
-`GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE` holds a token GDAL accepts; and
-`extraEnv` overrides render exactly once per container and win; all three api
-probes are `/health/live`; the api sets `FORWARDED_ALLOW_IPS` once and an
-`extraEnv` value replaces it; and the stored-secret encryption keys reach both
-the Secret and the migrate hook while a previous key without a current one, or
-a key against an api or worker tag older than 1.18.2, fails to render.
+`ci.yml` (push to main, and every PR) has three jobs. The two chart jobs run
+once per pinned Helm version, 3 and 4.
 
-`install-test` needs that job, creates a kind cluster, applies
-`.github/ci/postgres.yaml`, runs `helm install --wait` at the chart's default
-tags into a `geolens` namespace that enforces Pod Security `restricted`, curls
-`http://geolens-frontend.geolens/api/health` from a pod, then runs
+`lint-and-template` lints, renders three configurations (defaults;
+`existingSecret` + ingress + staging persistence; Titiler disabled + S3), then
+runs guards that each pin a bug rendering alone would not catch:
+
+- Titiler picks exactly one S3 credential source and quotes scalar-looking Secret selectors.
+- The migrate hook sets no `serviceAccountName`, while api/worker/titiler all do.
+- The Secret renders `data`, not `stringData`.
+- `s3AmbientCredentials` emits no static keys, and the static path still fails closed without them.
+- Rendering survives `serviceAccount=null` and `database=null`, and the templates rendered against the latest published chart's `values.yaml` (what `--reuse-values` renders against) still run titiler and the frontend non-root, every container read-only, with three PDBs.
+- `database.sslMode` reaches both the ConfigMap and the migrate hook.
+- NetworkPolicies render only when enabled, and the api's admits only the frontend.
+- Each component's placement reaches its pods, and the migrate hook takes the api's.
+- No `GDAL_HTTP_FOLLOWLOCATION` appears anywhere, and `GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE` holds a token GDAL accepts.
+- An empty install fails.
+- `extraEnv` overrides render exactly once per container and win.
+- All three api probes are `/health/live`; the api sets `FORWARDED_ALLOW_IPS` once and an `extraEnv` value replaces it.
+- The stored-secret encryption keys reach both the Secret and the migrate hook, while a previous key without a current one, or a key against an api or worker tag older than 1.18.2, fails to render.
+
+`install-test` needs that job. It creates a kind cluster on Calico (kindnet's
+policy engine breaks DNS for policy-selected pods), applies
+`.github/ci/postgres.yaml`, and runs `helm install --wait` at the chart's
+default tags into a `geolens` namespace that enforces Pod Security
+`restricted`, with the NetworkPolicies on and a shared staging claim. It curls
+`http://geolens-frontend.geolens/api/health` from a pod, runs `ingest-smoke.sh`
+through a port-forward, checks that a pod outside the release reaches the
+frontend but not the api, titiler or worker, then runs
 `helm upgrade --reuse-values --wait` to re-exercise the migrate hook.
 
 `terraform-validate` runs `terraform fmt -check -recursive`,
@@ -88,13 +98,14 @@ tags into a `geolens` namespace that enforces Pod Security `restricted`, curls
 `test-pilot-profile.sh` in `terraform/aws-ecs-fargate`. It never touches an AWS
 account.
 
-`release-charts.yml` runs on pushes to `main` under `helm/**` and on
-`workflow_dispatch`. `version-drift.yml` runs weekly (Mondays 06:17 UTC) and on
-dispatch.
+`release-charts.yml` runs when `chart-ci` succeeds on a push to `main`, from
+the commit CI tested, and on `workflow_dispatch`. It signs each OCI chart it
+pushes with keyless cosign and verifies the signature anonymously.
+`version-drift.yml` runs weekly (Mondays 06:17 UTC) and on dispatch.
 
 ## Versioning
 
-- Bump `Chart.yaml` `version` for every chart change that should be released. Landing that bump on `main` is what cuts the release: `release-charts` packages the chart with chart-releaser, attaches it to a GitHub Release, updates `gh-pages`, and pushes the same package to `ghcr.io/geolens-io/charts/geolens`. Both legs probe first, so a rerun or a non-bump edit under `helm/` republishes nothing.
+- Bump `Chart.yaml` `version` for every chart change that should be released. Landing that bump on `main` is what cuts the release: once `chart-ci` passes on that push, `release-charts` packages the tested commit with chart-releaser, attaches it to a GitHub Release, updates `gh-pages`, and pushes the same package to `ghcr.io/geolens-io/charts/geolens`, signed with keyless cosign. Both legs probe first, so a rerun or a merge without a version bump republishes nothing.
 - `appVersion`, the three `ghcr.io/geolens-io/*` tags in `values.yaml`, and the `geolens_version` default in `terraform/aws-ecs-fargate/variables.tf` track GeoLens releases and move together. `version-drift` fails when any of them is behind the latest GeoLens release.
 - The `ghcr.io/developmentseed/titiler` tag is bumped deliberately, not on a schedule. Upstream ships security fixes as ordinary bugfix releases with no advisory (geolens#1190).
 
@@ -116,6 +127,7 @@ history behind it belongs in the PR or issue the anchor names.
 - Every container stays within Pod Security `restricted` (`geolens.containerSecurityContext` plus a non-root user); `install-test` enforces it, so a new container or hook fails CI rather than a hardened cluster.
 - The ingress routes everything to the frontend edge. Do not add a path that reaches the api directly; that bypasses the metrics block, the anonymous raster rate limit, and log redaction.
 - Add a CI guard for anything a render can pass while a real cluster fails.
+- Pin every workflow action to a full commit SHA with its version in a trailing comment (`# v4.4.0`); Dependabot updates both. Helm versions in `setup-helm` inputs are pinned by hand.
 
 ## Commit & Pull Request Guidelines
 

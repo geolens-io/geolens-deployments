@@ -79,14 +79,54 @@ share (s3 hands uploads over through the bucket).
 {{- end }}
 {{- end -}}
 
-{{/* fix(#52): Pod Security "restricted" for every container, as compose's
-     no-new-privileges + cap_drop ALL. Titiler states the same inline. */}}
+{{/* fix(#52, #53): Pod Security "restricted" plus a read-only root, as compose
+     runs these images. Titiler states the same inline. An absent value
+     (--reuse-values from an older release) keeps the root read-only. */}}
 {{- define "geolens.containerSecurityContext" -}}
+readOnlyRootFilesystem: {{ ternary .Values.readOnlyRootFilesystem true (hasKey .Values "readOnlyRootFilesystem") }}
 allowPrivilegeEscalation: false
 capabilities:
   drop: ["ALL"]
 seccompProfile:
   type: RuntimeDefault
+{{- end -}}
+
+{{/* #53: what the backend images write outside /app/staging, the same two
+     paths compose mounts as tmpfs next to its read-only root. */}}
+{{- define "geolens.backendScratchMounts" -}}
+- name: tmp
+  mountPath: /tmp
+- name: home
+  mountPath: /home/appuser
+{{- end -}}
+
+{{- define "geolens.backendScratchVolumes" -}}
+- name: tmp
+  emptyDir: {}
+- name: home
+  emptyDir: {}
+{{- end -}}
+
+{{/* #53: one component's placement (nodeSelector, affinity, tolerations,
+     topologySpreadConstraints), rendered only when set. Takes the component's
+     values map; the migrate hook passes the api's. */}}
+{{- define "geolens.scheduling" -}}
+{{- with .nodeSelector }}
+nodeSelector:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .affinity }}
+affinity:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .tolerations }}
+tolerations:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .topologySpreadConstraints }}
+topologySpreadConstraints:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
 {{- end -}}
 
 {{/* fix(#39): one set of encryption-key checks, shared by the Secret and

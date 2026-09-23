@@ -38,6 +38,9 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with include "geolens.scheduling" .Values.worker | trim }}
+      {{- . | nindent 6 }}
+      {{- end }}
       containers:
         - name: worker
           image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
@@ -59,6 +62,7 @@ spec:
           volumeMounts:
             - name: staging
               mountPath: /app/staging
+            {{- include "geolens.backendScratchMounts" . | nindent 12 }}
             {{- with .Values.worker.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -83,6 +87,7 @@ spec:
             {{- toYaml .Values.worker.resources | nindent 12 }}
       volumes:
         {{- include "geolens.stagingVolume" . | nindent 8 }}
+        {{- include "geolens.backendScratchVolumes" . | nindent 8 }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

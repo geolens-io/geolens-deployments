@@ -145,15 +145,17 @@ resource "aws_ecs_task_definition" "app" {
       image     = local.api_image
       essential = true
 
-      # The frontend overwrites X-Forwarded-For before proxying, so trusting
-      # every forwarded address here is safe and gives the api the real client.
-      command = ["sh", "-c", "uv run --no-dev uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --workers 2 --timeout-keep-alive 5 --timeout-graceful-shutdown 30 --limit-max-requests 10000 --proxy-headers --forwarded-allow-ips='*'"]
-
       # Migrations run once in the migrate task instead. The entrypoint has no
       # advisory lock, so several api tasks starting together would race.
       environment = [for k, v in merge(local.backend_env, {
         GEOLENS_API_RUN_MIGRATIONS = "false"
         TITILER_BASE_URL           = "http://127.0.0.1:8081"
+        # The image's own command reads these, so the app's settings see the
+        # real worker count (#52). The frontend overwrites X-Forwarded-For
+        # before proxying, so trusting it gives the api the real client.
+        UVICORN_WORKERS      = "2"
+        UVICORN_MAX_REQUESTS = "10000"
+        FORWARDED_ALLOW_IPS  = "*"
         # Only the api runs multiple uvicorn workers, and only its entrypoint
         # creates this directory. Setting it for the worker or the migrate task
         # crashes them on the first Counter() with a missing-file error.
@@ -162,9 +164,9 @@ resource "aws_ecs_task_definition" "app" {
 
       secrets = local.backend_secrets
 
-      # Process-only, like the chart's liveness probe: /health also probes the
-      # database and object store, and restarting the api for a dependency
-      # outage would hide the cause. The ALB's /api/health is the readiness view.
+      # Process-only, like the chart's probes and the ALB check: /health also
+      # probes the database, object store and cache, and restarting the api
+      # for a dependency outage would hide the cause.
       healthCheck = {
         command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')\" || exit 1"]
         interval    = 30
@@ -240,12 +242,18 @@ resource "aws_ecs_task_definition" "worker" {
       # storage-key helpers from that module and renders quicklooks
       # in-process, as in the prod compose file, which also leaves the worker
       # without it (codex review on #40).
+      # No WORKER_QUEUES (#52): the image default names every queue its release
+      # enqueues to. A pinned list here missed "download" once 1.19.0 added it,
+      # and URL imports sat queued forever.
       environment = [for k, v in merge(local.backend_env, {
         GEOLENS_API_RUN_MIGRATIONS = "false"
         WORKER_CONCURRENCY         = tostring(var.worker_concurrency)
-        WORKER_QUEUES              = "priority,ingest,raster,ingest-auth-v2"
         WORKER_SHUTDOWN_TIMEOUT    = "30"
       }, var.extra_env) : { name = k, value = v }]
+
+      # Compose's 35s (#52): SIGKILL lands after the worker's own 30s
+      # shutdown window, so it releases its jobs first.
+      stopTimeout = 35
 
       secrets = local.backend_secrets
 
@@ -330,7 +338,7 @@ resource "terraform_data" "migrate" {
     command = <<-SH
       set -e
       task=$(aws ecs run-task --region "$REGION" --cluster "$CLUSTER" \
-        --task-definition "$TASK_DEF" --launch-type FARGATE \
+        --task-definition "$TASK_DEF" --launch-type FARGATE --propagate-tags TASK_DEFINITION \
         --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
         --query 'tasks[0].taskArn' --output text)
       echo "migrate task $task"
@@ -372,6 +380,10 @@ resource "aws_ecs_service" "app" {
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.app_desired_count
   launch_type     = "FARGATE"
+
+  # Tasks carry the stack's tags (#52), so Fargate, the largest line item,
+  # shows up under the pilot's Deployment cost-allocation tag.
+  propagate_tags = "SERVICE"
 
   network_configuration {
     subnets          = aws_subnet.public[*].id
@@ -415,6 +427,7 @@ resource "aws_ecs_service" "worker" {
   task_definition = aws_ecs_task_definition.worker.arn
   desired_count   = 1
   launch_type     = "FARGATE"
+  propagate_tags  = "SERVICE"
 
   network_configuration {
     subnets          = aws_subnet.public[*].id

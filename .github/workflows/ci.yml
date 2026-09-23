@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   lint-and-template:
     runs-on: ubuntu-latest
@@ -245,6 +248,31 @@ jobs:
             }
           echo "renders with serviceAccount/database absent (cross-version --reuse-values safe)"
 
+      - name: Guard - a --reuse-values upgrade from the published chart keeps pods non-root
+        # codex review on #52: --reuse-values renders the new templates against
+        # the previous release's values, so values added since are absent. Render
+        # exactly that, against the latest published chart's values.yaml, and
+        # require the non-root pod defaults Pod Security "restricted" admits.
+        run: |
+          chart=$(mktemp -d)/geolens
+          cp -R helm/geolens "$chart"
+          helm show values oci://ghcr.io/geolens-io/charts/geolens > "$chart/values.yaml"
+          render() {
+            helm template geolens "$chart" --set secrets.existingSecret=geolens-secrets \
+              --show-only "templates/$1.yaml"
+          }
+          for want in titiler-deployment:1001 frontend-deployment:101; do
+            tpl=${want%%:*}
+            uid=${want##*:}
+            pod=$(render "$tpl" | awk '/^    spec:/{f=1} f && /^      securityContext:/{p=1; next} p && /^      [a-z]/{exit} p')
+            if ! grep -q 'runAsNonRoot: true' <<<"$pod" || ! grep -q "runAsUser: $uid\$" <<<"$pod"; then
+              echo "$tpl lost its non-root pod securityContext under the published chart's values:" >&2
+              echo "$pod" >&2
+              exit 1
+            fi
+          done
+          echo "reused published values still render titiler as uid 1001 and the frontend as uid 101"
+
       - name: Guard - database.sslMode reaches the migrate hook too
         # The migrate Job cannot read the chart ConfigMap (hook ordering), so a
         # mode configured only there would leave migrations on the application
@@ -323,7 +351,7 @@ jobs:
             --set storage.backend=s3 --set storage.s3Bucket=geolens \
             --set-json 'titiler.extraEnv=[{"name":"GDAL_VRT_ENABLE_RAWRASTERBAND","value":"YES"},{"name":"MALLOC_ARENA_MAX","value":"4"}]' \
             --set-json 'frontend.extraEnv=[{"name":"API_BASE_URL","value":"https://geo.example.com"}]' \
-            --set-json 'api.extraEnv=[{"name":"GEOLENS_API_RUN_MIGRATIONS","value":"true"},{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"}]' \
+            --set-json 'api.extraEnv=[{"name":"GEOLENS_API_RUN_MIGRATIONS","value":"true"},{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"},{"name":"FORWARDED_ALLOW_IPS","value":"10.42.0.0/16"}]' \
             --set-json 'migrate.extraEnv=[{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"}]')
           # The migrate Job renders api.extraEnv AND migrate.extraEnv, so the
           # same name set in both lands twice in one container — the case the
@@ -355,25 +383,47 @@ jobs:
           fi
           echo "extraEnv overrides render uniquely and win"
 
-  # Real install against a kind cluster: exercises the install-time failure
-  # classes static rendering provably cannot catch (hook ordering, Job
-  # immutability on upgrade, probe budgets, FQDN proxy resolution through the
-  # frontend edge). Uses the published GHCR images at the chart's default tags.
-      - name: Guard - api liveness is process-only, readiness is deep
-        # #36 / geolens#1804: on /health a database outage made kubelet
-        # restart every api pod in a loop. Liveness must be /health/live and
-        # readiness must stay /health.
+      - name: Guard - api probes are all process-only
+        # #36 / geolens#1804: as liveness, /health restarted every api pod in a
+        # loop during a database outage. #52: it also 503s on the optional
+        # cache, so as readiness a Valkey outage 502'd all of /api, and as the
+        # startup probe it crash-looped any pod that started during one.
         run: |
           api=$(helm template geolens helm/geolens \
             --set secrets.existingSecret=geolens-secrets \
             --show-only templates/api-deployment.yaml)
-          live=$(printf '%s\n' "$api" | awk '/livenessProbe:/{f=1} f && /path:/{print $2; exit}')
-          ready=$(printf '%s\n' "$api" | awk '/readinessProbe:/{f=1} f && /path:/{print $2; exit}')
-          if [ "$live" != "/health/live" ] || [ "$ready" != "/health" ]; then
-            echo "api probes drifted: liveness=$live readiness=$ready (want /health/live and /health)" >&2
+          for probe in startupProbe readinessProbe livenessProbe; do
+            path=$(printf '%s\n' "$api" | awk -v p="$probe:" '$1 == p {f=1} f && /path:/{print $2; exit}')
+            if [ "$path" != "/health/live" ]; then
+              echo "api $probe path is '$path'; every api probe must be /health/live" >&2
+              exit 1
+            fi
+          done
+          echo "api startup, readiness and liveness all use /health/live"
+
+      - name: Guard - the api trusts the X-Forwarded-For the edge writes
+        # #52: uvicorn trusts forwarded headers only from 127.0.0.1 by default,
+        # so every client shared the frontend pod's rate-limit buckets and five
+        # failed logins from anyone locked out everyone. An operator override
+        # must replace the default, not duplicate it.
+        run: |
+          api=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --show-only templates/api-deployment.yaml)
+          if [ "$(grep -A1 'name: FORWARDED_ALLOW_IPS$' <<<"$api" | grep -c 'value: "\*"')" -ne 1 ]; then
+            echo "the api container must set FORWARDED_ALLOW_IPS=\"*\" exactly once" >&2
             exit 1
           fi
-          echo "api liveness=/health/live readiness=/health"
+          narrowed=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set-json 'api.extraEnv=[{"name":"FORWARDED_ALLOW_IPS","value":"10.42.0.0/16"}]' \
+            --show-only templates/api-deployment.yaml)
+          if [ "$(grep -c 'name: FORWARDED_ALLOW_IPS$' <<<"$narrowed")" -ne 1 ] || \
+             ! grep -A1 'name: FORWARDED_ALLOW_IPS$' <<<"$narrowed" | grep -q '10.42.0.0/16'; then
+            echo "an api.extraEnv FORWARDED_ALLOW_IPS must replace the chart default" >&2
+            exit 1
+          fi
+          echo "the api trusts the edge's X-Forwarded-For; an extraEnv override replaces it"
 
       - name: Guard - stored-secret encryption keys are threaded and validated
         # #39 / geolens#1882: both keys reach the Secret AND the migrate hook,
@@ -424,6 +474,11 @@ jobs:
           fi
           echo "encryption keys threaded, invalid combinations rejected, extraEnv override wins once"
 
+  # Real install against a kind cluster: exercises the install-time failure
+  # classes static rendering provably cannot catch (hook ordering, Job
+  # immutability on upgrade, probe budgets, FQDN proxy resolution through the
+  # frontend edge, Pod Security admission). Uses the published GHCR images at
+  # the chart's default tags.
   install-test:
     name: kind install test
     runs-on: ubuntu-latest
@@ -450,8 +505,13 @@ jobs:
           kubectl logs -l app=geolens-ci-db --all-containers --tail=200 --prefix
 
       - name: helm install --wait
+        # #52: into a namespace that enforces Pod Security "restricted", so a
+        # pod spec that renders cleanly but that admission rejects fails here
+        # rather than on an operator's hardened cluster.
         run: |
-          helm install geolens helm/geolens \
+          kubectl create namespace geolens
+          kubectl label namespace geolens pod-security.kubernetes.io/enforce=restricted
+          helm install geolens helm/geolens --namespace geolens \
             --set api.replicas=1 \
             --set frontend.replicas=1 \
             --set secrets.databaseUrlOverride='postgresql+asyncpg://geolens:chart-ci-db-password@geolens-ci-db.default.svc.cluster.local:5432/geolens' \
@@ -466,21 +526,21 @@ jobs:
         run: |
           kubectl run smoke --image=curlimages/curl:8.10.1 --restart=Never \
             --attach --rm --command -- \
-            curl -sf --retry 5 --retry-delay 3 http://geolens-frontend/api/health
+            curl -sf --retry 5 --retry-delay 3 http://geolens-frontend.geolens/api/health
 
       - name: helm upgrade idempotence (migrate hook re-run)
         run: |
-          helm upgrade geolens helm/geolens --reuse-values --wait --timeout 10m
+          helm upgrade geolens helm/geolens --namespace geolens --reuse-values --wait --timeout 10m
 
       - name: Diagnostics
         if: failure()
         run: |
           kubectl get pods -A -o wide
-          kubectl get events --sort-by=.lastTimestamp | tail -50
-          kubectl describe pods -l app.kubernetes.io/instance=geolens
-          for c in $(kubectl get pods -l app.kubernetes.io/instance=geolens -o name); do
+          kubectl get events -A --sort-by=.lastTimestamp | tail -50
+          kubectl -n geolens describe pods -l app.kubernetes.io/instance=geolens
+          for c in $(kubectl -n geolens get pods -l app.kubernetes.io/instance=geolens -o name); do
             echo "=== logs $c ==="
-            kubectl logs "$c" --all-containers --tail=100 || true
+            kubectl -n geolens logs "$c" --all-containers --tail=100 || true
           done
           kubectl logs -l app=geolens-ci-db --tail=50 || true
 

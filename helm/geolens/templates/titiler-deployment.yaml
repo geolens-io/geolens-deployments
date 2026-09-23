@@ -49,8 +49,17 @@ spec:
         checksum/serviceaccount: {{ include (print $.Template.BasePath "/serviceaccount.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "geolens.serviceAccountName" . | quote }}
-      # No podSecurityContext: the upstream titiler image declares its own
-      # user; the chart's uid 1001 is a backend-image contract.
+      {{- /* fix(#52): the upstream image declares no USER, so titiler ran as root.
+           codex review on #52: --reuse-values from a release without this value
+           supplies none, so an absent key falls back to the non-root default. */}}
+      {{- $titilerPsc := dict "runAsNonRoot" true "runAsUser" 1001 "runAsGroup" 1001 }}
+      {{- if hasKey .Values.titiler "podSecurityContext" }}
+      {{- $titilerPsc = .Values.titiler.podSecurityContext }}
+      {{- end }}
+      {{- with $titilerPsc }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

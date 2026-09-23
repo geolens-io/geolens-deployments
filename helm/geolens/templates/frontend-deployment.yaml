@@ -17,6 +17,16 @@ spec:
         {{- include "geolens.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
     spec:
+      {{- /* codex review on #52: --reuse-values from a release without this value
+           supplies none, so an absent key falls back to nginx's non-root uid. */}}
+      {{- $frontendPsc := dict "runAsNonRoot" true "runAsUser" 101 "runAsGroup" 101 }}
+      {{- if hasKey .Values.frontend "podSecurityContext" }}
+      {{- $frontendPsc = .Values.frontend.podSecurityContext }}
+      {{- end }}
+      {{- with $frontendPsc }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -25,6 +35,8 @@ spec:
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          securityContext:
+            {{- include "geolens.containerSecurityContext" . | nindent 12 }}
           ports:
             - name: http
               containerPort: 8080

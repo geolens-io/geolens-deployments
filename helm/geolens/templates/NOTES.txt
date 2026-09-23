@@ -15,9 +15,9 @@ release is published (the weekly version-drift CI in this repo flags it).
 {{- if semverCompare "<1.18.0-0" $apiTag }}
 
 WARNING: api image {{ $apiTag }} predates the /health/live endpoint (GeoLens
-1.18.0), which this chart's api livenessProbe now uses (#36). Older images
-answer 404 there, so kubelet WILL restart the api pods in a loop. Bump the
-three ghcr.io/geolens-io/* image tags to >= 1.18.0.
+1.18.0), which every api probe in this chart uses (#36, #52). Older images
+answer 404 there, so the api pods never become ready and kubelet WILL restart
+them in a loop. Bump the three ghcr.io/geolens-io/* image tags to >= 1.18.0.
 {{- end }}
 {{- end }}
 
@@ -35,12 +35,11 @@ then open http://localhost:8080
 
 Sign in with the admin credentials you configured (secrets.adminUsername).
 
-{{- if not .Values.staging.persistence.enabled }}
+{{- if and (eq .Values.storage.backend "local") (not .Values.staging.persistence.enabled) }}
 
-WARNING: staging.persistence is disabled, so api/worker/titiler each see a
-private emptyDir at /app/staging. Uploads land on one api pod and the worker
-cannot read them — ingest will fail across pods{{- if eq .Values.storage.backend "local" }}, and with storage.backend=local
-stored rasters/exports are LOST whenever a pod restarts{{- end }}. Enable
-staging.persistence (ReadWriteMany) and prefer storage.backend=s3 — see the
-README's Storage section.
+WARNING: storage.backend=local without staging.persistence keeps every file in
+a private emptyDir at /app/staging in each pod. The worker cannot read an
+upload that landed on an api pod, so ingest fails, and stored rasters and
+exports are LOST whenever a pod restarts. Use storage.backend=s3, or enable
+staging.persistence (ReadWriteMany). See the README's Storage section.
 {{- end }}

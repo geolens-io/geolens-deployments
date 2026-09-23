@@ -40,6 +40,7 @@ runs `alembic upgrade heads`. It runs before the services start.
 - Terraform 1.9 or newer
 - AWS CLI v2, on the machine running Terraform. The migrate step shells out to
   it, using the same credentials Terraform has.
+- `jq`, which the `admin_password_command` output pipes the secret through
 - An AWS account and credentials with permission to create VPC, ECS, RDS,
   ElastiCache, S3, IAM and Secrets Manager resources
 - A remote state backend before storing participant data. The module declares
@@ -159,6 +160,13 @@ The default path uses local Terraform state and can serve plain HTTP. Use it
 only with disposable trial data. Hosted participant data uses the profile
 above, including remote state and HTTPS.
 
+Plain HTTP is enough for an API or CLI smoke test, not for trying the web UI.
+The browser drops the app's Secure session cookies on an `http://` origin, so a
+sign-in ends when its access token expires, and the import form fails outright
+because it calls `crypto.randomUUID`, which browsers only provide to HTTPS
+pages. Upload through the API or the GeoLens CLI instead, or set up the
+certificate below.
+
 ## Custom domain and TLS
 
 Request an ACM certificate in the same region, then set both of these:
@@ -234,8 +242,8 @@ the two limits cannot drift apart.
 - `db_instance_class` sizes the database. The cache is `cache.t4g.micro` in
   `data.tf`. A `db.t4g.micro` allows roughly 100 connections and each api
   task is tuned for a budget of about 70, so raising `app_desired_count` past
-  two, or the uvicorn worker count, needs a larger class or an external
-  pooler.
+  two, or the uvicorn worker count (`UVICORN_WORKERS`, 2, overridable through
+  `extra_env`), needs a larger class or an external pooler.
 - `worker_ephemeral_storage_gb` is the worker's scratch disk. With S3 storage
   the api never keeps an upload, but the worker pulls a raster down to convert
   it, so a large GeoTIFF plus its COG must fit; Fargate allows up to 200 GiB.
@@ -296,8 +304,8 @@ organization-specific stack:
    and database snapshot alone are not a complete participant handoff.
 
 Do not onboard until an operator has recorded a successful restore and export
-rehearsal for this profile. This recipe has not been applied to AWS as part of
-this change.
+rehearsal for this profile. The pilot profile itself has not been applied to
+AWS yet.
 
 ### Retention and deletion
 
@@ -354,5 +362,15 @@ features read back from the collection items endpoint. The last run, on the
 final module, saw the api, titiler and worker containers pass their health
 checks, both deployments complete without a rollback, and a browser sign-in
 whose admin overview reported the external database, S3 storage and Redis
-cache all healthy. The pilot profile and its new S3 lifecycle path have only
-been statically validated; they have not been applied or restore-tested in AWS.
+cache all healthy.
+
+Deployed again on 2026-09-22 with GeoLens 1.20.0, then destroyed. A raster
+uploaded through the api was converted by the worker and drawn in the browser
+from titiler tiles read out of S3 with the task role. The same run found two
+faults and checked their fixes live (#52). The worker did not subscribe to the
+`download` queue, so URL imports never started; after the fix, the import that
+had waited half an hour ran at once. And with S3 access removed from the task
+role, the load balancer's deep health check failed until ECS stopped the task;
+on `/api/health/live` the same outage left the task running and still serving
+the catalog. The pilot profile has only been statically validated; it has not
+been applied or restore-tested in AWS.

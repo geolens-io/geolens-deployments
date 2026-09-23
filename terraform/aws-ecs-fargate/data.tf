@@ -121,19 +121,23 @@ resource "aws_s3_bucket_versioning" "this" {
   }
 }
 
+# Every bucket aborts abandoned multipart uploads (#52), the backstop
+# clouds/aws.md asks for; before, only a versioned bucket had a lifecycle.
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
-  count = var.s3_versioning_enabled ? 1 : 0
-
   bucket = aws_s3_bucket.this.id
 
-  rule {
-    id     = "expire-noncurrent-versions"
-    status = "Enabled"
+  dynamic "rule" {
+    for_each = var.s3_versioning_enabled ? [1] : []
 
-    filter {}
+    content {
+      id     = "expire-noncurrent-versions"
+      status = "Enabled"
 
-    noncurrent_version_expiration {
-      noncurrent_days = var.s3_noncurrent_version_expiration_days
+      filter {}
+
+      noncurrent_version_expiration {
+        noncurrent_days = var.s3_noncurrent_version_expiration_days
+      }
     }
   }
 
@@ -149,6 +153,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
   }
 
   depends_on = [aws_s3_bucket_versioning.this]
+}
+
+moved {
+  from = aws_s3_bucket_lifecycle_configuration.this[0]
+  to   = aws_s3_bucket_lifecycle_configuration.this
 }
 
 resource "aws_elasticache_subnet_group" "this" {

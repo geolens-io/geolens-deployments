@@ -66,7 +66,8 @@ http://{{ include "geolens.fullname" . }}-api.{{ .Release.Namespace }}.svc.{{ .V
 {{/*
 The shared /app/staging volume (GAP-022 handoff contract — see values.yaml).
 With persistence enabled, api/worker/titiler all mount one RWX claim; without
-it each pod gets its own emptyDir and cross-pod handoff cannot work.
+it each pod gets its own emptyDir, which only storage.backend=local needs to
+share (s3 hands uploads over through the bucket).
 */}}
 {{- define "geolens.stagingVolume" -}}
 - name: staging
@@ -76,6 +77,16 @@ it each pod gets its own emptyDir and cross-pod handoff cannot work.
 {{- else }}
   emptyDir: {}
 {{- end }}
+{{- end -}}
+
+{{/* fix(#52): Pod Security "restricted" for every container, as compose's
+     no-new-privileges + cap_drop ALL. Titiler states the same inline. */}}
+{{- define "geolens.containerSecurityContext" -}}
+allowPrivilegeEscalation: false
+capabilities:
+  drop: ["ALL"]
+seccompProfile:
+  type: RuntimeDefault
 {{- end -}}
 
 {{/* fix(#39): one set of encryption-key checks, shared by the Secret and

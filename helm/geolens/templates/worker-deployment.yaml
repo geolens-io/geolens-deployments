@@ -29,6 +29,9 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "geolens.serviceAccountName" . | quote }}
+      # fix(#52): outlast WORKER_SHUTDOWN_TIMEOUT (default 30s) like compose's
+      # 35s stop_grace_period, so jobs are released before SIGKILL, not during.
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds | default 35 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- with .Values.imagePullSecrets }}
@@ -39,6 +42,8 @@ spec:
         - name: worker
           image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
           imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          securityContext:
+            {{- include "geolens.containerSecurityContext" . | nindent 12 }}
           ports:
             - name: health
               containerPort: 8001

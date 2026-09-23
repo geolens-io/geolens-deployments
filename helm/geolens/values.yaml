@@ -59,6 +59,12 @@ api:
   # the edge. Frontend images < 1.4.10 ignore that variable and stay at 500m.
   uploadMaxSizeMb: "500"
   resources: {}
+  # The chart sets FORWARDED_ALLOW_IPS="*" on the api so uvicorn takes the
+  # client address from the X-Forwarded-For the frontend edge writes. Without
+  # it every user shares the frontend pod's rate-limit buckets (login allows 5
+  # attempts a minute per client). Any pod that can reach the api Service can
+  # set that header too; if untrusted workloads share the cluster, narrow it to
+  # your pod CIDR here, e.g. [{name: FORWARDED_ALLOW_IPS, value: 10.42.0.0/16}].
   extraEnv: []
   extraVolumeMounts: []
 
@@ -69,6 +75,11 @@ worker:
     tag: "1.20.0"
     pullPolicy: IfNotPresent
   resources: {}
+  # Seconds between SIGTERM and SIGKILL. Keep it above WORKER_SHUTDOWN_TIMEOUT
+  # (default 30), the window the worker gives running jobs to finish, so it can
+  # release them before it is killed. Compose uses the same 35s. Raise both
+  # together.
+  terminationGracePeriodSeconds: 35
   extraEnv: []
   extraVolumeMounts: []
 
@@ -107,6 +118,15 @@ frontend:
   #
   # e.g. ["10.42.0.0/16"] or ["10.42.0.0/16", "173.245.48.0/20"]
   trustedProxyCidrs: []
+  # The image runs nginx as uid 101; stating it lets Kubernetes enforce
+  # runAsNonRoot (it cannot verify the image's non-numeric USER). On platforms
+  # that assign UIDs themselves, such as OpenShift, set runAsUser and runAsGroup
+  # to null. An empty map does not clear these: Helm merges it with the
+  # defaults, and the template falls back to them when the key is absent.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
   resources: {}
   extraEnv: []
 
@@ -135,6 +155,15 @@ titiler:
   # interpreters, and the geolens#678 RSS ratchet runs in every one of them —
   # raising workers under an unchanged limit reaches OOMKill sooner, not later.
   workers: 1
+  # The upstream titiler image declares no USER, so without this it runs as
+  # root. uid 1001 is the backend images' user: titiler can then read the
+  # rasters the api writes to a shared staging claim. On platforms that assign
+  # UIDs themselves, such as OpenShift, set runAsUser and runAsGroup to null
+  # (an empty map does not clear them; see frontend.podSecurityContext).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
   # Empty = BestEffort QoS: titiler is evicted first under node pressure and
   # its RSS ratchet (geolens#678) grows unbounded. For production, set a
   # memory limit of roughly 2x the plateau you observe (the demo plateaus
@@ -329,8 +358,10 @@ staging:
     size: 20Gi
 
 # Applied to api, worker, and migrate pods (uid 1001 matches the appuser baked
-# into the backend images). The frontend and titiler images declare their own
-# non-root users and are left to them.
+# into the backend images). The frontend and titiler have their own
+# podSecurityContext above. Every container also drops all capabilities, runs
+# without privilege escalation, and uses the RuntimeDefault seccomp profile,
+# which together meet the Pod Security "restricted" standard.
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1001

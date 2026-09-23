@@ -28,10 +28,22 @@ blocking the unauthenticated `/api/metrics` endpoint, rate-limiting anonymous
 raster traffic, and redacting credentialed paths from its access log. Don't
 route around it.
 
-Probes: the api's readiness probe is the deep `/health` check, so a pod
-leaves the Service while the database or object store is unreachable. Its
-liveness probe is the process-only `/health/live` (app images 1.18.0 and
-later), so a dependency outage is not turned into a restart loop.
+Probes: the api's startup, readiness and liveness probes all use the
+process-only `/health/live` (app images 1.18.0 and later). The deep `/health`
+check fails whenever the optional cache is unreachable, even though the api
+keeps serving from its in-memory fallback, so as a readiness probe it would pull
+every api pod out of the Service during a Valkey outage and every `/api`
+request would return 502. A pod that cannot reach the database at boot still
+never becomes ready: the api exits rather than serve. Point monitoring at
+`/api/health` for dependency status.
+
+Client addresses: the chart sets `FORWARDED_ALLOW_IPS="*"` on the api, so
+uvicorn takes the client address from the `X-Forwarded-For` header the frontend
+edge overwrites. Without it, every request looks like it comes from the
+frontend pod, all users share one set of rate-limit buckets, and five failed
+logins from anyone lock everyone out for a minute. Any pod that can reach the
+api Service directly can set that header too. If untrusted workloads share the
+cluster, narrow the value to your pod CIDR through `api.extraEnv`.
 
 Known limitation behind an ingress controller: the frontend nginx overwrites
 forwarded headers (deliberate anti-spoofing when it is the true edge), so the
@@ -99,6 +111,12 @@ Keys the chart reads from an `existingSecret`:
 The chart sets `ENVIRONMENT=production` by default (API docs hidden, Secure
 session cookie). Override with `--set environment=development` only on
 throwaway clusters.
+
+Serve the ingress over HTTPS. Browsers drop the Secure session cookies on a
+plain-HTTP origin, so a sign-in lasts only until the access token expires, and
+the import form needs a secure context (it calls `crypto.randomUUID`, which
+browsers withhold from plain HTTP). The `kubectl port-forward` in the install
+notes is fine, because browsers treat `localhost` as secure.
 
 Upload sizes: `api.uploadMaxSizeMb` is rendered onto the frontend edge as
 `CLIENT_MAX_BODY_SIZE` too, so raising it no longer needs a second change
@@ -265,6 +283,16 @@ mc admin policy create <alias> geolens-titiler-readonly geolens-titiler-readonly
 mc admin policy attach <alias> geolens-titiler-readonly --user <titiler-user>
 mc admin policy entities <alias> --policy geolens-titiler-readonly
 ```
+
+## Pod security
+
+Every container meets the Kubernetes Pod Security `restricted` standard: no
+privilege escalation, all capabilities dropped, the `RuntimeDefault` seccomp
+profile, and a non-root user. The backend pods run as uid 1001 through
+`podSecurityContext`, the frontend as nginx's uid 101 through
+`frontend.podSecurityContext`, and TiTiler, whose upstream image would
+otherwise run as root, as uid 1001 through `titiler.podSecurityContext`. CI
+installs the chart into a namespace that enforces `restricted`.
 
 ## Database requirements
 

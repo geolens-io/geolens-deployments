@@ -323,23 +323,79 @@ jobs:
           }
           echo "PDBs default to maxUnavailable 1 and keep an explicit 0"
 
-      - name: Guard - placement reaches its pods, and the migrate hook takes the api's
+      - name: Guard - placement reaches its pods, and the migrate hook takes the api's node placement
         # #53: a hook left off a tainted node pool stays Pending and times out
-        # the install, so the api's tolerations must reach it too.
+        # the install, so the api's tolerations must reach it too. codex review
+        # on #53: never its pod affinity or spread, which select api pods.
         run: |
-          rendered=$(helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets \
-            --set-json 'api.tolerations=[{"key":"pool","operator":"Equal","value":"geolens","effect":"NoSchedule"}]' \
-            --set-json 'worker.nodeSelector={"pool":"big"}')
+          cat > "$RUNNER_TEMP/placement.yaml" <<'EOF'
+          api:
+            tolerations:
+              - {key: pool, operator: Equal, value: geolens, effect: NoSchedule}
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions: [{key: node-pool, operator: In, values: [geolens]}]
+              podAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 1
+                    podAffinityTerm: {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/component: api}}}
+              podAntiAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 1
+                    podAffinityTerm: {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/component: api}}}
+            topologySpreadConstraints:
+              - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway, labelSelector: {matchLabels: {app.kubernetes.io/component: api}}}
+          worker:
+            nodeSelector: {pool: big}
+          EOF
+          rendered=$(helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets -f "$RUNNER_TEMP/placement.yaml")
           doc() { awk -v want="$1" 'BEGIN{RS="---"} index($0, "name: " want "\n") && /kind: (Deployment|Job)/'; }
-          for name in geolens-api geolens-migrate; do
-            doc "$name" <<<"$rendered" | grep -q 'key: pool' || { echo "$name lost the api tolerations" >&2; exit 1; }
+          api=$(doc geolens-api <<<"$rendered")
+          migrate=$(doc geolens-migrate <<<"$rendered")
+          for want in tolerations: nodeAffinity: podAffinity: podAntiAffinity: topologySpreadConstraints:; do
+            grep -q "$want" <<<"$api" || { echo "the api lost its $want" >&2; exit 1; }
           done
+          for want in tolerations: nodeAffinity:; do
+            grep -q "$want" <<<"$migrate" || { echo "the migrate hook lost the api's $want" >&2; exit 1; }
+          done
+          if grep -qE 'podAffinity:|podAntiAffinity:|topologySpreadConstraints:' <<<"$migrate"; then
+            echo "the migrate hook took the api's pod affinity or spread; a pre-install hook runs before any api pod exists" >&2
+            exit 1
+          fi
           doc geolens-worker <<<"$rendered" | grep -q 'pool: big' || { echo "worker nodeSelector did not render" >&2; exit 1; }
-          if doc geolens-frontend <<<"$rendered" | grep -qE 'tolerations:|nodeSelector:'; then
+          if doc geolens-frontend <<<"$rendered" | grep -qE 'tolerations:|nodeSelector:|affinity:'; then
             echo "another component's placement leaked into the frontend" >&2
             exit 1
           fi
-          echo "placement renders per component; the migrate hook takes the api's"
+          echo "placement renders per component; the migrate hook takes only the api's node placement"
+
+      - name: Guard - operator volumes never collide with the backend scratch volumes
+        # codex review on #53: an extraVolumes entry named like a chart volume,
+        # or a component mount at /tmp or /home/appuser, must not duplicate a
+        # volume name or mountPath. Admission rejects that; a render does not.
+        run: |
+          check() {
+            rendered=$(cat)
+            for name in geolens-api geolens-worker geolens-migrate; do
+              pod=$(awk -v want="$name" 'BEGIN{RS="---"} index($0, "name: " want "\n") && /kind: (Deployment|Job)/' <<<"$rendered")
+              dupes=$(awk '/^      volumes:/ {v=1; next} v && /^      [a-z]/ {v=0} v && /^        - name: / {print $3}' <<<"$pod" | sort | uniq -d)
+              if [ -n "$dupes" ]; then echo "$1: $name repeats volume names: $dupes" >&2; exit 1; fi
+              for p in /tmp /home/appuser; do
+                n=$(grep -c "mountPath: $p$" <<<"$pod" || true)
+                if [ "$n" -ne 1 ]; then echo "$1: $name mounts $p $n times, want 1" >&2; exit 1; fi
+              done
+            done
+          }
+          render() { helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets "$@"; }
+          render | check defaults
+          render --set-json 'extraVolumes=[{"name":"tmp","emptyDir":{}},{"name":"home","emptyDir":{}}]' \
+            --set-json 'api.extraVolumeMounts=[{"name":"tmp","mountPath":"/tmp"}]' \
+            --set-json 'worker.extraVolumeMounts=[{"name":"home","mountPath":"/home/appuser"}]' \
+            --set-json 'migrate.extraVolumeMounts=[{"name":"tmp","mountPath":"/tmp"},{"name":"home","mountPath":"/home/appuser"}]' \
+            | check overrides
+          echo "backend pods mount /tmp and /home/appuser once each, under unique volume names"
 
       - name: Guard - database.sslMode reaches the migrate hook too
         # The migrate Job cannot read the chart ConfigMap (hook ordering), so a

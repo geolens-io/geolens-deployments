@@ -67,10 +67,12 @@ api:
   # your pod CIDR here, e.g. [{name: FORWARDED_ALLOW_IPS, value: 10.42.0.0/16}].
   extraEnv: []
   extraVolumeMounts: []
-  # Placement for the api pods. The migrate hook Job uses the same values, so
-  # a toleration for a dedicated node pool reaches the hook too; without it
-  # the hook stays Pending and the install or upgrade times out. Spread
-  # constraints need their own labelSelector, e.g.
+  # Placement for the api pods. The migrate hook Job takes the node-level part
+  # (nodeSelector, tolerations, affinity.nodeAffinity), so a toleration for a
+  # dedicated node pool reaches the hook too; without it the hook stays Pending
+  # and the install or upgrade times out. Pod affinity and spread constraints
+  # stay api-only: they select api pods, which a pre-install hook runs before.
+  # Spread constraints need their own labelSelector, e.g.
   #   topologySpreadConstraints:
   #     - maxSkew: 1
   #       topologyKey: kubernetes.io/hostname
@@ -419,6 +421,10 @@ networkPolicy:
   #   - namespaceSelector:
   #       matchLabels:
   #         kubernetes.io/metadata.name: monitoring
+  # The api serves /metrics on its only port and a NetworkPolicy cannot filter
+  # paths, so these peers reach every api route, skipping the edge's rate
+  # limits and log redaction, and can send a forged X-Forwarded-For. List only
+  # peers you would trust as API clients.
   metricsFrom: []
   # Peers allowed to reach the frontend, typically the ingress controller's
   # namespace. Empty leaves the frontend open to the whole cluster.
@@ -436,6 +442,7 @@ podSecurityContext:
   fsGroup: 1001
 
 # Volumes for the api, worker and migrate pods to mount through their
-# extraVolumeMounts. The chart already uses the names staging, tmp, home and
-# nginx-cache; pick others.
+# extraVolumeMounts. The chart already uses the names staging, geolens-tmp and
+# geolens-home in those pods; pick others. A component's own mount at /tmp or
+# /home/appuser replaces the chart's emptyDir there.
 extraVolumes: []

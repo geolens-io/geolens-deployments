@@ -24,6 +24,8 @@ spec:
               app.kubernetes.io/component: frontend
       ports:
         - port: http
+    {{- /* codex review on #53: /metrics shares the api's only port and a policy
+         cannot filter paths, so metricsFrom peers are trusted API clients. */}}
     {{- with $np.metricsFrom }}
     - from:
         {{- toYaml . | nindent 8 }}

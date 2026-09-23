@@ -32,8 +32,10 @@ jobs:
   release:
     # workflow_run also fires for chart-ci on pull requests, including a fork's
     # branch named main. Only a green push to this repository may publish.
+    # codex review on #53: a manual run must be on main too, or its signing
+    # identity names another ref and the README's verify command rejects it.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository)

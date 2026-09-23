@@ -76,7 +76,8 @@ runs guards that each pin a bug rendering alone would not catch:
 - Rendering survives `serviceAccount=null` and `database=null`, and the templates rendered against the latest published chart's `values.yaml` (what `--reuse-values` renders against) still run titiler and the frontend non-root, every container read-only, with three PDBs.
 - `database.sslMode` reaches both the ConfigMap and the migrate hook.
 - NetworkPolicies render only when enabled, and the api's admits only the frontend.
-- Each component's placement reaches its pods, and the migrate hook takes the api's.
+- Each component's placement reaches its pods. The migrate hook takes the api's nodeSelector, tolerations and node affinity, and never its pod affinity or spread constraints.
+- Operator `extraVolumes` named `tmp` or `home`, or a component mount at `/tmp` or `/home/appuser`, never repeat a volume name or mountPath in the api, worker or migrate pod.
 - No `GDAL_HTTP_FOLLOWLOCATION` appears anywhere, and `GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE` holds a token GDAL accepts.
 - An empty install fails.
 - `extraEnv` overrides render exactly once per container and win.

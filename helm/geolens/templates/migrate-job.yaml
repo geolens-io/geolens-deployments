@@ -36,8 +36,11 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- /* #53: the api's placement; a hook left off tainted nodes never runs. */}}
-      {{- with include "geolens.scheduling" .Values.api | trim }}
+      {{- /* #53: the api's node placement, so a tainted pool does not strand the
+           hook. codex review on #53: not its pod affinity or spread, which name
+           api pods that a pre-install hook runs before. */}}
+      {{- $apiNodeAffinity := pick (.Values.api.affinity | default dict) "nodeAffinity" }}
+      {{- with include "geolens.scheduling" (dict "nodeSelector" .Values.api.nodeSelector "tolerations" .Values.api.tolerations "affinity" $apiNodeAffinity) | trim }}
       {{- . | nindent 6 }}
       {{- end }}
       containers:
@@ -135,7 +138,7 @@ spec:
             {{- end }}
           {{- end }}
           volumeMounts:
-            {{- include "geolens.backendScratchMounts" . | nindent 12 }}
+            {{- include "geolens.backendScratch" (list (.Values.migrate | default dict).extraVolumeMounts "mounts") | trim | nindent 12 }}
             {{- with (.Values.migrate | default dict).extraVolumeMounts }}
             # This Job connects to the same database as the api, so anything the
             # api must MOUNT to reach it — most often a CA bundle for
@@ -161,7 +164,7 @@ spec:
       {{- end }}
       {{- end }}
       volumes:
-        {{- include "geolens.backendScratchVolumes" . | nindent 8 }}
+        {{- include "geolens.backendScratch" (list (.Values.migrate | default dict).extraVolumeMounts "volumes") | trim | nindent 8 }}
         {{- with $volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

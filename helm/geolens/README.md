@@ -298,7 +298,9 @@ Root filesystems are read-only, as compose runs these images. Each pod gets
 emptyDirs for what it writes outside `/app/staging`: `/tmp` and
 `/home/appuser` for the api, worker and migrate hook, `/tmp` and
 `/var/cache/nginx` (the raster tile cache) for the frontend, and `/tmp` for
-TiTiler. CI ingests a vector and a raster dataset under these settings. If
+TiTiler. A backend component whose `extraVolumeMounts` already mounts `/tmp` or
+`/home/appuser` keeps that mount, and the chart skips its own emptyDir there.
+CI ingests a vector and a raster dataset under these settings. If
 something you add writes elsewhere, `readOnlyRootFilesystem: false` turns it
 off for everything but TiTiler.
 
@@ -306,8 +308,11 @@ off for everything but TiTiler.
 
 Each of `api`, `worker`, `frontend` and `titiler` takes `nodeSelector`,
 `tolerations`, `affinity` and `topologySpreadConstraints`. The migrate hook Job
-uses the api's, so a toleration for a dedicated node pool reaches the hook as
-well; without it the hook stays `Pending` and the install times out.
+takes the api's `nodeSelector`, `tolerations` and `affinity.nodeAffinity`, so a
+toleration for a dedicated node pool reaches the hook as well; without it the
+hook stays `Pending` and the install times out. It does not take the api's pod
+affinity or spread constraints, since those select api pods and a pre-install
+hook runs before any exist.
 
 PodDisruptionBudgets cover the api, frontend and TiTiler with
 `maxUnavailable: 1`, so a node drain evicts one pod of each at a time and never
@@ -325,7 +330,10 @@ through the edge" rule below the ingress too:
 - nothing reaches the worker.
 
 `networkPolicy.metricsFrom` lists the peers allowed to scrape `/metrics` on
-the api and worker, for example your monitoring namespace.
+the api and worker, for example your monitoring namespace. The api serves
+`/metrics` on its only port and a NetworkPolicy cannot filter paths, so those
+peers can call every api route directly, skipping the edge, and set their own
+`X-Forwarded-For`. Treat them as trusted API clients.
 `networkPolicy.frontendFrom` restricts the frontend to the peers you list,
 typically the ingress controller's namespace; left empty, the frontend stays
 open to the cluster. Egress is not restricted, and kubelet probes are never

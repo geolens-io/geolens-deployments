@@ -91,20 +91,22 @@ seccompProfile:
   type: RuntimeDefault
 {{- end -}}
 
-{{/* #53: what the backend images write outside /app/staging, the same two
-     paths compose mounts as tmpfs next to its read-only root. */}}
-{{- define "geolens.backendScratchMounts" -}}
-- name: tmp
-  mountPath: /tmp
-- name: home
-  mountPath: /home/appuser
-{{- end -}}
-
-{{- define "geolens.backendScratchVolumes" -}}
-- name: tmp
+{{/* #53: what the backend images write outside /app/staging, the paths compose
+     mounts as tmpfs. codex review on #53: a path the component's extraVolumeMounts
+     already mounts stays the operator's. Takes (list extraVolumeMounts "mounts"|"volumes"). */}}
+{{- define "geolens.backendScratch" -}}
+{{- $taken := list -}}
+{{- range (index . 0 | default list) }}{{ $taken = append $taken .mountPath }}{{ end -}}
+{{- range list (list "geolens-tmp" "/tmp") (list "geolens-home" "/home/appuser") }}
+{{- if not (has (index . 1) $taken) }}
+- name: {{ index . 0 }}
+{{- if eq (index $ 1) "mounts" }}
+  mountPath: {{ index . 1 }}
+{{- else }}
   emptyDir: {}
-- name: home
-  emptyDir: {}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end -}}
 
 {{/* #53: one component's placement (nodeSelector, affinity, tolerations,

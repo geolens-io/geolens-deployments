@@ -64,6 +64,11 @@ template matrix uses.
 
 `ci.yml` (push to main, and every PR) has three jobs. The two chart jobs run
 once per pinned Helm version, 3 and 4.
+`main` requires five of these checks by name: `lint-and-template (helm 3)`,
+`lint-and-template (helm 4)`, `kind install test (helm 3)`,
+`kind install test (helm 4)` and `terraform validate`. Bumping a pinned Helm
+version keeps those names. Renaming a job or adding a Helm major changes them,
+so update the branch protection rule in the same change.
 
 `lint-and-template` lints, renders three configurations (defaults;
 `existingSecret` + ingress + staging persistence; Titiler disabled + S3), then

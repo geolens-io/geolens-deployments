@@ -10,15 +10,18 @@ permissions:
 
 jobs:
   lint-and-template:
-    name: lint-and-template (helm ${{ matrix.helm }})
+    name: lint-and-template (helm ${{ matrix.major }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         # #53: pinned rather than whatever the runner image ships, and both
         # majors, since operators use both. Dependabot does not bump these
-        # inputs; move them by hand.
-        helm: [v3.22.0, v4.3.0]
+        # inputs; move them by hand. #58: main requires these checks by name,
+        # so the name carries only the major and a bump renames nothing.
+        include:
+          - {major: 3, helm: v3.22.0}
+          - {major: 4, helm: v4.3.0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -618,13 +621,15 @@ jobs:
   # frontend edge, Pod Security admission). Uses the published GHCR images at
   # the chart's default tags.
   install-test:
-    name: kind install test (helm ${{ matrix.helm }})
+    name: kind install test (helm ${{ matrix.major }})
     runs-on: ubuntu-latest
     needs: lint-and-template
     strategy:
       fail-fast: false
       matrix:
-        helm: [v3.22.0, v4.3.0]
+        include:
+          - {major: 3, helm: v3.22.0}
+          - {major: 4, helm: v4.3.0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

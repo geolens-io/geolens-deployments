@@ -14,8 +14,10 @@ bucket and cache those deployments sit on. All of it runs the same Apache-2.0
 GeoLens images the compose stack runs.
 
 Everything here is community maintained and support is best effort. CI installs
-every change into a throwaway [kind](https://kind.sigs.k8s.io/) cluster, sends a
-smoke request through the frontend edge, then upgrades the release. The
+every change into a throwaway [kind](https://kind.sigs.k8s.io/) cluster under
+the restricted Pod Security standard and the chart's NetworkPolicies, ingests a
+vector and a raster dataset through the frontend edge, then upgrades the
+release. The
 Terraform recipe was applied to a real AWS account and torn down again. Nobody
 keeps a long-lived production cluster running from this repo, so that CI run is
 what backs the chart. Issues and pull requests are welcome.
@@ -50,6 +52,15 @@ The same package is also published as OCI:
 helm upgrade --install geolens oci://ghcr.io/geolens-io/charts/geolens [--set ...]
 ```
 
+OCI releases from 0.4.38 on are signed with a keyless cosign signature tied to
+this repository's release workflow. Check one before installing:
+
+```bash
+cosign verify ghcr.io/geolens-io/charts/geolens:<version> \
+  --certificate-identity https://github.com/geolens-io/geolens-deployments/.github/workflows/release-charts.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 Or install from a checkout of this repo by replacing `geolens/geolens` with the
 path `helm/geolens`.
 
@@ -65,11 +76,15 @@ and the Terraform recipe's `geolens_version` default track GeoLens releases and
 move together. The `version-drift` workflow runs weekly and fails when any of
 them has fallen behind the latest GeoLens release.
 
-Chart releases are cut by landing a `Chart.yaml` `version` bump on `main`. Any
-push to `main` touching `helm/**` runs `release-charts`, which packages the
-chart, attaches it to a GitHub Release, updates the `gh-pages` index, and pushes
-the same package to GHCR. Both legs skip a version that is already published, so
-a rerun or a non-bump edit under `helm/` publishes nothing.
+Chart releases are cut by landing a `Chart.yaml` `version` bump on `main`. Once
+`chart-ci` passes on a push to `main`, `release-charts` packages the commit CI
+tested, attaches it to a GitHub Release, updates the `gh-pages` index, and
+pushes the same package to GHCR, where it signs it with cosign. A red `main`
+publishes nothing. Both legs skip a version that is already published, so a
+rerun or a merge without a version bump publishes nothing either.
+
+Workflow actions are pinned to commit SHAs, and Dependabot proposes updates
+after a week's cooldown.
 
 ## Support
 

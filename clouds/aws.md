@@ -130,7 +130,9 @@ the same split the Terraform recipe applies:
 
 Add a lifecycle rule with `AbortIncompleteMultipartUpload` as a backstop, since
 an upload that is neither completed nor aborted leaves parts no application
-sweep can see.
+sweep can see. Add a bucket policy that denies any request where
+`aws:SecureTransport` is false, as the recipe does; the application, Titiler
+and the presigned URLs all use HTTPS already.
 
 The recipe aborts incomplete multipart uploads after seven days on every
 bucket. The hosted pilot profile also enables bucket versioning and expires

@@ -10,9 +10,21 @@ permissions:
 
 jobs:
   lint-and-template:
+    name: lint-and-template (helm ${{ matrix.helm }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # #53: pinned rather than whatever the runner image ships, and both
+        # majors, since operators use both. Dependabot does not bump these
+        # inputs; move them by hand.
+        helm: [v3.22.0, v4.3.0]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ matrix.helm }}
 
       - name: helm lint
         # Lint mode does not enforce `required` (this step passed with empty
@@ -271,7 +283,133 @@ jobs:
               exit 1
             fi
           done
-          echo "reused published values still render titiler as uid 1001 and the frontend as uid 101"
+          # #53: the read-only roots and the PDBs must survive the same upgrade.
+          all=$(helm template geolens "$chart" --set secrets.existingSecret=geolens-secrets)
+          containers=$(grep -cE '^        - name: (api|worker|frontend|titiler|migrate)$' <<<"$all")
+          readonly=$(grep -c 'readOnlyRootFilesystem: true' <<<"$all")
+          pdbs=$(grep -c '^kind: PodDisruptionBudget$' <<<"$all")
+          if [ "$readonly" -ne "$containers" ] || [ "$pdbs" -ne 3 ]; then
+            echo "under the published chart's values: $readonly of $containers containers read-only, $pdbs PodDisruptionBudgets (want all, and 3)" >&2
+            exit 1
+          fi
+          echo "reused published values still render titiler as uid 1001, the frontend as uid 101, every container read-only and 3 PDBs"
+
+      - name: Guard - NetworkPolicies render only when enabled, and only the frontend reaches the api
+        # #53: the policies are opt-in, and the api's is what keeps other pods
+        # from routing around the edge or forging X-Forwarded-For.
+        run: |
+          count() { grep -c '^kind: NetworkPolicy$' || true; }
+          render() { helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets "$@"; }
+          [ "$(render | count)" -eq 0 ] || { echo "NetworkPolicies rendered while disabled" >&2; exit 1; }
+          [ "$(render --set networkPolicy.enabled=true | count)" -eq 3 ] || { echo "want api, titiler and worker policies" >&2; exit 1; }
+          [ "$(render --set networkPolicy.enabled=true --set titiler.enabled=false | count)" -eq 2 ] || { echo "a titiler policy rendered without titiler" >&2; exit 1; }
+          [ "$(render --set networkPolicy.enabled=true --set-json 'networkPolicy.frontendFrom=[{"podSelector":{}}]' | count)" -eq 4 ] || { echo "frontendFrom did not add the frontend policy" >&2; exit 1; }
+          api=$(render --set networkPolicy.enabled=true | awk 'BEGIN{RS="---"} /kind: NetworkPolicy/ && index($0, "name: geolens-api\n")')
+          if ! grep -q 'app.kubernetes.io/component: frontend' <<<"$api" || grep -q 'namespaceSelector' <<<"$api"; then
+            echo "the api policy must admit only this release's frontend pods" >&2
+            exit 1
+          fi
+          echo "policies render only when enabled; the api admits only the frontend"
+
+      - name: Guard - PodDisruptionBudgets keep an explicit maxUnavailable
+        # codex review on #53: 0 is how an operator blocks voluntary evictions,
+        # and a `default` fallback silently turned it into 1.
+        run: |
+          render() { helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets "$@"; }
+          [ "$(render | grep -c '^  maxUnavailable: 1$')" -eq 3 ] || { echo "want three PDBs at maxUnavailable 1 by default" >&2; exit 1; }
+          [ "$(render --set podDisruptionBudget.maxUnavailable=0 | grep -c '^  maxUnavailable: 0$')" -eq 3 ] || {
+            echo "podDisruptionBudget.maxUnavailable=0 did not render as 0" >&2
+            exit 1
+          }
+          echo "PDBs default to maxUnavailable 1 and keep an explicit 0"
+
+      - name: Guard - placement reaches its pods, and the migrate hook takes the api's node placement
+        # #53: a hook left off a tainted node pool stays Pending and times out
+        # the install, so the api's tolerations must reach it too. codex review
+        # on #53: never its pod affinity or spread, which select api pods.
+        run: |
+          cat > "$RUNNER_TEMP/placement.yaml" <<'EOF'
+          api:
+            tolerations:
+              - {key: pool, operator: Equal, value: geolens, effect: NoSchedule}
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions: [{key: node-pool, operator: In, values: [geolens]}]
+              podAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 1
+                    podAffinityTerm: {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/component: api}}}
+              podAntiAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 1
+                    podAffinityTerm: {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/component: api}}}
+            topologySpreadConstraints:
+              - {maxSkew: 1, topologyKey: kubernetes.io/hostname, whenUnsatisfiable: ScheduleAnyway, labelSelector: {matchLabels: {app.kubernetes.io/component: api}}}
+          worker:
+            nodeSelector: {pool: big}
+          EOF
+          rendered=$(helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets -f "$RUNNER_TEMP/placement.yaml")
+          doc() { awk -v want="$1" 'BEGIN{RS="---"} index($0, "name: " want "\n") && /kind: (Deployment|Job)/'; }
+          api=$(doc geolens-api <<<"$rendered")
+          migrate=$(doc geolens-migrate <<<"$rendered")
+          for want in tolerations: nodeAffinity: podAffinity: podAntiAffinity: topologySpreadConstraints:; do
+            grep -q "$want" <<<"$api" || { echo "the api lost its $want" >&2; exit 1; }
+          done
+          for want in tolerations: nodeAffinity:; do
+            grep -q "$want" <<<"$migrate" || { echo "the migrate hook lost the api's $want" >&2; exit 1; }
+          done
+          if grep -qE 'podAffinity:|podAntiAffinity:|topologySpreadConstraints:' <<<"$migrate"; then
+            echo "the migrate hook took the api's pod affinity or spread; a pre-install hook runs before any api pod exists" >&2
+            exit 1
+          fi
+          doc geolens-worker <<<"$rendered" | grep -q 'pool: big' || { echo "worker nodeSelector did not render" >&2; exit 1; }
+          if doc geolens-frontend <<<"$rendered" | grep -qE 'tolerations:|nodeSelector:|affinity:'; then
+            echo "another component's placement leaked into the frontend" >&2
+            exit 1
+          fi
+          echo "placement renders per component; the migrate hook takes only the api's node placement"
+
+      - name: Guard - operator volumes never collide with the backend scratch volumes
+        # codex review on #53: an extraVolumes entry named like a chart volume,
+        # or a component mount at /tmp or /home/appuser, must not duplicate a
+        # volume name or mountPath. Admission rejects that; a render does not.
+        # A name the chart cannot give way on fails the render instead.
+        run: |
+          check() {
+            rendered=$(cat)
+            for name in geolens-api geolens-worker geolens-migrate; do
+              pod=$(awk -v want="$name" 'BEGIN{RS="---"} index($0, "name: " want "\n") && /kind: (Deployment|Job)/' <<<"$rendered")
+              dupes=$(awk '/^      volumes:/ {v=1; next} v && /^      [a-z]/ {v=0} v && /^        - name: / {print $3}' <<<"$pod" | sort | uniq -d)
+              if [ -n "$dupes" ]; then echo "$1: $name repeats volume names: $dupes" >&2; exit 1; fi
+              for p in /tmp /home/appuser; do
+                n=$(grep -c "mountPath: $p$" <<<"$pod" || true)
+                if [ "$n" -ne 1 ]; then echo "$1: $name mounts $p $n times, want 1" >&2; exit 1; fi
+              done
+            done
+          }
+          render() { helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets "$@"; }
+          render | check defaults
+          render --set-json 'extraVolumes=[{"name":"tmp","emptyDir":{}},{"name":"home","emptyDir":{}}]' \
+            --set-json 'api.extraVolumeMounts=[{"name":"tmp","mountPath":"/tmp"}]' \
+            --set-json 'worker.extraVolumeMounts=[{"name":"home","mountPath":"/home/appuser"}]' \
+            --set-json 'migrate.extraVolumeMounts=[{"name":"tmp","mountPath":"/tmp"},{"name":"home","mountPath":"/home/appuser"}]' \
+            | check overrides
+          # An operator volume named like a chart scratch volume but mounted
+          # elsewhere must fail the render, not reach admission.
+          if out=$(render --set-json 'extraVolumes=[{"name":"geolens-tmp","emptyDir":{}}]' \
+              --set-json 'api.extraVolumeMounts=[{"name":"geolens-tmp","mountPath":"/data"}]' 2>&1); then
+            echo "an extraVolumes entry named geolens-tmp rendered beside the chart's own" >&2
+            exit 1
+          fi
+          grep -q 'rename that volume' <<<"$out" || { echo "failed for another reason: $out" >&2; exit 1; }
+          # Mounted at /tmp wherever it renders, the same name is the operator's scratch.
+          render --set-json 'extraVolumes=[{"name":"geolens-tmp","emptyDir":{}}]' \
+            --set-json 'api.extraVolumeMounts=[{"name":"geolens-tmp","mountPath":"/tmp"}]' \
+            --set-json 'worker.extraVolumeMounts=[{"name":"geolens-tmp","mountPath":"/tmp"}]' \
+            | check reused-name
+          echo "backend pods mount /tmp and /home/appuser once each, under unique volume names"
 
       - name: Guard - database.sslMode reaches the migrate hook too
         # The migrate Job cannot read the chart ConfigMap (hook ordering), so a
@@ -480,14 +618,33 @@ jobs:
   # frontend edge, Pod Security admission). Uses the published GHCR images at
   # the chart's default tags.
   install-test:
-    name: kind install test
+    name: kind install test (helm ${{ matrix.helm }})
     runs-on: ubuntu-latest
     needs: lint-and-template
+    strategy:
+      fail-fast: false
+      matrix:
+        helm: [v3.22.0, v4.3.0]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ matrix.helm }}
 
       - name: Create kind cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        with:
+          # No CNI until Calico is applied below, so the node is not Ready yet.
+          config: .github/ci/kind-calico.yaml
+          wait: 0s
+
+      - name: Install Calico
+        # #53: see kind-calico.yaml for why not kindnet. Images come from quay.io.
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.2/manifests/calico.yaml
+          kubectl -n kube-system rollout status ds/calico-node --timeout=300s
+          kubectl -n kube-system rollout status deploy/coredns --timeout=300s
 
       - name: Deploy CI PostgreSQL (PostGIS + pgvector)
         run: |
@@ -507,7 +664,9 @@ jobs:
       - name: helm install --wait
         # #52: into a namespace that enforces Pod Security "restricted", so a
         # pod spec that renders cleanly but that admission rejects fails here
-        # rather than on an operator's hardened cluster.
+        # rather than on an operator's hardened cluster. #53: with the
+        # NetworkPolicies on and a shared staging claim (kind's single node
+        # serves ReadWriteOnce to every pod), so the steps below can ingest.
         run: |
           kubectl create namespace geolens
           kubectl label namespace geolens pod-security.kubernetes.io/enforce=restricted
@@ -518,6 +677,10 @@ jobs:
             --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef' \
             --set secrets.adminUsername='ci-admin' \
             --set secrets.adminPassword='chart-ci-only-Passw0rd!' \
+            --set networkPolicy.enabled=true \
+            --set staging.persistence.enabled=true \
+            --set-json 'staging.persistence.accessModes=["ReadWriteOnce"]' \
+            --set staging.persistence.storageClass=standard \
             --wait --timeout 20m
 
       - name: Smoke through the frontend edge
@@ -527,6 +690,37 @@ jobs:
           kubectl run smoke --image=curlimages/curl:8.10.1 --restart=Never \
             --attach --rm --command -- \
             curl -sf --retry 5 --retry-delay 3 http://geolens-frontend.geolens/api/health
+
+      - name: Ingest through the frontend edge
+        # #53: the data path a render cannot prove. The api hands an upload to
+        # the worker through /app/staging, both under read-only roots, and
+        # titiler serves the ingested raster through the api's tile proxy,
+        # which the NetworkPolicies must still allow.
+        run: |
+          kubectl -n geolens port-forward svc/geolens-frontend 8080:80 > port-forward.log 2>&1 &
+          for _ in $(seq 1 20); do grep -q Forwarding port-forward.log && break; sleep 1; done
+          .github/ci/ingest-smoke.sh http://127.0.0.1:8080 ci-admin 'chart-ci-only-Passw0rd!'
+
+      - name: NetworkPolicy keeps other pods off the api, titiler and worker
+        run: |
+          kubectl run np-probe --image=curlimages/curl:8.10.1 --restart=Never --command -- sleep 600
+          kubectl wait --for=condition=Ready pod/np-probe --timeout=120s
+          reach() { kubectl exec np-probe -- curl -s -o /dev/null --max-time 5 "$1"; }
+          reach http://geolens-frontend.geolens/api/health/live || {
+            echo "the frontend must stay reachable without networkPolicy.frontendFrom" >&2
+            exit 1
+          }
+          worker=$(kubectl -n geolens get pod -l app.kubernetes.io/component=worker \
+            -o jsonpath='{.items[0].status.podIP}')
+          for url in http://geolens-api.geolens:8000/health/live \
+                     http://geolens-titiler.geolens:8000/healthz \
+                     "http://$worker:8001/health/live"; do
+            if reach "$url"; then
+              echo "$url answered a pod outside the release; the NetworkPolicy is not enforced" >&2
+              exit 1
+            fi
+          done
+          echo "frontend open; api, titiler and worker refuse other pods"
 
       - name: helm upgrade idempotence (migrate hook re-run)
         run: |
@@ -548,9 +742,9 @@ jobs:
     name: terraform validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_wrapper: false
 

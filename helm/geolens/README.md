@@ -294,6 +294,58 @@ profile, and a non-root user. The backend pods run as uid 1001 through
 otherwise run as root, as uid 1001 through `titiler.podSecurityContext`. CI
 installs the chart into a namespace that enforces `restricted`.
 
+Root filesystems are read-only, as compose runs these images. Each pod gets
+emptyDirs for what it writes outside `/app/staging`: `/tmp` and
+`/home/appuser` for the api, worker and migrate hook, `/tmp` and
+`/var/cache/nginx` (the raster tile cache) for the frontend, and `/tmp` for
+TiTiler. A backend component whose `extraVolumeMounts` already mounts `/tmp` or
+`/home/appuser` keeps that mount, and the chart skips its own emptyDir there.
+CI ingests a vector and a raster dataset under these settings. If
+something you add writes elsewhere, `readOnlyRootFilesystem: false` turns it
+off for everything but TiTiler.
+
+## Placement and disruption
+
+Each of `api`, `worker`, `frontend` and `titiler` takes `nodeSelector`,
+`tolerations`, `affinity` and `topologySpreadConstraints`. The migrate hook Job
+takes the api's `nodeSelector`, `tolerations` and `affinity.nodeAffinity`, so a
+toleration for a dedicated node pool reaches the hook as well; without it the
+hook stays `Pending` and the install times out. It does not take the api's pod
+affinity or spread constraints, since those select api pods and a pre-install
+hook runs before any exist.
+
+PodDisruptionBudgets cover the api, frontend and TiTiler with
+`maxUnavailable: 1`, so a node drain evicts one pod of each at a time and never
+blocks outright, even at one replica. Turn them off with
+`podDisruptionBudget.enabled=false`.
+
+## Network policies
+
+`networkPolicy.enabled=true` adds NetworkPolicies that hold the "everything
+through the edge" rule below the ingress too:
+
+- only this release's frontend reaches the api, so no other pod can route
+  around the edge or hand the api a forged `X-Forwarded-For`;
+- only the api reaches TiTiler;
+- nothing reaches the worker.
+
+`networkPolicy.metricsFrom` lists the peers allowed to scrape `/metrics` on
+the api and worker, for example your monitoring namespace. The api serves
+`/metrics` on its only port and a NetworkPolicy cannot filter paths, so those
+peers can call every api route directly, skipping the edge, and set their own
+`X-Forwarded-For`. Treat them as trusted API clients.
+`networkPolicy.frontendFrom` restricts the frontend to the peers you list,
+typically the ingress controller's namespace; left empty, the frontend stays
+open to the cluster. Egress is not restricted, and kubelet probes are never
+blocked.
+
+The policies are off by default because they need a CNI that enforces them.
+They were verified on Calico. kind's default kindnet drops the replies to a
+policy-selected pod's own DNS lookups
+([kube-network-policies#379](https://github.com/kubernetes-sigs/kube-network-policies/issues/379)),
+so on kindnet the api and worker cannot reach the database; CI runs on Calico
+for that reason.
+
 ## Database requirements
 
 The externally managed PostgreSQL instance must satisfy:

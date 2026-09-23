@@ -16,6 +16,7 @@ geolens_version = "1.20.0"
 # admin_username = "admin"
 # admin_password = ""   # empty generates one into Secrets Manager
 
+# cpu_architecture   = "ARM64"   # X86_64 where Graviton Fargate is unavailable
 # app_desired_count  = 1
 # cache_enabled      = true
 # upload_max_size_mb = 500

@@ -43,6 +43,17 @@ variable "titiler_version" {
   default     = "2.2.1"
 }
 
+variable "cpu_architecture" {
+  description = "Fargate CPU architecture for every task. ARM64 (Graviton) costs about 20% less per vCPU-hour, and every image the recipe runs is published for both. Use X86_64 in a region without Graviton Fargate."
+  type        = string
+  default     = "ARM64"
+
+  validation {
+    condition     = contains(["ARM64", "X86_64"], var.cpu_architecture)
+    error_message = "cpu_architecture must be ARM64 or X86_64."
+  }
+}
+
 variable "vpc_cidr" {
   description = "CIDR for the VPC this module creates."
   type        = string
@@ -219,6 +230,15 @@ variable "extra_env" {
   type        = map(string)
   default     = {}
 
+  # #53: these five come from the recipe's own secret; a plain entry would give
+  # the container two values for one name.
+  validation {
+    condition     = length(setintersection(toset(keys(var.extra_env)), toset(["DATABASE_URL_OVERRIDE", "JWT_SECRET_KEY", "GEOLENS_ADMIN_USERNAME", "GEOLENS_ADMIN_PASSWORD", "SECRET_ENCRYPTION_KEY"]))) == 0
+    error_message = "extra_env cannot set DATABASE_URL_OVERRIDE, JWT_SECRET_KEY, GEOLENS_ADMIN_USERNAME, GEOLENS_ADMIN_PASSWORD or SECRET_ENCRYPTION_KEY; the recipe generates and stores them."
+  }
+
+  # #53: the same list as extra_secrets, so a reserved name cannot come in
+  # through whichever map is not checked.
   validation {
     condition = !var.pilot_profile || length(setintersection(
       toset(keys(var.extra_env)),
@@ -227,39 +247,6 @@ variable "extra_env" {
         "AWS_DEFAULT_REGION",
         "AWS_SECRET_ACCESS_KEY",
         "DATABASE_SSL_MODE",
-        "DATABASE_URL_OVERRIDE",
-        "GEOLENS_API_RUN_MIGRATIONS",
-        "GEOLENS_MIGRATION_DB_ROLE",
-        "GEOLENS_RUNTIME_DB_PASSWORD",
-        "GEOLENS_RUNTIME_DB_ROLE",
-        "MIGRATION_DATABASE_URL_OVERRIDE",
-        "POSTGRES_PASSWORD",
-        "POSTGRES_USER",
-        "S3_ACCESS_KEY_ID",
-        "S3_BUCKET",
-        "S3_ENDPOINT",
-        "S3_REGION",
-        "S3_SECRET_ACCESS_KEY",
-        "STORAGE_PROVIDER",
-        "TITILER_S3_ACCESS_KEY_ID",
-        "TITILER_S3_SECRET_ACCESS_KEY",
-      ])
-    )) == 0
-    error_message = "pilot_profile reserves the database, migration/runtime-role, TLS, AWS credential and task-role S3 environment settings."
-  }
-}
-
-variable "extra_secrets" {
-  description = "Extra secrets for the api, worker and migrate containers: env name to an ECS valueFrom, that is a Secrets Manager ARN with an optional :json-key:: suffix. Use it for OPENAI_API_KEY, ANTHROPIC_API_KEY, SMTP_PASSWORD, OAuth client secrets and TILE_SIGNING_SECRET. The execution role is granted read on each secret."
-  type        = map(string)
-  default     = {}
-
-  validation {
-    condition = !var.pilot_profile || length(setintersection(
-      toset(keys(var.extra_secrets)),
-      toset([
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
         "DATABASE_URL_OVERRIDE",
         "GEOLENS_ADMIN_PASSWORD",
         "GEOLENS_ADMIN_USERNAME",
@@ -276,11 +263,62 @@ variable "extra_secrets" {
         "S3_ENDPOINT",
         "S3_REGION",
         "S3_SECRET_ACCESS_KEY",
+        "SECRET_ENCRYPTION_KEY",
+        "STORAGE_PROVIDER",
         "TITILER_S3_ACCESS_KEY_ID",
         "TITILER_S3_SECRET_ACCESS_KEY",
       ])
     )) == 0
-    error_message = "pilot_profile reserves database, migration/runtime-role, admin, JWT and AWS/S3 identity secret names."
+    error_message = "pilot_profile reserves the database, migration/runtime-role, TLS, admin, JWT, encryption-key, AWS credential and S3 settings in extra_env and extra_secrets alike."
+  }
+}
+
+variable "extra_secrets" {
+  description = "Extra secrets for the api, worker and migrate containers: env name to an ECS valueFrom, that is a Secrets Manager ARN with an optional :json-key:: suffix. Use it for OPENAI_API_KEY, ANTHROPIC_API_KEY, SMTP_PASSWORD, OAuth client secrets and TILE_SIGNING_SECRET. The execution role is granted read on each secret."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = length(setintersection(toset(keys(var.extra_secrets)), toset(["DATABASE_URL_OVERRIDE", "JWT_SECRET_KEY", "GEOLENS_ADMIN_USERNAME", "GEOLENS_ADMIN_PASSWORD", "SECRET_ENCRYPTION_KEY"]))) == 0
+    error_message = "extra_secrets cannot redefine DATABASE_URL_OVERRIDE, JWT_SECRET_KEY, GEOLENS_ADMIN_USERNAME, GEOLENS_ADMIN_PASSWORD or SECRET_ENCRYPTION_KEY; the recipe generates and stores them."
+  }
+
+  validation {
+    condition     = length(setintersection(toset(keys(var.extra_secrets)), toset(keys(var.extra_env)))) == 0
+    error_message = "A name cannot be in both extra_env and extra_secrets."
+  }
+
+  validation {
+    condition = !var.pilot_profile || length(setintersection(
+      toset(keys(var.extra_secrets)),
+      toset([
+        "AWS_ACCESS_KEY_ID",
+        "AWS_DEFAULT_REGION",
+        "AWS_SECRET_ACCESS_KEY",
+        "DATABASE_SSL_MODE",
+        "DATABASE_URL_OVERRIDE",
+        "GEOLENS_ADMIN_PASSWORD",
+        "GEOLENS_ADMIN_USERNAME",
+        "GEOLENS_API_RUN_MIGRATIONS",
+        "GEOLENS_MIGRATION_DB_ROLE",
+        "GEOLENS_RUNTIME_DB_PASSWORD",
+        "GEOLENS_RUNTIME_DB_ROLE",
+        "JWT_SECRET_KEY",
+        "MIGRATION_DATABASE_URL_OVERRIDE",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_USER",
+        "S3_ACCESS_KEY_ID",
+        "S3_BUCKET",
+        "S3_ENDPOINT",
+        "S3_REGION",
+        "S3_SECRET_ACCESS_KEY",
+        "SECRET_ENCRYPTION_KEY",
+        "STORAGE_PROVIDER",
+        "TITILER_S3_ACCESS_KEY_ID",
+        "TITILER_S3_SECRET_ACCESS_KEY",
+      ])
+    )) == 0
+    error_message = "pilot_profile reserves the database, migration/runtime-role, TLS, admin, JWT, encryption-key, AWS credential and S3 settings in extra_env and extra_secrets alike."
   }
 
   validation {

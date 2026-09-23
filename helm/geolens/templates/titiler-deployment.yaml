@@ -64,6 +64,9 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with include "geolens.scheduling" .Values.titiler | trim }}
+      {{- . | nindent 6 }}
+      {{- end }}
       containers:
         - name: titiler
           image: "{{ .Values.titiler.image.repository }}:{{ .Values.titiler.image.tag }}"

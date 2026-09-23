@@ -1,0 +1,9 @@
+# #53: the install test runs on Calico, not kind's default kindnet. kindnet's
+# policy engine drops the replies to a policy-selected pod's own DNS queries
+# (kubernetes-sigs/kube-network-policies#379), so with the chart's
+# NetworkPolicies on, the api and worker could not resolve the database.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  disableDefaultCNI: true
+  podSubnet: 192.168.0.0/16

@@ -2,9 +2,9 @@ apiVersion: v2
 name: geolens
 description: Community-maintained Helm chart for GeoLens, the Apache-2.0 spatial data hub. Deploys the API, worker, frontend edge, and Titiler against an operator-managed PostgreSQL.
 type: application
-version: 0.4.37
+version: 0.4.38
 appVersion: "1.20.0"
-kubeVersion: ">=1.19.0-0"
+kubeVersion: ">=1.21.0-0"
 home: https://github.com/geolens-io/geolens-deployments
 sources:
   - https://github.com/geolens-io/geolens-deployments

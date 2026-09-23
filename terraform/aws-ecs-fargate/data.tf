@@ -87,6 +87,26 @@ resource "aws_s3_bucket_public_access_block" "this" {
   restrict_public_buckets = true
 }
 
+# #53: the same TLS-only rule the pilot README asks of the state bucket. The
+# app, titiler and the presigned URLs browsers upload to all use HTTPS.
+resource "aws_s3_bucket_policy" "this" {
+  bucket = aws_s3_bucket.this.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyInsecureTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource  = [aws_s3_bucket.this.arn, "${aws_s3_bucket.this.arn}/*"]
+      Condition = { Bool = { "aws:SecureTransport" = "false" } }
+    }]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.this]
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
   bucket = aws_s3_bucket.this.id
 
@@ -194,6 +214,13 @@ resource "aws_elasticache_replication_group" "this" {
   apply_immediately = true
 }
 
+# #53: a dedicated key for stored SSO secrets, so a JWT rotation no longer
+# strands them. The app keeps the JWT-derived key as its last fallback, so old
+# ciphertexts stay readable; replacing this key strands what it wrote.
+resource "random_bytes" "secret_encryption_key" {
+  length = 32
+}
+
 # One secret holds every credential the tasks need. ECS pulls individual keys
 # out of the JSON with the `arn:key::` valueFrom suffix. name_prefix matters:
 # Secrets Manager keeps deleted names reserved for a recovery window, so a
@@ -214,5 +241,7 @@ resource "aws_secretsmanager_secret_version" "app" {
     JWT_SECRET_KEY         = random_password.jwt.result
     GEOLENS_ADMIN_USERNAME = var.admin_username
     GEOLENS_ADMIN_PASSWORD = var.admin_password != "" ? var.admin_password : random_password.admin.result
+    # A Fernet key: url-safe base64 of the 32 bytes.
+    SECRET_ENCRYPTION_KEY = replace(replace(random_bytes.secret_encryption_key.base64, "+", "-"), "/", "_")
   })
 }

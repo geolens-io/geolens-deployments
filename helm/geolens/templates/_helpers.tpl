@@ -79,14 +79,61 @@ share (s3 hands uploads over through the bucket).
 {{- end }}
 {{- end -}}
 
-{{/* fix(#52): Pod Security "restricted" for every container, as compose's
-     no-new-privileges + cap_drop ALL. Titiler states the same inline. */}}
+{{/* fix(#52, #53): Pod Security "restricted" plus a read-only root, as compose
+     runs these images. Titiler states the same inline. An absent value
+     (--reuse-values from an older release) keeps the root read-only. */}}
 {{- define "geolens.containerSecurityContext" -}}
+readOnlyRootFilesystem: {{ ternary .Values.readOnlyRootFilesystem true (hasKey .Values "readOnlyRootFilesystem") }}
 allowPrivilegeEscalation: false
 capabilities:
   drop: ["ALL"]
 seccompProfile:
   type: RuntimeDefault
+{{- end -}}
+
+{{/* #53: what the backend images write outside /app/staging, as compose mounts tmpfs.
+     codex review on #53: a path the pod already mounts stays the operator's, and an operator
+     volume by a name used here fails the render. (list extraVolumeMounts podVolumes "mounts"|"volumes") */}}
+{{- define "geolens.backendScratch" -}}
+{{- $taken := list -}}
+{{- range (index . 0 | default list) }}{{ $taken = append $taken .mountPath }}{{ end -}}
+{{- $names := list -}}
+{{- range (index . 1 | default list) }}{{ $names = append $names .name }}{{ end -}}
+{{- range list (list "geolens-tmp" "/tmp") (list "geolens-home" "/home/appuser") }}
+{{- if not (has (index . 1) $taken) }}
+{{- if has (index . 0) $names }}
+{{- fail (printf "extraVolumes defines %q, the name the chart gives its %s emptyDir; rename that volume" (index . 0) (index . 1)) }}
+{{- end }}
+- name: {{ index . 0 }}
+{{- if eq (index $ 2) "mounts" }}
+  mountPath: {{ index . 1 }}
+{{- else }}
+  emptyDir: {}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/* #53: one component's placement (nodeSelector, affinity, tolerations,
+     topologySpreadConstraints), rendered only when set. Takes the component's
+     values map; the migrate hook passes the api's. */}}
+{{- define "geolens.scheduling" -}}
+{{- with .nodeSelector }}
+nodeSelector:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .affinity }}
+affinity:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .tolerations }}
+tolerations:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .topologySpreadConstraints }}
+topologySpreadConstraints:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
 {{- end -}}
 
 {{/* fix(#39): one set of encryption-key checks, shared by the Secret and

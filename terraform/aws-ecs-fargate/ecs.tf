@@ -41,6 +41,7 @@ locals {
       "JWT_SECRET_KEY",
       "GEOLENS_ADMIN_USERNAME",
       "GEOLENS_ADMIN_PASSWORD",
+      "SECRET_ENCRYPTION_KEY",
       ] : {
       name      = key
       valueFrom = "${aws_secretsmanager_secret.app.arn}:${key}::${aws_secretsmanager_secret_version.app.version_id}"
@@ -114,7 +115,7 @@ resource "aws_ecs_task_definition" "app" {
 
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = "X86_64"
+    cpu_architecture        = var.cpu_architecture
   }
 
   container_definitions = jsonencode([
@@ -223,7 +224,7 @@ resource "aws_ecs_task_definition" "worker" {
 
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = "X86_64"
+    cpu_architecture        = var.cpu_architecture
   }
 
   container_definitions = jsonencode([
@@ -286,7 +287,7 @@ resource "aws_ecs_task_definition" "migrate" {
 
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = "X86_64"
+    cpu_architecture        = var.cpu_architecture
   }
 
   container_definitions = jsonencode([

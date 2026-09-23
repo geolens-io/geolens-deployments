@@ -95,6 +95,7 @@ jobs:
           # chart-releaser packages only charts changed since the last tag.
           pkg=.cr-release-packages/geolens-$version.tgz
           if [ ! -f "$pkg" ]; then
+            mkdir -p "$RUNNER_TEMP/pkg"
             helm package helm/geolens -d "$RUNNER_TEMP/pkg" > /dev/null
             pkg=$RUNNER_TEMP/pkg/geolens-$version.tgz
           fi

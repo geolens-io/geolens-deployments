@@ -101,9 +101,10 @@ account.
 
 `release-charts.yml` runs when `chart-ci` succeeds on a push to `main`, from
 the commit CI tested, and on `workflow_dispatch` from `main`. It signs each OCI
-chart it pushes with keyless cosign, signs an existing unsigned version only
-when its files match the tested commit's package, and verifies the signature
-anonymously.
+chart it pushes with keyless cosign. Every run checks the current `Chart.yaml`
+version in GHCR: it pushes and signs a missing one, signs an unsigned one only
+when its files match the tested commit's package, fails on any other registry
+error, and verifies the signature anonymously.
 `version-drift.yml` runs weekly (Mondays 06:17 UTC) and on dispatch.
 
 ## Versioning

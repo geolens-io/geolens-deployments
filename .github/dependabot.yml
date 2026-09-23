@@ -1,0 +1,22 @@
+# #53: every workflow action is pinned to a commit SHA with its version in a
+# trailing comment; Dependabot moves both together. The cooldown holds a new
+# release back for a week, so a compromised upstream tag has time to be caught
+# before it reaches a workflow that can publish the chart.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: terraform
+    directory: /terraform/aws-ecs-fargate
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

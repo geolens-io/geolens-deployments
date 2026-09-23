@@ -35,6 +35,10 @@ never reaches the api directly.
 A one-shot migrate task creates the extensions, schemas and reader role, then
 runs `alembic upgrade heads`. It runs before the services start.
 
+Tasks run on ARM64 (Graviton) by default. The bucket refuses plain-HTTP
+requests, and the load balancer drops headers whose names are not valid HTTP
+tokens.
+
 ## Prerequisites
 
 - Terraform 1.9 or newer
@@ -44,8 +48,8 @@ runs `alembic upgrade heads`. It runs before the services start.
 - An AWS account and credentials with permission to create VPC, ECS, RDS,
   ElastiCache, S3, IAM and Secrets Manager resources
 - A remote state backend before storing participant data. The module declares
-  none by default; its state holds the database password, JWT secret and admin
-  password, generated or supplied.
+  none by default; its state holds the database password, JWT secret,
+  stored-secret encryption key and admin password, generated or supplied.
 
 ## Hosted pilot profile
 
@@ -72,9 +76,9 @@ Provision the state bucket separately from the application bucket. Before the
 first `terraform init`, require S3 versioning, SSE-KMS encryption, Block Public
 Access, a TLS-only bucket policy, state locking and access limited to the
 pilot operators or deployment role. Use a distinct object key for each
-organization. The state contains the RDS master password, JWT key and admin
-password, so state versions need the same access and retention review as
-application data. Terraform 1.10 or newer is required for S3 `use_lockfile`.
+organization. The state contains the RDS master password, JWT key,
+stored-secret encryption key and admin password, so state versions need the
+same access and retention review as application data. Terraform 1.10 or newer is required for S3 `use_lockfile`.
 
 From a clean copy of this module, copy and edit the example files:
 
@@ -102,11 +106,11 @@ the hostname to `load_balancer_dns_name`, then verify the HTTPS URL and
 
 The profile gives each stack its own S3 bucket and task IAM policy, and each
 stack's generated application secret is named under its `name/` path. Extra
-Secrets Manager ARNs in the profile must also use that path. Pilot `extra_env`
-cannot override database, migration/runtime-role, TLS, AWS credential or S3
-settings. Pilot `extra_secrets` cannot replace the generated database, admin,
-JWT or AWS/S3 credentials. Use provider keys only when needed, store a
-separate key for each organization, and set the provider's own spend limits.
+Secrets Manager ARNs in the profile must also use that path. In the profile,
+neither `extra_env` nor `extra_secrets` may set the database,
+migration/runtime-role, TLS, admin, JWT, encryption-key, AWS credential or S3
+settings. Use provider keys only when needed, store a separate key for each
+organization, and set the provider's own spend limits.
 
 The example sets one app task, one worker slot, a 500 MB per-file upload limit,
 50 GiB of fixed RDS storage, and 50 GiB of worker scratch. S3 has no total
@@ -219,7 +223,17 @@ extra_secrets = {
 The [configuration reference](https://docs.getgeolens.com/guides/quickstart/configuration/)
 lists every setting. Do not put `S3_ACCESS_KEY_ID` or `S3_SECRET_ACCESS_KEY`
 in either map: a static key wins over the task role and defeats the keyless
-setup.
+setup. Neither map may name one of the recipe's own secrets
+(`DATABASE_URL_OVERRIDE`, `JWT_SECRET_KEY`, the two `GEOLENS_ADMIN_*` values,
+`SECRET_ENCRYPTION_KEY`), and no name may appear in both; the plan fails
+instead.
+
+The recipe generates `SECRET_ENCRYPTION_KEY`, the dedicated key for the
+secrets GeoLens stores such as SSO client secrets, so rotating the JWT secret
+no longer makes them unreadable. Adding it to a running stack is safe: the app
+still falls back to the JWT-derived key for anything written before. Do not
+replace `random_bytes.secret_encryption_key` to rotate it; that strands what it
+encrypted. Follow section 11 of the GeoLens runbook instead.
 
 Secrets are read when a task starts. After rotating a secret named in
 `extra_secrets`, bump `extra_secrets_revision` and apply: that changes every
@@ -249,6 +263,9 @@ the two limits cannot drift apart.
   it, so a large GeoTIFF plus its COG must fit; Fargate allows up to 200 GiB.
 - `db_allocated_storage_gb` sets fixed encrypted RDS storage. The recipe does
   not configure storage autoscaling; size it for each organization's database.
+- `cpu_architecture` is `ARM64` by default, about 20% cheaper per vCPU-hour
+  than `X86_64`. Every image the recipe runs is published for both; pick
+  `X86_64` in a region without Graviton Fargate.
 
 ## What is deliberately simplified
 
@@ -273,9 +290,12 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
 
 ## Cost
 
-Roughly $100 a month at the defaults: about $12 for RDS, $12 for ElastiCache,
-$60 for 2 vCPU and 7 GB of Fargate, $16 and up for the load balancer, and a few
-dollars for S3 and logs. Omitting the NAT gateway saves about $32.
+Roughly $120 a month at the defaults in us-east-1, at on-demand prices from
+the AWS Price List API in September 2026: about $65 for 2 vCPU and 7 GB of
+Fargate on ARM64 ($82 on X86_64), $16 and up for the load balancer, $15 for
+four public IPv4 addresses (the two tasks and two load balancer nodes), $14 for
+RDS with its 20 GiB, $9 for the Valkey node, and a few dollars for S3 and logs.
+A NAT gateway would add about $32 a month and save the two task addresses.
 
 ## Backups and restore
 
@@ -372,5 +392,12 @@ faults and checked their fixes live (#52). The worker did not subscribe to the
 had waited half an hour ran at once. And with S3 access removed from the task
 role, the load balancer's deep health check failed until ECS stopped the task;
 on `/api/health/live` the same outage left the task running and still serving
-the catalog. The pilot profile has only been statically validated; it has not
-been applied or restore-tested in AWS.
+the catalog.
+
+On 2026-09-23 a stack applied from that version was upgraded in place to the
+next (#53). The tasks moved to ARM64 and came back healthy, the api accepted
+the generated `SECRET_ENCRYPTION_KEY` at boot, a vector and a raster dataset
+ingested through the load balancer and the raster rendered in the browser,
+and the bucket refused a plain-HTTP request while serving HTTPS. The stack
+was then destroyed. The pilot profile has only been statically validated; it
+has not been applied or restore-tested in AWS.

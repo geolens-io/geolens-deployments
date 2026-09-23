@@ -44,8 +44,29 @@ assert_profile_rejected \
   -var=s3_versioning_enabled=false
 assert_profile_rejected \
   'reserved storage environment variables cannot be overridden' \
-  'pilot_profile reserves the database, migration/runtime-role, TLS, AWS credential and task-role S3 environment settings' \
+  'pilot_profile reserves the database, migration/runtime-role, TLS, admin, JWT, encryption-key, AWS credential and S3 settings' \
   '-var=extra_env={S3_BUCKET="another-org-bucket"}'
+assert_profile_rejected \
+  'a reserved name cannot come in through extra_secrets either' \
+  'pilot_profile reserves the database, migration/runtime-role, TLS, admin, JWT, encryption-key, AWS credential and S3 settings' \
+  '-var=extra_secrets={STORAGE_PROVIDER="arn:aws:secretsmanager:us-east-1:111111111111:secret:geolens-org-slug/storage-AbCdEf"}'
+assert_profile_rejected \
+  'extra_env cannot set a recipe-generated secret' \
+  'extra_env cannot set DATABASE_URL_OVERRIDE, JWT_SECRET_KEY' \
+  '-var=extra_env={JWT_SECRET_KEY="weak"}'
+assert_profile_rejected \
+  'extra_secrets cannot redefine a recipe-generated secret' \
+  'extra_secrets cannot redefine DATABASE_URL_OVERRIDE, JWT_SECRET_KEY' \
+  '-var=extra_secrets={SECRET_ENCRYPTION_KEY="arn:aws:secretsmanager:us-east-1:111111111111:secret:geolens-org-slug/key-AbCdEf"}'
+assert_profile_rejected \
+  'one name cannot be both plain and secret' \
+  'A name cannot be in both extra_env and extra_secrets' \
+  '-var=extra_env={SMTP_PASSWORD="plain"}' \
+  '-var=extra_secrets={SMTP_PASSWORD="arn:aws:secretsmanager:us-east-1:111111111111:secret:geolens-org-slug/smtp-AbCdEf"}'
+assert_profile_rejected \
+  'cpu_architecture takes only Fargate values' \
+  'cpu_architecture must be ARM64 or X86_64' \
+  -var=cpu_architecture=amd64
 assert_profile_rejected \
   'extra secrets must use the deployment-specific path' \
   'under the stack-specific Secrets Manager path <name>/' \

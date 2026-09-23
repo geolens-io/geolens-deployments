@@ -7,6 +7,10 @@ resource "aws_lb" "this" {
 
   # A large export or a slow multipart handshake outlives the 60 s default.
   idle_timeout = 300
+
+  # #53: refuse headers whose names are not valid HTTP tokens instead of
+  # forwarding them to nginx (Security Hub ELB.4).
+  drop_invalid_header_fields = true
 }
 
 # Everything goes through the frontend container. It is the application edge:

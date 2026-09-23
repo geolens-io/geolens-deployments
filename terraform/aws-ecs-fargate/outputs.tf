@@ -19,7 +19,7 @@ output "admin_password_command" {
 }
 
 output "secret_arn" {
-  description = "Secrets Manager secret holding the database DSN, JWT key and admin credentials."
+  description = "Secrets Manager secret holding the database DSN, JWT key, stored-secret encryption key and admin credentials."
   value       = aws_secretsmanager_secret.app.arn
 }
 

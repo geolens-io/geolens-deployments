@@ -132,11 +132,12 @@ Add a lifecycle rule with `AbortIncompleteMultipartUpload` as a backstop, since
 an upload that is neither completed nor aborted leaves parts no application
 sweep can see.
 
-The hosted pilot profile enables bucket versioning, expires noncurrent versions
-after 30 days by default, and aborts incomplete multipart uploads after seven
-days. In a versioned bucket, an application delete hides an object by adding a
-delete marker; prior versions remain until lifecycle removes them. Current
-objects do not expire automatically, and lifecycle expiration is asynchronous.
+The recipe aborts incomplete multipart uploads after seven days on every
+bucket. The hosted pilot profile also enables bucket versioning and expires
+noncurrent versions after 30 days by default. In a versioned bucket, an
+application delete hides an object by adding a delete marker; prior versions
+remain until lifecycle removes them. Current objects do not expire
+automatically, and lifecycle expiration is asynchronous.
 
 Give Titiler a second, read-only principal scoped to `rasters/*` and
 `tenants/*/rasters/*`, and set `TITILER_S3_ACCESS_KEY_ID` and

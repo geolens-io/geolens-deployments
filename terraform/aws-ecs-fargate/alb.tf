@@ -22,12 +22,11 @@ resource "aws_lb_target_group" "app" {
 
   deregistration_delay = 15
 
-  # Through the edge to the api, not just the edge: nginx keeps answering / on
-  # its own, so a task whose api has died would stay healthy and keep taking
-  # traffic (codex review on #40). /health returns 503 while the database or
-  # object store is unreachable, which is what should drain a target.
+  # Through the edge to the api (codex review on #40), process-only (#52): ECS
+  # stops a task that fails this check, and the deep /health 503s on any S3 or
+  # cache outage, so the recipe replaced healthy tasks it could not fix.
   health_check {
-    path    = "/api/health"
+    path    = "/api/health/live"
     matcher = "200"
   }
 

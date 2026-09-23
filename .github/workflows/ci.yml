@@ -375,6 +375,7 @@ jobs:
         # codex review on #53: an extraVolumes entry named like a chart volume,
         # or a component mount at /tmp or /home/appuser, must not duplicate a
         # volume name or mountPath. Admission rejects that; a render does not.
+        # A name the chart cannot give way on fails the render instead.
         run: |
           check() {
             rendered=$(cat)
@@ -395,6 +396,19 @@ jobs:
             --set-json 'worker.extraVolumeMounts=[{"name":"home","mountPath":"/home/appuser"}]' \
             --set-json 'migrate.extraVolumeMounts=[{"name":"tmp","mountPath":"/tmp"},{"name":"home","mountPath":"/home/appuser"}]' \
             | check overrides
+          # An operator volume named like a chart scratch volume but mounted
+          # elsewhere must fail the render, not reach admission.
+          if out=$(render --set-json 'extraVolumes=[{"name":"geolens-tmp","emptyDir":{}}]' \
+              --set-json 'api.extraVolumeMounts=[{"name":"geolens-tmp","mountPath":"/data"}]' 2>&1); then
+            echo "an extraVolumes entry named geolens-tmp rendered beside the chart's own" >&2
+            exit 1
+          fi
+          grep -q 'rename that volume' <<<"$out" || { echo "failed for another reason: $out" >&2; exit 1; }
+          # Mounted at /tmp wherever it renders, the same name is the operator's scratch.
+          render --set-json 'extraVolumes=[{"name":"geolens-tmp","emptyDir":{}}]' \
+            --set-json 'api.extraVolumeMounts=[{"name":"geolens-tmp","mountPath":"/tmp"}]' \
+            --set-json 'worker.extraVolumeMounts=[{"name":"geolens-tmp","mountPath":"/tmp"}]' \
+            | check reused-name
           echo "backend pods mount /tmp and /home/appuser once each, under unique volume names"
 
       - name: Guard - database.sslMode reaches the migrate hook too

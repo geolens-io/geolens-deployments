@@ -77,7 +77,7 @@ runs guards that each pin a bug rendering alone would not catch:
 - `database.sslMode` reaches both the ConfigMap and the migrate hook.
 - NetworkPolicies render only when enabled, and the api's admits only the frontend.
 - Each component's placement reaches its pods. The migrate hook takes the api's nodeSelector, tolerations and node affinity, and never its pod affinity or spread constraints.
-- Operator `extraVolumes` named `tmp` or `home`, or a component mount at `/tmp` or `/home/appuser`, never repeat a volume name or mountPath in the api, worker or migrate pod.
+- Operator `extraVolumes` named `tmp` or `home`, or a component mount at `/tmp` or `/home/appuser`, never repeat a volume name or mountPath in the api, worker or migrate pod. An operator volume named `geolens-tmp` or `geolens-home` and mounted elsewhere fails the render.
 - No `GDAL_HTTP_FOLLOWLOCATION` appears anywhere, and `GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE` holds a token GDAL accepts.
 - An empty install fails.
 - `extraEnv` overrides render exactly once per container and win.

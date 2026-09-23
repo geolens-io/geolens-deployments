@@ -91,16 +91,21 @@ seccompProfile:
   type: RuntimeDefault
 {{- end -}}
 
-{{/* #53: what the backend images write outside /app/staging, the paths compose
-     mounts as tmpfs. codex review on #53: a path the component's extraVolumeMounts
-     already mounts stays the operator's. Takes (list extraVolumeMounts "mounts"|"volumes"). */}}
+{{/* #53: what the backend images write outside /app/staging, as compose mounts tmpfs.
+     codex review on #53: a path the pod already mounts stays the operator's, and an operator
+     volume by a name used here fails the render. (list extraVolumeMounts podVolumes "mounts"|"volumes") */}}
 {{- define "geolens.backendScratch" -}}
 {{- $taken := list -}}
 {{- range (index . 0 | default list) }}{{ $taken = append $taken .mountPath }}{{ end -}}
+{{- $names := list -}}
+{{- range (index . 1 | default list) }}{{ $names = append $names .name }}{{ end -}}
 {{- range list (list "geolens-tmp" "/tmp") (list "geolens-home" "/home/appuser") }}
 {{- if not (has (index . 1) $taken) }}
+{{- if has (index . 0) $names }}
+{{- fail (printf "extraVolumes defines %q, the name the chart gives its %s emptyDir; rename that volume" (index . 0) (index . 1)) }}
+{{- end }}
 - name: {{ index . 0 }}
-{{- if eq (index $ 1) "mounts" }}
+{{- if eq (index $ 2) "mounts" }}
   mountPath: {{ index . 1 }}
 {{- else }}
   emptyDir: {}

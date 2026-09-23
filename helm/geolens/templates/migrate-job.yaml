@@ -43,6 +43,22 @@ spec:
       {{- with include "geolens.scheduling" (dict "nodeSelector" .Values.api.nodeSelector "tolerations" .Values.api.tolerations "affinity" $apiNodeAffinity) | trim }}
       {{- . | nindent 6 }}
       {{- end }}
+      {{- /* Only the volumes this Job actually mounts. extraVolumes is shared
+           with the api and worker, and attaching one the migration does not use
+           can wedge the hook: a ReadWriteOnce PVC already attached to another
+           node blocks scheduling, and a Secret or ConfigMap that does not exist
+           yet keeps the pod pending — either way a pre-install hook that never
+           completes fails the whole install (codex review on #29). */}}
+      {{- $mountNames := list }}
+      {{- range (.Values.migrate.extraVolumeMounts | default list) }}
+      {{- $mountNames = append $mountNames .name }}
+      {{- end }}
+      {{- $volumes := list }}
+      {{- range (.Values.extraVolumes | default list) }}
+      {{- if has .name $mountNames }}
+      {{- $volumes = append $volumes . }}
+      {{- end }}
+      {{- end }}
       containers:
         - name: migrate
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
@@ -138,7 +154,7 @@ spec:
             {{- end }}
           {{- end }}
           volumeMounts:
-            {{- include "geolens.backendScratch" (list (.Values.migrate | default dict).extraVolumeMounts "mounts") | trim | nindent 12 }}
+            {{- include "geolens.backendScratch" (list (.Values.migrate | default dict).extraVolumeMounts $volumes "mounts") | trim | nindent 12 }}
             {{- with (.Values.migrate | default dict).extraVolumeMounts }}
             # This Job connects to the same database as the api, so anything the
             # api must MOUNT to reach it — most often a CA bundle for
@@ -147,24 +163,8 @@ spec:
             # it fails before any api pod rolls.
             {{- toYaml . | nindent 12 }}
             {{- end }}
-      {{- /* Only the volumes this Job actually mounts. extraVolumes is shared
-           with the api and worker, and attaching one the migration does not use
-           can wedge the hook: a ReadWriteOnce PVC already attached to another
-           node blocks scheduling, and a Secret or ConfigMap that does not exist
-           yet keeps the pod pending — either way a pre-install hook that never
-           completes fails the whole install (codex review on #29). */}}
-      {{- $mountNames := list }}
-      {{- range (.Values.migrate.extraVolumeMounts | default list) }}
-      {{- $mountNames = append $mountNames .name }}
-      {{- end }}
-      {{- $volumes := list }}
-      {{- range (.Values.extraVolumes | default list) }}
-      {{- if has .name $mountNames }}
-      {{- $volumes = append $volumes . }}
-      {{- end }}
-      {{- end }}
       volumes:
-        {{- include "geolens.backendScratch" (list (.Values.migrate | default dict).extraVolumeMounts "volumes") | trim | nindent 8 }}
+        {{- include "geolens.backendScratch" (list (.Values.migrate | default dict).extraVolumeMounts $volumes "volumes") | trim | nindent 8 }}
         {{- with $volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

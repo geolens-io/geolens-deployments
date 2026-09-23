@@ -443,6 +443,7 @@ podSecurityContext:
 
 # Volumes for the api, worker and migrate pods to mount through their
 # extraVolumeMounts. The chart already uses the names staging, geolens-tmp and
-# geolens-home in those pods; pick others. A component's own mount at /tmp or
+# geolens-home in those pods; pick others (the last two fail the render unless
+# mounted at the chart's own path). A component's own mount at /tmp or
 # /home/appuser replaces the chart's emptyDir there.
 extraVolumes: []

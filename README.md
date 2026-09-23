@@ -81,7 +81,9 @@ Chart releases are cut by landing a `Chart.yaml` `version` bump on `main`. Once
 tested, attaches it to a GitHub Release, updates the `gh-pages` index, and
 pushes the same package to GHCR, where it signs it with cosign. A red `main`
 publishes nothing. Both legs skip a version that is already published, so a
-rerun or a merge without a version bump publishes nothing either.
+rerun or a merge without a version bump publishes nothing either. Every run
+does check that the current version in GHCR is signed, and signs it if an
+earlier run stopped short, as long as its files match the commit.
 
 Workflow actions are pinned to commit SHAs, and Dependabot proposes updates
 after a week's cooldown.

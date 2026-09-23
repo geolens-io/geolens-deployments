@@ -65,8 +65,11 @@ and quotes scalar-looking Secret selectors; the migrate hook sets no
 and not `stringData`; `s3AmbientCredentials` emits no static keys while the
 static path still fails closed without them; rendering survives
 `serviceAccount=null` and `database=null` (a cross-version `--reuse-values`
-upgrade); `database.sslMode` reaches both the ConfigMap and the migrate hook;
-no `GDAL_HTTP_FOLLOWLOCATION` appears anywhere; an empty install fails;
+upgrade), and the templates rendered against the latest published chart's
+`values.yaml` (what `--reuse-values` renders against) still run titiler and the
+frontend non-root; `database.sslMode` reaches both the ConfigMap and the
+migrate hook; no `GDAL_HTTP_FOLLOWLOCATION` appears anywhere; an empty install
+fails;
 `GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE` holds a token GDAL accepts; and
 `extraEnv` overrides render exactly once per container and win; all three api
 probes are `/health/live`; the api sets `FORWARDED_ALLOW_IPS` once and an
@@ -108,7 +111,7 @@ history behind it belongs in the PR or issue the anchor names.
 - Every generated env entry is skipped when the operator already set that name in `extraEnv`. Build an override-name set first and guard each static entry against it. Duplicate env names break strategic-merge tooling, which keys `env` by `name`, so an Argo or Helm upgrade can fail before a pod rolls.
 - The migrate Job is a pre-install/pre-upgrade hook and must reference no chart-created resource. No `serviceAccountName`, no `secretRef` to the chart Secret, no ConfigMap `envFrom`. Values it needs are inlined. It also carries `hook-delete-policy: before-hook-creation,hook-succeeded`, without which Job immutability fails every upgrade.
 - `serviceAccount.create` defaults to false on purpose: flipping an existing install to a fresh account would silently drop the `default` account's imagePullSecrets, RBAC, and annotations.
-- Every new top-level values map must be dereferenced through `| default dict`. A `--reuse-values` upgrade from a release installed before the map existed supplies nothing, and a bare dereference aborts rendering.
+- Every new top-level values map must be dereferenced through `| default dict`. A `--reuse-values` upgrade from a release installed before the map existed supplies nothing, and a bare dereference aborts rendering. A new value whose default matters (a security context, a grace period) needs the same default in the template, or reused-value upgrades silently skip it.
 - The Secret renders `data` with `b64enc`, never `stringData`, or removed keys survive `helm upgrade`.
 - Every container stays within Pod Security `restricted` (`geolens.containerSecurityContext` plus a non-root user); `install-test` enforces it, so a new container or hook fails CI rather than a hardened cluster.
 - The ingress routes everything to the frontend edge. Do not add a path that reaches the api directly; that bypasses the metrics block, the anonymous raster rate limit, and log redaction.

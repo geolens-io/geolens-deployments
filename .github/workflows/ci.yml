@@ -248,6 +248,31 @@ jobs:
             }
           echo "renders with serviceAccount/database absent (cross-version --reuse-values safe)"
 
+      - name: Guard - a --reuse-values upgrade from the published chart keeps pods non-root
+        # codex review on #52: --reuse-values renders the new templates against
+        # the previous release's values, so values added since are absent. Render
+        # exactly that, against the latest published chart's values.yaml, and
+        # require the non-root pod defaults Pod Security "restricted" admits.
+        run: |
+          chart=$(mktemp -d)/geolens
+          cp -R helm/geolens "$chart"
+          helm show values oci://ghcr.io/geolens-io/charts/geolens > "$chart/values.yaml"
+          render() {
+            helm template geolens "$chart" --set secrets.existingSecret=geolens-secrets \
+              --show-only "templates/$1.yaml"
+          }
+          for want in titiler-deployment:1001 frontend-deployment:101; do
+            tpl=${want%%:*}
+            uid=${want##*:}
+            pod=$(render "$tpl" | awk '/^    spec:/{f=1} f && /^      securityContext:/{p=1; next} p && /^      [a-z]/{exit} p')
+            if ! grep -q 'runAsNonRoot: true' <<<"$pod" || ! grep -q "runAsUser: $uid\$" <<<"$pod"; then
+              echo "$tpl lost its non-root pod securityContext under the published chart's values:" >&2
+              echo "$pod" >&2
+              exit 1
+            fi
+          done
+          echo "reused published values still render titiler as uid 1001 and the frontend as uid 101"
+
       - name: Guard - database.sslMode reaches the migrate hook too
         # The migrate Job cannot read the chart ConfigMap (hook ordering), so a
         # mode configured only there would leave migrations on the application

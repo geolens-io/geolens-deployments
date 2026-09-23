@@ -119,8 +119,10 @@ frontend:
   # e.g. ["10.42.0.0/16"] or ["10.42.0.0/16", "173.245.48.0/20"]
   trustedProxyCidrs: []
   # The image runs nginx as uid 101; stating it lets Kubernetes enforce
-  # runAsNonRoot (it cannot verify the image's non-numeric USER). Set {} on
-  # platforms that assign UIDs themselves, such as OpenShift.
+  # runAsNonRoot (it cannot verify the image's non-numeric USER). On platforms
+  # that assign UIDs themselves, such as OpenShift, set runAsUser and runAsGroup
+  # to null. An empty map does not clear these: Helm merges it with the
+  # defaults, and the template falls back to them when the key is absent.
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 101
@@ -155,8 +157,9 @@ titiler:
   workers: 1
   # The upstream titiler image declares no USER, so without this it runs as
   # root. uid 1001 is the backend images' user: titiler can then read the
-  # rasters the api writes to a shared staging claim. Set {} on platforms that
-  # assign UIDs themselves, such as OpenShift.
+  # rasters the api writes to a shared staging claim. On platforms that assign
+  # UIDs themselves, such as OpenShift, set runAsUser and runAsGroup to null
+  # (an empty map does not clear them; see frontend.podSecurityContext).
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 1001

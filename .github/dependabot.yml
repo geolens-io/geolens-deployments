@@ -1,4 +1,4 @@
-# #53: every workflow action is pinned to a commit SHA with its version in a
+# Every workflow action is pinned to a commit SHA with its version in a
 # trailing comment; Dependabot moves both together. The cooldown holds a new
 # release back for a week, so a compromised upstream tag has time to be caught
 # before it reaches a workflow that can publish the chart.

@@ -1,8 +1,8 @@
 {{- $np := .Values.networkPolicy | default dict }}
 {{- if $np.enabled }}
-{{- /* #53: enforce "everything through the edge" below the ingress too. Only
-     this release's frontend reaches the api, so no other pod can bypass the
-     edge or hand the api a forged X-Forwarded-For (FORWARDED_ALLOW_IPS="*"). */}}
+{{- /* "Everything through the edge" below the ingress too: only this release's
+     frontend reaches the api, so no other pod can bypass the edge or hand the
+     api a forged X-Forwarded-For (FORWARDED_ALLOW_IPS="*"). */}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -24,8 +24,8 @@ spec:
               app.kubernetes.io/component: frontend
       ports:
         - port: http
-    {{- /* codex review on #53: /metrics shares the api's only port and a policy
-         cannot filter paths, so metricsFrom peers are trusted API clients. */}}
+    {{- /* /metrics shares the api's only port and a policy cannot filter paths, so
+         metricsFrom peers are trusted API clients. */}}
     {{- with $np.metricsFrom }}
     - from:
         {{- toYaml . | nindent 8 }}

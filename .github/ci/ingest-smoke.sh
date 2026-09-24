@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pushes a vector and a raster dataset through a running install and fetches a
-# raster tile, all through the frontend edge (#53). The kind install test runs
+# raster tile, all through the frontend edge. The kind install test runs
 # it; it also works against any install reachable at $1.
 #
 #   ingest-smoke.sh http://127.0.0.1:8080 <admin-user> <admin-password>

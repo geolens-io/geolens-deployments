@@ -17,8 +17,8 @@ spec:
         {{- include "geolens.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
     spec:
-      {{- /* codex review on #52: --reuse-values from a release without this value
-           supplies none, so an absent key falls back to nginx's non-root uid. */}}
+      {{- /* --reuse-values from a release without this value supplies none, so an
+           absent key falls back to nginx's non-root uid. */}}
       {{- $frontendPsc := dict "runAsNonRoot" true "runAsUser" 101 "runAsGroup" 101 }}
       {{- if hasKey .Values.frontend "podSecurityContext" }}
       {{- $frontendPsc = .Values.frontend.podSecurityContext }}
@@ -44,15 +44,9 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            {{- /*
-              Every key below is skipped when already present in
-              frontend.extraEnv (fix(#16 review) widened this from the two
-              derived keys to the statics too): repeating an env name survives
-              the container runtime but breaks strategic-merge tooling, which
-              keys `env` by `name`, so a Helm/Argo upgrade can fail on the
-              duplicate merge key. Operators who set a variable by hand before
-              the chart wired it must still be able to upgrade.
-            */}}
+            {{- /* Each entry below is skipped when frontend.extraEnv sets the same name:
+                 duplicate env names break strategic-merge tooling, which keys `env` by
+                 `name`, and an operator who set one by hand must still be able to upgrade. */}}
             {{- $feExtraNames := list }}
             {{- range (.Values.frontend.extraEnv | default list) }}
             {{- $feExtraNames = append $feExtraNames .name }}
@@ -80,25 +74,25 @@ spec:
               value: {{ .Values.api.publicAppUrl | quote }}
             {{- end }}
             {{- if not (has "CLIENT_MAX_BODY_SIZE" $feExtraNames) }}
-            # Keep the edge upload ceiling in step with the backend's limit so
-            # a raised api.uploadMaxSizeMb is not 413'd by nginx (geolens#580,
-            # frontend images >= 1.4.10). The entrypoint validates the value.
+            # Keeps the edge upload ceiling in step with the backend's limit, so a
+            # raised api.uploadMaxSizeMb is not 413'd by nginx (frontend images
+            # >= 1.4.10). The entrypoint validates the value.
             - name: CLIENT_MAX_BODY_SIZE
               value: {{ printf "%sm" (toString .Values.api.uploadMaxSizeMb) | quote }}
             {{- end }}
             {{- if and .Values.frontend.trustedProxyCidrs (not (has "TRUSTED_PROXY_CIDRS" $feExtraNames)) }}
-            # Recover the real client address from X-Forwarded-For for exactly
-            # these hops (geolens#581). Comma-joined; the entrypoint rejects
-            # anything outside IP/CIDR characters.
+            # Recovers the real client address from X-Forwarded-For for exactly
+            # these hops. Comma-joined; the entrypoint rejects anything outside
+            # IP/CIDR characters.
             - name: TRUSTED_PROXY_CIDRS
               value: {{ join "," .Values.frontend.trustedProxyCidrs | quote }}
             {{- end }}
             {{- with .Values.frontend.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          # #53: what nginx writes under the read-only root, as compose mounts
-          # them: the runtime SPA copy, config, pid and temp files in /tmp,
-          # and the raster tile proxy cache.
+          # What nginx writes under the read-only root, as compose mounts them:
+          # the runtime SPA copy, config, pid and temp files in /tmp, and the
+          # raster tile proxy cache.
           volumeMounts:
             - name: tmp
               mountPath: /tmp

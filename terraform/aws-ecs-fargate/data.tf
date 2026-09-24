@@ -87,7 +87,7 @@ resource "aws_s3_bucket_public_access_block" "this" {
   restrict_public_buckets = true
 }
 
-# #53: the same TLS-only rule the pilot README asks of the state bucket. The
+# The same TLS-only rule the pilot README asks of the state bucket. The
 # app, titiler and the presigned URLs browsers upload to all use HTTPS.
 resource "aws_s3_bucket_policy" "this" {
   bucket = aws_s3_bucket.this.id
@@ -141,8 +141,8 @@ resource "aws_s3_bucket_versioning" "this" {
   }
 }
 
-# Every bucket aborts abandoned multipart uploads (#52), the backstop
-# clouds/aws.md asks for; before, only a versioned bucket had a lifecycle.
+# Every bucket aborts abandoned multipart uploads, the backstop clouds/aws.md
+# asks for.
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
   bucket = aws_s3_bucket.this.id
 
@@ -175,6 +175,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
   depends_on = [aws_s3_bucket_versioning.this]
 }
 
+# Stacks from when only a versioned bucket had a lifecycle hold it at [0].
 moved {
   from = aws_s3_bucket_lifecycle_configuration.this[0]
   to   = aws_s3_bucket_lifecycle_configuration.this
@@ -214,8 +215,8 @@ resource "aws_elasticache_replication_group" "this" {
   apply_immediately = true
 }
 
-# #53: a dedicated key for stored SSO secrets, so a JWT rotation no longer
-# strands them. The app keeps the JWT-derived key as its last fallback, so old
+# A dedicated key for stored SSO secrets, so a JWT rotation does not strand
+# them. The app keeps the JWT-derived key as its last fallback, so old
 # ciphertexts stay readable; replacing this key strands what it wrote.
 resource "random_bytes" "secret_encryption_key" {
   length = 32

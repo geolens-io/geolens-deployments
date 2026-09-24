@@ -15,7 +15,7 @@ release is published (the weekly version-drift CI in this repo flags it).
 {{- if semverCompare "<1.18.0-0" $apiTag }}
 
 WARNING: api image {{ $apiTag }} predates the /health/live endpoint (GeoLens
-1.18.0), which every api probe in this chart uses (#36, #52). Older images
+1.18.0), which every api probe in this chart uses. Older images
 answer 404 there, so the api pods never become ready and kubelet WILL restart
 them in a loop. Bump the three ghcr.io/geolens-io/* image tags to >= 1.18.0.
 {{- end }}

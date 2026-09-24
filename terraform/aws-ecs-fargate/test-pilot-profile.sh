@@ -74,8 +74,8 @@ assert_profile_rejected \
   'extra secrets must use the deployment-specific path' \
   'under the stack-specific Secrets Manager path <name>/' \
   '-var=extra_secrets={OPENAI_API_KEY="arn:aws:secretsmanager:us-east-1:111111111111:secret:other/ai-AbCdEf"}'
-# Outside the pilot profile too: the recipe's own wiring (as in the Azure
-# recipe, #59), and an admin credential GeoLens would refuse at boot.
+# Outside the pilot profile too: the recipe's own wiring and an admin
+# credential GeoLens would refuse at boot.
 assert_profile_rejected \
   'migrations cannot move back into the api' \
   'extra_env cannot set any of' \

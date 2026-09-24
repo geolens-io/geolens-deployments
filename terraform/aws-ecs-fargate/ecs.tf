@@ -153,7 +153,7 @@ resource "aws_ecs_task_definition" "app" {
         GEOLENS_API_RUN_MIGRATIONS = "false"
         TITILER_BASE_URL           = "http://127.0.0.1:8081"
         # The image's own command reads these, so the app's settings see the
-        # real worker count (#52). The frontend overwrites X-Forwarded-For
+        # real worker count. The frontend overwrites X-Forwarded-For
         # before proxying, so trusting it gives the api the real client.
         UVICORN_WORKERS      = "2"
         UVICORN_MAX_REQUESTS = "10000"
@@ -191,7 +191,7 @@ resource "aws_ecs_task_definition" "app" {
       environment = local.titiler_env
 
       # The ALB probe covers the api's dependencies, not a hung tile renderer.
-      # Same /healthz the chart's liveness probe uses (codex review on #40).
+      # Same /healthz the chart's liveness probe uses.
       healthCheck = {
         command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8081/healthz')\" || exit 1"]
         interval    = 30
@@ -215,7 +215,7 @@ resource "aws_ecs_task_definition" "worker" {
   task_role_arn            = aws_iam_role.task.arn
 
   # Fargate accepts an explicit size only from 21 GiB up; 20 GiB is what you
-  # get by saying nothing, and saying 20 is rejected (codex review on #40).
+  # get by saying nothing, and saying 20 is rejected.
   dynamic "ephemeral_storage" {
     for_each = var.worker_ephemeral_storage_gb > 20 ? [1] : []
     content {
@@ -243,17 +243,17 @@ resource "aws_ecs_task_definition" "worker" {
       # router and the STAC source resolver). The worker imports the
       # storage-key helpers from that module and renders quicklooks
       # in-process, as in the prod compose file, which also leaves the worker
-      # without it (codex review on #40).
-      # No WORKER_QUEUES (#52): the image default names every queue its release
-      # enqueues to. A pinned list here missed "download" once 1.19.0 added it,
-      # and URL imports sat queued forever.
+      # without it.
+      # No WORKER_QUEUES: the image default names every queue its release
+      # enqueues to, and a pinned list would leave a queue a release adds, such
+      # as 1.19.0's "download", with no consumer.
       environment = [for k, v in merge(local.backend_env, {
         GEOLENS_API_RUN_MIGRATIONS = "false"
         WORKER_CONCURRENCY         = tostring(var.worker_concurrency)
         WORKER_SHUTDOWN_TIMEOUT    = "30"
       }, var.extra_env) : { name = k, value = v } if !contains(keys(var.extra_secrets), k)]
 
-      # Compose's 35s (#52): SIGKILL lands after the worker's own 30s
+      # Compose's 35s: SIGKILL lands after the worker's own 30s
       # shutdown window, so it releases its jobs first.
       stopTimeout = 35
 
@@ -262,7 +262,7 @@ resource "aws_ecs_task_definition" "worker" {
       # Nothing else watches the worker: no load balancer target, and a hung
       # job runner keeps the process alive. Same probe the image HEALTHCHECK
       # and the chart's liveness probe use; failing it stops the task and the
-      # service replaces it (codex review on #40). The health server only
+      # service replaces it. The health server only
       # starts after schema sync and storage bootstrap, hence the start period.
       healthCheck = {
         command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live')\" || exit 1"]
@@ -346,7 +346,7 @@ resource "terraform_data" "migrate" {
       echo "migrate task $task"
       # Not `aws ecs wait tasks-stopped`: that waiter gives up after ten
       # minutes with exit 255, and a retry would start a second migration next
-      # to one still running (codex review on #40). Poll for up to an hour.
+      # to one still running. Poll for up to an hour.
       deadline=$(( $(date +%s) + 3600 ))
       while :; do
         status=$(aws ecs describe-tasks --region "$REGION" --cluster "$CLUSTER" --tasks "$task" \
@@ -383,7 +383,7 @@ resource "aws_ecs_service" "app" {
   desired_count   = var.app_desired_count
   launch_type     = "FARGATE"
 
-  # Tasks carry the stack's tags (#52), so Fargate, the largest line item,
+  # Tasks carry the stack's tags, so Fargate, the largest line item,
   # shows up under the pilot's Deployment cost-allocation tag.
   propagate_tags = "SERVICE"
 
@@ -419,7 +419,7 @@ resource "aws_ecs_service" "app" {
 
   # Both listeners: with a certificate only the HTTPS one attaches the target
   # group, and ECS rejects a service whose target group has no load balancer
-  # yet (codex review on #40).
+  # yet.
   depends_on = [aws_lb_listener.http, aws_lb_listener.https, terraform_data.migrate]
 }
 

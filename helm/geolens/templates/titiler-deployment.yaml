@@ -1,11 +1,7 @@
 {{- if .Values.titiler.enabled }}
-{{- /*
-  geolens#1191: a dedicated TiTiler read-only principal can live in an
-  operator-managed Secret. Defaults preserve upgrades from older chart values:
-  the shared GeoLens Secret and S3_* keys remain the fallback. `default dict`
-  also keeps --reuse-values upgrades safe when the old release has no
-  titiler.s3Credentials map at all.
-*/}}
+{{- /* titiler.s3Credentials can name a dedicated read-only Secret; without one, the
+     shared GeoLens Secret's S3_* keys apply. `default dict` covers a --reuse-values
+     upgrade from a release that has no such map. */}}
 {{- $titilerS3Credentials := .Values.titiler.s3Credentials | default dict }}
 {{- $titilerS3SecretName := get $titilerS3Credentials "existingSecret" | default (include "geolens.secretName" .) }}
 {{- $titilerS3AccessKey := get $titilerS3Credentials "accessKeyIdKey" | default "S3_ACCESS_KEY_ID" }}
@@ -30,28 +26,20 @@ spec:
         app.kubernetes.io/component: titiler
       annotations:
         {{- if and (eq .Values.storage.backend "s3") (not .Values.secrets.existingSecret) (not (get $titilerS3Credentials "existingSecret")) }}
-        # Roll titiler when the chart-managed Secret rotates — its AWS_* env
-        # comes from secretKeyRefs read only at container start. External
-        # Secrets are operator-managed and do not have chart-rendered content
-        # to checksum.
+        # Rolls titiler when the chart-managed Secret rotates: its AWS_* env comes
+        # from secretKeyRefs read only at container start. An operator-managed
+        # Secret has no rendered content to checksum.
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- end }}
-        {{- /* codex review on #29: Helm updates the ServiceAccount in place when
-             its IRSA / Pod Identity annotations change, but pods keep the
-             AWS_ROLE_ARN and token volume the webhook injected at admission.
-             Without this checksum a role change silently leaves every pod on
-             the old credentials — or on none — until someone restarts them.
-             Deliberately OUTSIDE the secret condition above: an operator using
-             secrets.existingSecret is exactly who is most likely to move to a
-             role, and titiler reads a stale key for as long as its pod lives —
-             observed during validation, where it kept serving with the old
-             credential until it was restarted by hand. */}}
+        {{- /* The IRSA / Pod Identity webhook injects credentials only at admission, so a
+             ServiceAccount change must roll the pods. Outside the condition above on
+             purpose: an existingSecret install is the likeliest to move to a role. */}}
         checksum/serviceaccount: {{ include (print $.Template.BasePath "/serviceaccount.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "geolens.serviceAccountName" . | quote }}
-      {{- /* fix(#52): the upstream image declares no USER, so titiler ran as root.
-           codex review on #52: --reuse-values from a release without this value
-           supplies none, so an absent key falls back to the non-root default. */}}
+      {{- /* The upstream image declares no USER, so titiler would run as root. A
+           --reuse-values upgrade from a release without this value supplies none,
+           so an absent key falls back to the non-root default. */}}
       {{- $titilerPsc := dict "runAsNonRoot" true "runAsUser" 1001 "runAsGroup" 1001 }}
       {{- if hasKey .Values.titiler "podSecurityContext" }}
       {{- $titilerPsc = .Values.titiler.podSecurityContext }}
@@ -71,10 +59,9 @@ spec:
         - name: titiler
           image: "{{ .Values.titiler.image.repository }}:{{ .Values.titiler.image.tag }}"
           imagePullPolicy: {{ .Values.titiler.image.pullPolicy }}
-          # Parity with the compose titiler service's hardening (cap_drop ALL,
-          # no-new-privileges, read_only rootfs + /tmp tmpfs). GDAL scratch
-          # goes to /tmp, mounted as an emptyDir below; everything else the
-          # process touches is /vsis3/-style virtual I/O or the staging mount.
+          # The compose titiler service's hardening (cap_drop ALL, no-new-privileges,
+          # read-only root with a /tmp tmpfs). GDAL scratch goes to the /tmp emptyDir;
+          # everything else is /vsis3/-style virtual I/O or the staging mount.
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
@@ -90,24 +77,16 @@ spec:
             - --port
             - "8000"
             - --workers
-            # geolens#1193: mirrors the compose TITILER_WORKERS knob. Raise
-            # titiler.resources memory alongside it — GDAL_CACHEMAX is per
-            # process and the geolens#678 RSS ratchet runs in each worker.
+            # Mirrors compose's TITILER_WORKERS. Raise titiler.resources memory with
+            # it: GDAL_CACHEMAX and TiTiler's RSS ratchet are both per process.
             - {{ .Values.titiler.workers | default 1 | quote }}
           ports:
             - name: http
               containerPort: 8000
           env:
-            {{- /*
-              fix(#16 review): every key below — static and derived alike — is
-              skipped when the operator already set it in titiler.extraEnv.
-              Emitting both would repeat an env name, and while the container
-              runtime just takes the later value, strategic-merge tooling keys
-              `env` by `name` — so Helm/Argo upgrades can fail on the duplicate
-              merge key before a pod ever rolls. extraEnv is the operator's
-              escape hatch (e.g. opting back into raw-band VRTs); it must not
-              wedge the upgrade that applies it.
-            */}}
+            {{- /* Each entry below is skipped when titiler.extraEnv sets the same name. A
+                 duplicate env name breaks strategic-merge tooling before a pod rolls, and
+                 extraEnv, the operator's escape hatch, must not wedge its own upgrade. */}}
             {{- $extraNames := list }}
             {{- range (.Values.titiler.extraEnv | default list) }}
             {{- $extraNames = append $extraNames .name }}
@@ -126,21 +105,9 @@ spec:
             - name: CPL_VSIL_CURL_ALLOWED_EXTENSIONS
               value: ".tif,.tiff,.cog,.vrt"
             {{- end }}
-            # geolens#1192: pin the VRT rawband controls (both GDAL >= 3.12)
-            # rather than inheriting version-dependent defaults, so a base-image
-            # bump cannot relax them silently.
-            #
-            # ALLOWED_SOURCE previously read "NETWORK_OR_LOCAL", which is not a
-            # value GDAL accepts (SIBLING_OR_CHILD_OF_VRT_PATH | ONLY_REMOTE |
-            # ALL | <absolute path>). GDAL parsed it as a bogus absolute path
-            # and refused every VRTRawRasterBand source, so the effective policy
-            # was already deny-all while the name suggested otherwise. Measured
-            # in titiler 2.0.5 and 2.2.1, both GDAL 3.12.1.
-            #
-            # ENABLE_RAWRASTERBAND=NO states that deny-all in a value GDAL
-            # accepts, and costs nothing: GeoLens emits no VRTRawRasterBand
-            # (gdalbuildvrt writes SimpleSource / ComplexSource), and ordinary
-            # SimpleSource VRTs read unchanged under NO.
+            # Pinned, not left to version-dependent GDAL (>= 3.12) defaults, so a base-image
+            # bump cannot relax them. Deny-all costs nothing: GeoLens writes SimpleSource
+            # and ComplexSource VRTs, never VRTRawRasterBand.
             {{- if not (has "GDAL_VRT_ENABLE_RAWRASTERBAND" $extraNames) }}
             - name: GDAL_VRT_ENABLE_RAWRASTERBAND
               value: "NO"
@@ -149,9 +116,9 @@ spec:
             - name: GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE
               value: "SIBLING_OR_CHILD_OF_VRT_PATH"
             {{- end }}
-            # CPL_VSIL_CURL_HEADER_FILE_KVP_ENABLED restricts the /vsicurl
-            # header_file option and needs GDAL >= 3.13.2 — deliberately absent
-            # until the image's rasterio wheel crosses that (geolens#1192).
+            # CPL_VSIL_CURL_HEADER_FILE_KVP_ENABLED, which restricts /vsicurl's header_file
+            # option, needs GDAL >= 3.13.2 and stays out until the image's rasterio
+            # wheel bundles that.
             {{- if not (has "VSI_CACHE" $extraNames) }}
             - name: VSI_CACHE
               value: "TRUE"
@@ -164,35 +131,23 @@ spec:
             - name: GDAL_HTTP_MERGE_CONSECUTIVE_RANGES
               value: "YES"
             {{- end }}
-            # fix(geolens#937): GDAL_HTTP_FOLLOWLOCATION was set here as a
-            # redirect clamp. It is not a GDAL option and has no effect, so it
-            # read as a defense that was never there. Do not re-add it. GDAL
-            # cannot be made redirect-safe from the inside; the real controls
-            # are the api revalidating remote object URLs per hop and the
-            # CPL_VSIL_CURL_ALLOWED_EXTENSIONS clamp above.
-            # geolens#678: cap glibc malloc arenas — slows (does not stop)
-            # TiTiler's RSS ratchet under concurrent tile reads. Mirrors the
-            # compose TITILER_MALLOC_ARENA_MAX knob and its default.
+            # Caps glibc malloc arenas, which slows (does not stop) TiTiler's RSS
+            # ratchet under concurrent tile reads. Mirrors compose's
+            # TITILER_MALLOC_ARENA_MAX and its default.
             {{- if not (has "MALLOC_ARENA_MAX" $extraNames) }}
             - name: MALLOC_ARENA_MAX
               value: {{ .Values.titiler.mallocArenaMax | default 2 | quote }}
             {{- end }}
             {{- if eq .Values.storage.backend "s3" }}
-            # optional: tolerates a pre-created Secret that lacks these exact
-            # keys. That is also what carries storage.s3AmbientCredentials
-            # here: the chart-managed Secret then holds no S3_* keys, both refs
-            # resolve to nothing, and GDAL falls through to the web-identity
-            # credentials the ServiceAccount's role provides — the same
-            # resolution the api gets from boto3. A key present in a
-            # pre-created Secret still wins over the role, so drop stale
-            # credentials from it when moving an install onto IRSA.
+            # optional: with storage.s3AmbientCredentials, or a pre-created Secret
+            # without these keys, both refs resolve to nothing and GDAL uses the
+            # ServiceAccount's role, as boto3 does in the api. A present key still wins.
             {{- if not (has "AWS_ACCESS_KEY_ID" $extraNames) }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  # geolens#1191: render exactly one selected reference. A
-                  # dedicated Secret replaces, rather than accompanies, the
-                  # shared storage credential in this sidecar.
+                  # Exactly one reference: a dedicated Secret replaces, rather
+                  # than accompanies, the shared storage credential.
                   name: {{ $titilerS3SecretName | quote }}
                   key: {{ $titilerS3AccessKey | quote }}
                   optional: true
@@ -209,22 +164,9 @@ spec:
             - name: AWS_DEFAULT_REGION
               value: {{ .Values.storage.s3Region | default "us-east-1" | quote }}
             {{- end }}
-            {{- /*
-              Custom-endpoint plumbing for GDAL's /vsis3/ reads (geolens#579).
-              titiler runs no GeoLens code, so the api/worker's boot-time
-              derive_gdal_s3_env() cannot reach it — the same rules are applied
-              here instead, from the same storage.* values the api receives:
-                - GDAL wants a scheme-LESS host[:port]; the scheme becomes
-                  AWS_HTTPS. An explicit scheme on s3Endpoint wins, otherwise
-                  s3AllowHttp decides.
-                - AWS_VIRTUAL_HOSTING=FALSE only for path-style addressing.
-
-              Every derived key is skipped when the operator already set it in
-              titiler.extraEnv, via the $extraNames set built at the top of
-              this env block — the same guard every static key above carries
-              (fix(#16 review)). Anyone who followed the old workaround note
-              must be able to upgrade.
-            */}}
+            {{- /* titiler runs no GeoLens code, so the rules derive_gdal_s3_env() applies in the
+                 api repeat here: GDAL takes a scheme-less host[:port], AWS_HTTPS follows an
+                 explicit scheme or else s3AllowHttp, and path style turns off virtual hosting. */}}
             {{- $ep := trim (.Values.storage.s3Endpoint | default "") }}
             {{- if $ep }}
             {{- $hasScheme := contains "://" $ep }}
@@ -250,7 +192,7 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
           volumeMounts:
-            # titiler reads rasters under the shared staging path (GAP-022).
+            # titiler reads rasters under the shared staging path.
             - name: staging
               mountPath: /app/staging
             # Writable scratch for GDAL under the read-only rootfs; size

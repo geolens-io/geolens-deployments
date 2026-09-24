@@ -1,4 +1,4 @@
-{{- /* #53: a node drain evicts one pod of each serving component at a time.
+{{- /* A node drain evicts one pod of each serving component at a time.
      maxUnavailable, not minAvailable, so a single replica can still be evicted
      and a drain never deadlocks. An absent map (--reuse-values) means enabled. */}}
 {{- $pdb := .Values.podDisruptionBudget | default (dict "enabled" true "maxUnavailable" 1) }}
@@ -17,7 +17,7 @@ metadata:
     {{- include "geolens.labels" $ | nindent 4 }}
     app.kubernetes.io/component: {{ . }}
 spec:
-  {{- /* codex review on #53: `default` would turn an explicit 0 into 1. */}}
+  {{- /* `default` would turn an explicit 0 into 1. */}}
   maxUnavailable: {{ ternary $pdb.maxUnavailable 1 (hasKey $pdb "maxUnavailable") }}
   selector:
     matchLabels:

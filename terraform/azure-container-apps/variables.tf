@@ -9,8 +9,8 @@ variable "name" {
   default     = "geolens"
 
   # Container App names stop at 32 characters, which leaves room for the
-  # longest suffix here, -migrate, and cannot contain "--" (codex review on
-  # #59). The storage account keeps the first 18 characters, hyphens dropped.
+  # longest suffix here, -migrate, and cannot contain "--". The storage account
+  # keeps the first 18 characters, hyphens dropped.
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{1,18}[a-z0-9]$", var.name)) && !strcontains(var.name, "--")
     error_message = "name must be 3 to 20 lowercase letters, digits or single hyphens, starting with a letter and ending with a letter or digit."
@@ -42,7 +42,7 @@ variable "vnet_cidr" {
 
   # cidrsubnet takes IPv6, a /0 and host bits as well, and cidrnetmask refuses
   # only IPv6; Azure refuses all of them, and anything larger than /2, once
-  # provisioning has begun (codex review on #59).
+  # provisioning has begun.
   validation {
     condition     = can(cidrnetmask(var.vnet_cidr)) && can(cidrsubnet(var.vnet_cidr, 24 - tonumber(split("/", var.vnet_cidr)[1]), 1)) && try(tonumber(split("/", var.vnet_cidr)[1]) >= 2 && cidrhost(var.vnet_cidr, 0) == split("/", var.vnet_cidr)[0], false)
     error_message = "vnet_cidr must be an IPv4 CIDR from /2 to /23 that starts at its network address (10.30.0.0/16, not 10.30.1.0/16): Azure takes nothing else, and two /24 subnets must fit in it."
@@ -50,8 +50,8 @@ variable "vnet_cidr" {
 
   # Azure refuses these in any network, and Container Apps refuses a subnet
   # overlapping its own reserved ranges, only once the network and database
-  # exist (codex review on #59). Two IPv4 networks overlap exactly when both,
-  # masked to the shorter prefix, give the same address.
+  # exist. Two IPv4 networks overlap exactly when both, masked to the shorter
+  # prefix, give the same address.
   validation {
     condition = try(alltrue([
       for r in ["127.0.0.0/8", "168.63.129.16/32", "169.254.0.0/16", "224.0.0.0/4", "255.255.255.255/32"] :
@@ -101,7 +101,7 @@ variable "public_app_url" {
 
   # Label by label: 1 to 63 letters, digits or inner hyphens, at least two of
   # them, so geo..example.com cannot pass, and 253 characters in all, the DNS
-  # limit (codex review on #59).
+  # limit.
   validation {
     condition     = var.public_app_url == "" || (can(regex("^https://([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$", trimsuffix(var.public_app_url, "/"))) && length(trimprefix(trimsuffix(var.public_app_url, "/"), "https://")) <= 253)
     error_message = "public_app_url must be empty or an https:// origin whose hostname has valid DNS labels and at most 253 characters, with no port or path."
@@ -128,7 +128,7 @@ variable "admin_password" {
 
   # GeoLens seeds the admin without this check and fails to boot only on a
   # blank value, one over 72 bytes (bcrypt) or a known-public literal, all of
-  # which the policy also rules out (codex review on #59).
+  # which the policy also rules out.
   validation {
     condition = var.admin_password == "" || (
       length(var.admin_password) >= 12 &&
@@ -210,12 +210,12 @@ variable "worker_concurrency" {
 # same way the Helm chart's extraEnv and existingSecret do. The configuration
 # reference is https://docs.getgeolens.com/guides/quickstart/configuration/.
 locals {
-  # Neither may set these (codex review on #59): the generated secrets, the
-  # recipe's own wiring, the api-only metrics directory (the worker and migrate
-  # job crash on it), the shutdown window the worker's grace period is sized
-  # for, values the frontend edge shares, which come from their variables, the
-  # storage and port titiler is wired to, and the one database login with its
-  # TLS mode, which the migrate job's provisioner borrow is written for.
+  # Neither may set these: the generated secrets, the recipe's own wiring, the
+  # api-only metrics directory (the worker and migrate job crash on it), the
+  # shutdown window the worker's grace period is sized for, values the frontend
+  # edge shares, which come from their variables, the storage and port titiler
+  # is wired to, and the one database login with its TLS mode, which the
+  # migrate job's provisioner borrow is written for.
   reserved_env = [
     "AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "JWT_SECRET_KEY", "REDIS_URL", "SECRET_ENCRYPTION_KEY",
     "GEOLENS_API_RUN_MIGRATIONS", "GEOLENS_BOOTSTRAP_B64", "SECRETS_REVISION", "UPLOAD_STAGING_DIR",
@@ -254,7 +254,7 @@ variable "extra_secrets" {
 
   # Container Apps secret names are the env names lowercased with - for _, and
   # must end in a letter or digit. The provider skips that check at plan time
-  # while any secret value is unknown, so the apply fails (codex review on #59).
+  # while any secret value is unknown, so the apply fails.
   validation {
     condition     = alltrue([for k in keys(var.extra_secrets) : can(regex("^[A-Z]([A-Z0-9_]*[A-Z0-9])?$", k))])
     error_message = "extra_secrets keys must be environment variable names of uppercase letters, digits and underscores, starting with a letter and ending with a letter or digit."

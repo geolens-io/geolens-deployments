@@ -18,11 +18,9 @@ spec:
         app.kubernetes.io/component: api
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- /* codex review on #29: Helm updates the ServiceAccount in place when
-             its IRSA / Pod Identity annotations change, but pods keep the
-             AWS_ROLE_ARN and token volume the webhook injected at admission.
-             Without this checksum a role change silently leaves every pod on
-             the old credentials — or on none — until someone restarts them. */}}
+        {{- /* The IRSA / Pod Identity webhook injects AWS_ROLE_ARN and a token volume
+             only at admission, so a ServiceAccount annotation change must roll the
+             pods, or they keep the old credentials (or none) until restarted. */}}
         checksum/serviceaccount: {{ include (print $.Template.BasePath "/serviceaccount.yaml") . | sha256sum }}
         {{- if not .Values.secrets.existingSecret }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
@@ -53,12 +51,9 @@ spec:
             - secretRef:
                 name: {{ include "geolens.secretName" . }}
           env:
-            {{- /*
-              fix(#16 review): skipped when the operator set it in
-              api.extraEnv — a duplicate env name breaks strategic-merge
-              tooling (keys `env` by `name`) even though the runtime tolerates
-              it. Same guard as the titiler and frontend templates.
-            */}}
+            {{- /* Each entry below is skipped when api.extraEnv sets the same name:
+                 duplicate env names break strategic-merge tooling, which keys `env`
+                 by `name`. The frontend and titiler templates use the same guard. */}}
             {{- $apiExtraNames := list }}
             {{- range (.Values.api.extraEnv | default list) }}
             {{- $apiExtraNames = append $apiExtraNames .name }}
@@ -71,9 +66,9 @@ spec:
               value: {{ ternary "false" "true" .Values.migrate.enabled | quote }}
             {{- end }}
             {{- if not (has "FORWARDED_ALLOW_IPS" $apiExtraNames) }}
-            # fix(#52): uvicorn trusts X-Forwarded-For only from 127.0.0.1, so every
-            # client shared the frontend pod's rate-limit buckets (login: 5/min).
-            # The edge overwrites the header, as compose relies on (geolens#430).
+            # uvicorn trusts X-Forwarded-For only from 127.0.0.1, so every client
+            # would share the frontend pod's rate-limit buckets (login: 5/min).
+            # The edge overwrites the header, which compose relies on too.
             - name: FORWARDED_ALLOW_IPS
               value: "*"
             {{- end }}
@@ -87,9 +82,9 @@ spec:
             {{- with .Values.api.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          # fix(#36, #52): all probes are process-only /health/live (images >= 1.18.0).
-          # /health also 503s on the optional cache; as readiness a Valkey blip 502'd
-          # all of /api. Startup keeps a budget: boot waits on the database.
+          # Every probe is the process-only /health/live (images >= 1.18.0): /health
+          # also fails on the optional cache, so a Valkey blip would 502 all of /api.
+          # Startup keeps a budget because boot waits on the database.
           startupProbe:
             httpGet:
               path: /health/live

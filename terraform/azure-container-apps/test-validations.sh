@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# The variable validations that stop a plan before anything is created (codex
-# review on #59). terraform console runs them without Azure credentials, so CI
-# calls this after init -backend=false.
+# The variable validations that stop a plan before anything is created.
+# terraform console runs them without Azure credentials, so CI calls this after
+# init -backend=false.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"

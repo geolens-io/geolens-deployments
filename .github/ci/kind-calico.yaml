@@ -1,4 +1,4 @@
-# #53: the install test runs on Calico, not kind's default kindnet. kindnet's
+# The install test runs on Calico, not kind's default kindnet. kindnet's
 # policy engine drops the replies to a policy-selected pod's own DNS queries
 # (kubernetes-sigs/kube-network-policies#379), so with the chart's
 # NetworkPolicies on, the api and worker could not resolve the database.

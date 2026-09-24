@@ -88,7 +88,6 @@ runs guards that each pin a bug rendering alone would not catch:
 - `extraEnv` overrides render exactly once per container and win.
 - All three api probes are `/health/live`; the api sets `FORWARDED_ALLOW_IPS` once and an `extraEnv` value replaces it.
 - The stored-secret encryption keys reach both the Secret and the migrate hook, while a previous key without a current one, or a key against an api or worker tag older than 1.18.2, fails to render.
-- NOTES, rendered by a client-side dry run, warn about the staging handoff for `storage.backend=local` or `azure` without staging persistence, and for nothing else.
 
 `install-test` needs that job. It creates a kind cluster on Calico (kindnet's
 policy engine breaks DNS for policy-selected pods), applies
@@ -98,7 +97,10 @@ default tags into a `geolens` namespace that enforces Pod Security
 `http://geolens-frontend.geolens/api/health` from a pod, runs `ingest-smoke.sh`
 through a port-forward, checks that a pod outside the release reaches the
 frontend but not the api, titiler or worker, then runs
-`helm upgrade --reuse-values --wait` to re-exercise the migrate hook.
+`helm upgrade --reuse-values --wait` to re-exercise the migrate hook. It also
+renders NOTES with a client-side dry run (Helm 3 needs the cluster for that)
+and checks that the staging warning appears for `storage.backend=local` or
+`azure` without staging persistence, and nowhere else.
 
 `terraform-validate` runs `terraform fmt -check -recursive`,
 `terraform init -backend=false && terraform validate`, and

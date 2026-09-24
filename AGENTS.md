@@ -73,8 +73,8 @@ bash terraform/azure-container-apps/test-validations.sh
 ## Recipe conventions
 
 - One root module per cloud, with no registry modules. A `# ponytail:` comment marks each deliberate shortcut and names its ceiling.
-- Set only what the recipe wires, and leave application defaults to the images: a hard-coded list goes stale when GeoLens adds to it.
-- `extra_env` and `extra_secrets` reserve every name the recipe generates or wires, listed once as `reserved_env` in `variables.tf`. A newly wired setting joins that list.
+- Set only the settings the recipe must control, and leave application defaults to the images: a hard-coded list goes stale when GeoLens adds to it.
+- `extra_env` and `extra_secrets` reserve only the names the recipe must own, listed once as `reserved_env` in `variables.tf`: its generated secrets, its own machinery, and values another container or resource depends on, such as a URL the frontend edge also receives. Ordinary defaults like `ENVIRONMENT`, `LOG_JSON` and `CORS_ALLOWED_ORIGINS` stay overridable. Add a name only when overriding it would break the recipe.
 - An input that passes `terraform plan` but fails partway through `apply` gets a variable validation and a case in the recipe's test script. Providers skip their own checks on nested sets while any value is unknown, which is always the case on a first apply.
 - Validate a change on a real account from a scratch copy of the module, so no state or tfvars reach the repo. Check `/api/health`, run `ingest-smoke.sh` through the edge, destroy, and confirm nothing is left, including Azure's `<name>-rg-infra` and soft-deleted resources. Record the run in the recipe README's "Validated" section and in the PR.
 

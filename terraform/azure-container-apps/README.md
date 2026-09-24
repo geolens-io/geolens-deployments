@@ -162,18 +162,25 @@ extra_secrets = {
 ```
 
 The [configuration reference](https://docs.getgeolens.com/guides/quickstart/configuration/)
-lists every setting. Neither map may name one of the recipe's own secrets
-(`DATABASE_URL_OVERRIDE`, `JWT_SECRET_KEY`, the two `GEOLENS_ADMIN_*` values,
-`SECRET_ENCRYPTION_KEY`, `AZURE_STORAGE_ACCOUNT_KEY`, `REDIS_URL`) or a
-setting its wiring depends on (`SECRETS_REVISION`, `GEOLENS_BOOTSTRAP_B64`,
-`GEOLENS_API_RUN_MIGRATIONS`, `UPLOAD_STAGING_DIR`, the api-only
-`PROMETHEUS_MULTIPROC_DIR`, `WORKER_SHUTDOWN_TIMEOUT`, and the
-`STORAGE_PROVIDER`, `AZURE_STORAGE_ACCOUNT_URL`,
-`AZURE_STORAGE_CONNECTION_STRING` and `TITILER_BASE_URL` that titiler is wired
-to).
-`PUBLIC_APP_URL`, `PUBLIC_API_URL` and `UPLOAD_MAX_SIZE_MB` come from
-`public_app_url` and `upload_max_size_mb`, which also configure the frontend
-edge. No name may appear in both maps. Any of these fails the plan.
+lists every setting. A few names are off limits in both maps, and the plan
+fails on any of them (`reserved_env` in `variables.tf` has the full list):
+
+- The secrets the recipe generates: `DATABASE_URL_OVERRIDE`, `JWT_SECRET_KEY`,
+  `SECRET_ENCRYPTION_KEY`, `AZURE_STORAGE_ACCOUNT_KEY`, `REDIS_URL` and the two
+  `GEOLENS_ADMIN_*` values.
+- Its own wiring: `SECRETS_REVISION`, `GEOLENS_BOOTSTRAP_B64`,
+  `GEOLENS_API_RUN_MIGRATIONS`, `UPLOAD_STAGING_DIR`, `WORKER_SHUTDOWN_TIMEOUT`
+  and the api-only `PROMETHEUS_MULTIPROC_DIR`.
+- What titiler is wired to: `STORAGE_PROVIDER`, `TITILER_BASE_URL`, and the
+  storage account URL and connection string.
+- The one database login and its TLS mode: `DATABASE_SSL_MODE`,
+  `POSTGRES_USER`, `POSTGRES_PASSWORD`, `MIGRATION_DATABASE_URL_OVERRIDE`, and
+  the migration and runtime role settings.
+- `PUBLIC_APP_URL`, `PUBLIC_API_URL` and `UPLOAD_MAX_SIZE_MB`, which come from
+  `public_app_url` and `upload_max_size_mb` because the frontend edge needs
+  them too.
+
+No name may appear in both maps either.
 
 Container Apps keeps running replicas on the old value of a changed secret.
 The recipe renders a digest of every secret value into the templates, so any

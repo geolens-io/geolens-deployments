@@ -40,8 +40,10 @@ variable "vnet_cidr" {
   type        = string
   default     = "10.30.0.0/16"
 
+  # cidrsubnet takes IPv6 as well, and cidrnetmask does not; Azure refuses an
+  # IPv6-only network after provisioning has begun (codex review on #59).
   validation {
-    condition     = can(cidrsubnet(var.vnet_cidr, 24 - tonumber(split("/", var.vnet_cidr)[1]), 1))
+    condition     = can(cidrnetmask(var.vnet_cidr)) && can(cidrsubnet(var.vnet_cidr, 24 - tonumber(split("/", var.vnet_cidr)[1]), 1))
     error_message = "vnet_cidr must be an IPv4 CIDR of /23 or larger, so two /24 subnets fit in it."
   }
 }

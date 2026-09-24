@@ -40,11 +40,12 @@ variable "vnet_cidr" {
   type        = string
   default     = "10.30.0.0/16"
 
-  # cidrsubnet takes IPv6 as well, and cidrnetmask does not; Azure refuses an
-  # IPv6-only network after provisioning has begun (codex review on #59).
+  # cidrsubnet takes IPv6 and a /0 as well, and cidrnetmask refuses IPv6; Azure
+  # refuses both, or anything larger than /2, once provisioning has begun
+  # (codex review on #59).
   validation {
-    condition     = can(cidrnetmask(var.vnet_cidr)) && can(cidrsubnet(var.vnet_cidr, 24 - tonumber(split("/", var.vnet_cidr)[1]), 1))
-    error_message = "vnet_cidr must be an IPv4 CIDR of /23 or larger, so two /24 subnets fit in it."
+    condition     = can(cidrnetmask(var.vnet_cidr)) && can(cidrsubnet(var.vnet_cidr, 24 - tonumber(split("/", var.vnet_cidr)[1]), 1)) && try(tonumber(split("/", var.vnet_cidr)[1]) >= 2, false)
+    error_message = "vnet_cidr must be an IPv4 CIDR from /2 to /23: Azure takes nothing larger, and two /24 subnets must fit in it."
   }
 }
 
@@ -88,10 +89,22 @@ variable "admin_username" {
 }
 
 variable "admin_password" {
-  description = "Password for the bootstrap admin. Empty means generate one. The backend rejects passwords under 12 characters or using fewer than 3 character classes."
+  description = "Password for the bootstrap admin. Empty means generate one. A supplied one must meet the policy GeoLens holds every other password to: at least 12 characters, at most 72 bytes, and three of lowercase, uppercase, digit and symbol."
   type        = string
   default     = ""
   sensitive   = true
+
+  # GeoLens seeds the admin without this check and fails to boot only on a
+  # blank value, one over 72 bytes (bcrypt) or a known-public literal, all of
+  # which the policy also rules out (codex review on #59).
+  validation {
+    condition = var.admin_password == "" || (
+      length(var.admin_password) >= 12 &&
+      length(base64encode(var.admin_password)) <= 96 &&
+      length([for re in ["\\p{Ll}", "\\p{Lu}", "\\p{Nd}", "[^\\p{L}\\p{Nd}]"] : re if can(regex(re, var.admin_password))]) >= 3
+    )
+    error_message = "admin_password must be empty, to generate one, or at least 12 characters and at most 72 bytes, with three of lowercase, uppercase, digit and symbol."
+  }
 }
 
 variable "backup_retention_days" {

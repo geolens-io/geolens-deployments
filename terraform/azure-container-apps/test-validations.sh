@@ -41,4 +41,9 @@ rejected 'a secret key ending in an underscore' 'extra_secrets keys must be' '-v
 rejected 'one name cannot be both plain and secret' 'A name cannot be in both' \
   '-var=extra_env={SMTP_PASSWORD="a"}' '-var=extra_secrets={SMTP_PASSWORD="b"}'
 rejected 'an IPv6 address space' 'vnet_cidr must be an IPv4 CIDR' '-var=vnet_cidr=2001:db8::/16'
+rejected 'an address space larger than Azure takes' 'vnet_cidr must be an IPv4 CIDR' '-var=vnet_cidr=0.0.0.0/1'
+accepted 'a supplied admin password that meets the policy' '-var=admin_password=Str0ng-enough-pw'
+rejected 'a short admin password' 'admin_password must be empty' '-var=admin_password=Short1!'
+rejected 'an admin password with two character classes' 'admin_password must be empty' '-var=admin_password=alllowercase123'
+rejected 'an admin password over 72 bytes' 'admin_password must be empty' "-var=admin_password=Aa1$(printf '%070d' 0)"
 rejected 'more than one app replica needs the cache' 'app_replicas above 1 needs cache_enabled' '-var=app_replicas=2'

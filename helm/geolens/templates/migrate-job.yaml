@@ -92,20 +92,29 @@ spec:
             # Inlined rather than referencing the chart-managed Secret: as a
             # pre-install hook this Job runs before regular resources exist,
             # so a secretRef would deadlock a fresh install.
+            {{- if not (has "DATABASE_URL_OVERRIDE" $overrideNames) }}
             - name: DATABASE_URL_OVERRIDE
               value: {{ required "secrets.databaseUrlOverride is required (or provide secrets.existingSecret)" .Values.secrets.databaseUrlOverride | quote }}
+            {{- end }}
+            {{- if not (has "JWT_SECRET_KEY" $overrideNames) }}
             - name: JWT_SECRET_KEY
               value: {{ required "secrets.jwtSecretKey is required — generate with `openssl rand -hex 32` (or provide secrets.existingSecret)" .Values.secrets.jwtSecretKey | quote }}
+            {{- end }}
+            {{- if not (has "GEOLENS_ADMIN_USERNAME" $overrideNames) }}
             - name: GEOLENS_ADMIN_USERNAME
               value: {{ required "secrets.adminUsername is required (or provide secrets.existingSecret)" .Values.secrets.adminUsername | quote }}
+            {{- end }}
+            {{- if not (has "GEOLENS_ADMIN_PASSWORD" $overrideNames) }}
             - name: GEOLENS_ADMIN_PASSWORD
               value: {{ required "secrets.adminPassword is required (or provide secrets.existingSecret)" .Values.secrets.adminPassword | quote }}
+            {{- end }}
+            {{- if not (has "POSTGRES_PASSWORD" $overrideNames) }}
             # Required at settings construction even though the override DSN
             # carries the real credentials (see secret.yaml).
             - name: POSTGRES_PASSWORD
               value: "unused-database-url-override-in-use"
-            {{- /* The same checks as secret.yaml; each entry is skipped when extraEnv
-                 already carries the name. */}}
+            {{- end }}
+            {{- /* The same checks as secret.yaml. */}}
             {{- include "geolens.validateEncryptionKeys" . }}
             {{- if not (has "SECRET_ENCRYPTION_KEY" $overrideNames) }}
             {{- with .Values.secrets.secretEncryptionKey }}

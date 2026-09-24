@@ -22,8 +22,10 @@ data:
   {{- if .Values.storage.s3AllowHttp }}
   S3_ALLOW_HTTP: "true"
   {{- end }}
-  {{- if ne .Values.storage.s3AddressingStyle "auto" }}
-  S3_ADDRESSING_STYLE: {{ .Values.storage.s3AddressingStyle | quote }}
+  {{- /* Values from charts before 0.4.0 lack it, and the backend rejects an empty value. */}}
+  {{- $style := .Values.storage.s3AddressingStyle | default "auto" }}
+  {{- if ne $style "auto" }}
+  S3_ADDRESSING_STYLE: {{ $style | quote }}
   {{- end }}
   {{- if eq .Values.storage.backend "s3" }}
   S3_BUCKET: {{ required "storage.s3Bucket is required when storage.backend=s3" .Values.storage.s3Bucket | quote }}

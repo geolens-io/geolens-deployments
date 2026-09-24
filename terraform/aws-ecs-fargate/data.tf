@@ -38,6 +38,8 @@ resource "aws_db_subnet_group" "this" {
   subnet_ids  = aws_subnet.private[*].id
 }
 
+# ponytail: single-AZ (multi_az = false), so patching or an AZ outage takes the
+# database offline. Multi-AZ adds a standby for about twice the instance cost.
 resource "aws_db_instance" "this" {
   identifier_prefix = "${var.name}-"
 

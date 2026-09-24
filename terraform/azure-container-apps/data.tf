@@ -78,6 +78,8 @@ resource "random_bytes" "secret_encryption_key" {
 
 # ponytail: the administrator login is both the migration and application
 # login, as on AWS. Split them when the database is shared.
+# ponytail: no standby, so a zone outage or maintenance takes the database
+# offline. High availability needs a General Purpose SKU and doubles compute.
 resource "azurerm_postgresql_flexible_server" "this" {
   name                = "${var.name}-${random_string.suffix.result}"
   resource_group_name = azurerm_resource_group.this.name
@@ -125,6 +127,8 @@ resource "azurerm_postgresql_flexible_server_database" "geolens" {
 # so managed identity is not an option), and only the Container Apps subnet
 # may reach the account at all: presigned uploads are S3-only, so no browser
 # ever talks to Blob Storage directly.
+# ponytail: LRS keeps three copies in one datacenter. ZRS or GZRS when losing a
+# zone or region must not lose uploads.
 resource "azurerm_storage_account" "this" {
   name                            = "${substr(replace(var.name, "-", ""), 0, 18)}${random_string.suffix.result}"
   resource_group_name             = azurerm_resource_group.this.name

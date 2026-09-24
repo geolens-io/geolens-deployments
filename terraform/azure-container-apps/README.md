@@ -173,9 +173,8 @@ fails on any of them (`reserved_env` in `variables.tf` has the full list):
   and the api-only `PROMETHEUS_MULTIPROC_DIR`.
 - What titiler is wired to: `STORAGE_PROVIDER`, `TITILER_BASE_URL`, and the
   storage account URL and connection string.
-- The one database login and its TLS mode: `DATABASE_SSL_MODE`,
-  `POSTGRES_USER`, `POSTGRES_PASSWORD`, `MIGRATION_DATABASE_URL_OVERRIDE`, and
-  the migration and runtime role settings.
+- The database TLS mode and the role settings GeoLens holds to the one login:
+  `DATABASE_SSL_MODE`, `GEOLENS_MIGRATION_DB_ROLE` and `GEOLENS_RUNTIME_DB_ROLE`.
 - `PUBLIC_APP_URL`, `PUBLIC_API_URL` and `UPLOAD_MAX_SIZE_MB`, which come from
   `public_app_url` and `upload_max_size_mb` because the frontend edge needs
   them too.
@@ -218,6 +217,12 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
   and talk over loopback, so there is no service discovery to run, but they
   cannot scale independently.
 - The database administrator is both the migration and the application login.
+- The database has no standby. High availability needs a General Purpose SKU
+  and roughly doubles its compute cost.
+- Blob storage is LRS: three copies in one datacenter. ZRS or GZRS guards
+  against losing a zone or a region.
+- titiler reads blobs with the storage account key, which can also write and
+  delete. A read-only SAS is the upgrade, at the price of rotating it.
 - The cache is one node on a public endpoint, protected by TLS and its access
   key. A private endpoint and high availability are the upgrade.
 - Secrets live in Container Apps and in Terraform state rather than in Key

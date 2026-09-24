@@ -76,9 +76,11 @@ variable "public_app_url" {
   type        = string
   default     = ""
 
+  # Label by label: 1 to 63 letters, digits or inner hyphens, at least two of
+  # them, so geo..example.com cannot pass (codex review on #59).
   validation {
-    condition     = var.public_app_url == "" || can(regex("^https://[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$", trimsuffix(var.public_app_url, "/")))
-    error_message = "public_app_url must be empty or an https:// origin with no path."
+    condition     = var.public_app_url == "" || can(regex("^https://([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$", trimsuffix(var.public_app_url, "/")))
+    error_message = "public_app_url must be empty or an https:// origin whose hostname has valid DNS labels, with no port or path."
   }
 }
 
@@ -187,11 +189,13 @@ locals {
   # Neither may set these (codex review on #59): the generated secrets, the
   # recipe's own wiring, the api-only metrics directory (the worker and migrate
   # job crash on it), the shutdown window the worker's grace period is sized
-  # for, and values the frontend edge shares, which come from their variables.
+  # for, values the frontend edge shares, which come from their variables, and
+  # the storage settings titiler is wired to.
   reserved_env = [
     "AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "JWT_SECRET_KEY", "REDIS_URL", "SECRET_ENCRYPTION_KEY",
     "GEOLENS_API_RUN_MIGRATIONS", "GEOLENS_BOOTSTRAP_B64", "SECRETS_REVISION", "UPLOAD_STAGING_DIR",
     "PROMETHEUS_MULTIPROC_DIR", "PUBLIC_API_URL", "PUBLIC_APP_URL", "UPLOAD_MAX_SIZE_MB", "WORKER_SHUTDOWN_TIMEOUT",
+    "AZURE_STORAGE_ACCOUNT_URL", "STORAGE_PROVIDER",
   ]
 }
 

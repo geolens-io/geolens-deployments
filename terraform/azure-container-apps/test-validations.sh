@@ -41,6 +41,7 @@ rejected 'migrations cannot move back into the api' 'extra_env cannot set' '-var
 rejected 'the staging path cannot move off the share' 'extra_secrets cannot redefine' '-var=extra_secrets={UPLOAD_STAGING_DIR="/tmp/staging"}'
 rejected 'the api metrics directory cannot reach the worker' 'extra_env cannot set' '-var=extra_env={PROMETHEUS_MULTIPROC_DIR="/tmp/prometheus-multiproc"}'
 rejected 'the upload limit comes from its variable' 'extra_secrets cannot redefine' '-var=extra_secrets={UPLOAD_MAX_SIZE_MB="2000"}'
+rejected 'storage cannot switch away from what titiler reads' 'extra_env cannot set' '-var=extra_env={STORAGE_PROVIDER="s3"}'
 rejected 'a secret key ending in an underscore' 'extra_secrets keys must be' '-var=extra_secrets={SMTP_PASSWORD_="x"}'
 rejected 'one name cannot be both plain and secret' 'A name cannot be in both' \
   '-var=extra_env={SMTP_PASSWORD="a"}' '-var=extra_secrets={SMTP_PASSWORD="b"}'
@@ -51,4 +52,7 @@ accepted 'a supplied admin password that meets the policy' '-var=admin_password=
 rejected 'a short admin password' 'admin_password must be empty' '-var=admin_password=Short1!'
 rejected 'an admin password with two character classes' 'admin_password must be empty' '-var=admin_password=alllowercase123'
 rejected 'an admin password over 72 bytes' 'admin_password must be empty' "-var=admin_password=Aa1$(printf '%070d' 0)"
+accepted 'a custom domain origin' '-var=public_app_url=https://geolens.example.com/'
+rejected 'a hostname with an empty label' 'public_app_url must be empty' '-var=public_app_url=https://geo..example.com'
+rejected 'a label that starts with a hyphen' 'public_app_url must be empty' '-var=public_app_url=https://geo.-example.com'
 rejected 'more than one app replica needs the cache' 'app_replicas above 1 needs cache_enabled' '-var=app_replicas=2'

@@ -165,6 +165,14 @@ backend:
   and raster data across pods with no shared volume at all. Enable it (a
   `ReadWriteMany` PVC, or `staging.persistence.existingClaim`) only if you want
   a shared scratch filesystem for its own sake.
+- **With `storage.backend=azure`, enable it.** Only s3 hands an upload to
+  the worker through the bucket. With azure the api stages the upload at
+  `/app/staging` and the worker reads that path, so without a shared claim
+  every import fails at "validating" with `BlobNotFound`. On AKS, RWX means
+  Azure Files. Its SMB mounts present every file as owned by the mount, so
+  give the StorageClass the `uid=1001` and `gid=1001` mount options (the
+  backend images' user), or raster conversion fails with
+  `Operation not permitted`.
 - **On EKS, do not enable it with the defaults.** `ReadWriteMany` is rejected
   outright by the EBS CSI driver (`Volume capabilities not supported`), and an
   empty `staging.persistence.storageClass` renders no `storageClassName`, which

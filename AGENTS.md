@@ -19,7 +19,7 @@ for Kubernetes, AWS and Azure. No application code lives here.
 - `ingress.yaml`: single route, everything to the frontend edge.
 - `pdb.yaml`: PodDisruptionBudgets (`maxUnavailable: 1`) for the api, frontend and titiler.
 - `networkpolicy.yaml`: opt-in NetworkPolicies; only the frontend reaches the api, only the api reaches titiler.
-- `NOTES.txt`: post-install URL plus warnings for old frontend and api tags and for `storage.backend=local` without staging persistence.
+- `NOTES.txt`: post-install URL plus warnings for old frontend and api tags and for `storage.backend=local` or `azure` without staging persistence.
 
 `examples/` holds values files to adapt (`values-aws.yaml`, an EKS install).
 `terraform/aws-ecs-fargate/` is a root module: ECS Fargate, RDS PostgreSQL, S3,
@@ -103,7 +103,10 @@ default tags into a `geolens` namespace that enforces Pod Security
 `http://geolens-frontend.geolens/api/health` from a pod, runs `ingest-smoke.sh`
 through a port-forward, checks that a pod outside the release reaches the
 frontend but not the api, titiler or worker, then runs
-`helm upgrade --reuse-values --wait` to re-exercise the migrate hook.
+`helm upgrade --reuse-values --wait` to re-exercise the migrate hook. It also
+renders NOTES with a client-side dry run (Helm 3 needs the cluster for that)
+and checks that the staging warning appears for `storage.backend=local` or
+`azure` without staging persistence, and nowhere else.
 
 `terraform-validate` runs `terraform fmt -check -recursive` over `terraform/`,
 `terraform init -backend=false && terraform validate` in every recipe, then

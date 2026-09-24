@@ -8,23 +8,20 @@ locals {
   # define which duplicate wins. For the same reason each container drops a
   # plain entry that extra_secrets supplies as a secret.
   backend_env = merge({
-    ENVIRONMENT          = "production"
-    LOG_JSON             = "true"
-    PUBLIC_APP_URL       = local.public_app_url
-    PUBLIC_API_URL       = "${local.public_app_url}/api"
-    CORS_ALLOWED_ORIGINS = ""
-    UPLOAD_MAX_SIZE_MB   = tostring(var.upload_max_size_mb)
-    UPLOAD_STAGING_DIR   = "/app/staging"
-    STORAGE_PROVIDER     = "s3"
-    S3_BUCKET            = aws_s3_bucket.this.id
-    S3_REGION            = var.region
+    ENVIRONMENT        = "production"
+    LOG_JSON           = "true"
+    PUBLIC_APP_URL     = local.public_app_url
+    PUBLIC_API_URL     = "${local.public_app_url}/api"
+    UPLOAD_MAX_SIZE_MB = tostring(var.upload_max_size_mb)
+    STORAGE_PROVIDER   = "s3"
+    S3_BUCKET          = aws_s3_bucket.this.id
+    S3_REGION          = var.region
     # No S3 keys: the images detect the task role through the container
     # credential endpoint. A static key would win over the role if one leaked in.
     DATABASE_SSL_MODE = "require"
     # Settings insists on this even though DATABASE_URL_OVERRIDE carries the
     # real credential, so it is a placeholder rather than a secret.
-    POSTGRES_PASSWORD    = "unused-database-url-override-in-use"
-    PROCRASTINATE_SCHEMA = "catalog"
+    POSTGRES_PASSWORD = "unused-database-url-override-in-use"
     # Not read by the app. Changing it changes every task definition, which is
     # the redeploy that makes a rotated extra secret take effect.
     EXTRA_SECRETS_REVISION = var.extra_secrets_revision
@@ -129,7 +126,9 @@ resource "aws_ecs_task_definition" "app" {
 
       environment = [
         { name = "API_UPSTREAM", value = "http://127.0.0.1:8000" },
-        { name = "API_BASE_URL", value = "/api" },
+        # As in GeoLens's production compose: a set value outranks the api's
+        # CDN_BASE_URL, which then only lights the admin Tile Cache badge
+        # instead of moving vector tiles off the edge.
         { name = "TILE_BASE_URL", value = "/api" },
         { name = "PUBLIC_APP_URL", value = local.public_app_url },
         # Must match the api's UPLOAD_MAX_SIZE_MB or nginx rejects the upload

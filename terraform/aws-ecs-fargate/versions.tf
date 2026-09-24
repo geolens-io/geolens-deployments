@@ -4,7 +4,7 @@ terraform {
   required_providers {
     # Exact pins, moved by Dependabot. Given a range, its lock-file update
     # resolves the newest version the range allows and skips the 7-day cooldown
-    # in dependabot.yml (#56, #62); a pin makes the lock follow the version it chose.
+    # in dependabot.yml; a pin makes the lock follow the version it chose.
     aws = {
       source  = "hashicorp/aws"
       version = "6.63.0"

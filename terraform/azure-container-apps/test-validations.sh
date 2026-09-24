@@ -42,6 +42,7 @@ rejected 'the staging path cannot move off the share' 'extra_secrets cannot rede
 rejected 'the api metrics directory cannot reach the worker' 'extra_env cannot set' '-var=extra_env={PROMETHEUS_MULTIPROC_DIR="/tmp/prometheus-multiproc"}'
 rejected 'the upload limit comes from its variable' 'extra_secrets cannot redefine' '-var=extra_secrets={UPLOAD_MAX_SIZE_MB="2000"}'
 rejected 'storage cannot switch away from what titiler reads' 'extra_env cannot set' '-var=extra_env={STORAGE_PROVIDER="s3"}'
+rejected 'the api cannot lose its titiler sidecar' 'extra_env cannot set' '-var=extra_env={TITILER_BASE_URL="http://titiler:8000"}'
 rejected 'a secret key ending in an underscore' 'extra_secrets keys must be' '-var=extra_secrets={SMTP_PASSWORD_="x"}'
 rejected 'one name cannot be both plain and secret' 'A name cannot be in both' \
   '-var=extra_env={SMTP_PASSWORD="a"}' '-var=extra_secrets={SMTP_PASSWORD="b"}'
@@ -52,6 +53,9 @@ accepted 'a supplied admin password that meets the policy' '-var=admin_password=
 rejected 'a short admin password' 'admin_password must be empty' '-var=admin_password=Short1!'
 rejected 'an admin password with two character classes' 'admin_password must be empty' '-var=admin_password=alllowercase123'
 rejected 'an admin password over 72 bytes' 'admin_password must be empty' "-var=admin_password=Aa1$(printf '%070d' 0)"
+rejected 'a link-local network' 'vnet_cidr must not overlap' '-var=vnet_cidr=169.254.0.0/16'
+rejected 'an apps subnet inside a Container Apps reserved range' 'Container Apps subnet and must not overlap' '-var=vnet_cidr=172.31.0.0/16'
+accepted 'a network around a reserved range whose apps subnet avoids it' '-var=vnet_cidr=172.16.0.0/12'
 accepted 'a custom domain origin' '-var=public_app_url=https://geolens.example.com/'
 rejected 'a hostname with an empty label' 'public_app_url must be empty' '-var=public_app_url=https://geo..example.com'
 rejected 'a label that starts with a hyphen' 'public_app_url must be empty' '-var=public_app_url=https://geo.-example.com'

@@ -36,7 +36,7 @@ variable "titiler_version" {
 }
 
 variable "vnet_cidr" {
-  description = "Address space for the virtual network this module creates. Its first /24 holds the Container Apps environment and its second /24 the database."
+  description = "Address space for the virtual network this module creates. Its first /24 holds the Container Apps environment and its second /24 the database. It cannot hold a range Azure reserves, and its first /24 must avoid the ranges Container Apps reserves."
   type        = string
   default     = "10.30.0.0/16"
 
@@ -46,6 +46,29 @@ variable "vnet_cidr" {
   validation {
     condition     = can(cidrnetmask(var.vnet_cidr)) && can(cidrsubnet(var.vnet_cidr, 24 - tonumber(split("/", var.vnet_cidr)[1]), 1)) && try(tonumber(split("/", var.vnet_cidr)[1]) >= 2, false)
     error_message = "vnet_cidr must be an IPv4 CIDR from /2 to /23: Azure takes nothing larger, and two /24 subnets must fit in it."
+  }
+
+  # Azure refuses these in any network, and Container Apps refuses a subnet
+  # overlapping its own reserved ranges, only once the network and database
+  # exist (codex review on #59). Two IPv4 networks overlap exactly when both,
+  # masked to the shorter prefix, give the same address.
+  validation {
+    condition = try(alltrue([
+      for r in ["127.0.0.0/8", "168.63.129.16/32", "169.254.0.0/16", "224.0.0.0/4", "255.255.255.255/32"] :
+      cidrhost("${cidrhost(var.vnet_cidr, 0)}/${min(tonumber(split("/", var.vnet_cidr)[1]), tonumber(split("/", r)[1]))}", 0) !=
+      cidrhost("${split("/", r)[0]}/${min(tonumber(split("/", var.vnet_cidr)[1]), tonumber(split("/", r)[1]))}", 0)
+    ]), true)
+    error_message = "vnet_cidr must not overlap 127.0.0.0/8, 168.63.129.16/32, 169.254.0.0/16, 224.0.0.0/4 or 255.255.255.255/32, which Azure reserves in every virtual network."
+  }
+
+  # Every range here is /24 or larger, so the apps subnet overlaps one only by
+  # sitting inside it.
+  validation {
+    condition = try(alltrue([
+      for r in ["100.100.0.0/17", "100.100.128.0/19", "100.100.160.0/19", "100.100.192.0/19", "172.30.0.0/16", "172.31.0.0/16", "192.0.2.0/24"] :
+      cidrhost("${cidrhost(cidrsubnet(var.vnet_cidr, 24 - tonumber(split("/", var.vnet_cidr)[1]), 0), 0)}/${split("/", r)[1]}", 0) != split("/", r)[0]
+    ]), true)
+    error_message = "The first /24 of vnet_cidr is the Container Apps subnet and must not overlap 100.100.0.0/17, 100.100.128.0/19, 100.100.160.0/19, 100.100.192.0/19, 172.30.0.0/16, 172.31.0.0/16 or 192.0.2.0/24, which Container Apps reserves."
   }
 }
 
@@ -190,12 +213,12 @@ locals {
   # recipe's own wiring, the api-only metrics directory (the worker and migrate
   # job crash on it), the shutdown window the worker's grace period is sized
   # for, values the frontend edge shares, which come from their variables, and
-  # the storage settings titiler is wired to.
+  # the storage and port titiler is wired to.
   reserved_env = [
     "AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "JWT_SECRET_KEY", "REDIS_URL", "SECRET_ENCRYPTION_KEY",
     "GEOLENS_API_RUN_MIGRATIONS", "GEOLENS_BOOTSTRAP_B64", "SECRETS_REVISION", "UPLOAD_STAGING_DIR",
     "PROMETHEUS_MULTIPROC_DIR", "PUBLIC_API_URL", "PUBLIC_APP_URL", "UPLOAD_MAX_SIZE_MB", "WORKER_SHUTDOWN_TIMEOUT",
-    "AZURE_STORAGE_ACCOUNT_URL", "STORAGE_PROVIDER",
+    "AZURE_STORAGE_ACCOUNT_URL", "STORAGE_PROVIDER", "TITILER_BASE_URL",
   ]
 }
 

@@ -243,7 +243,7 @@ jobs:
           fi
           echo "ambient credentials omit static keys; the static path still fails closed"
 
-      - name: Guard - renders when a cross-version --reuse-values omits the new maps
+      - name: Guard - renders when a cross-version --reuse-values omits newer values
         # `helm upgrade --reuse-values` coalesces the OLD release's values
         # against the new chart, so a release installed from 0.4.24 or earlier
         # supplies NO top-level serviceAccount or database map. Dereferencing
@@ -261,7 +261,16 @@ jobs:
               echo "rendering failed with the new top-level maps absent; a --reuse-values upgrade from an older chart would fail here" >&2
               exit 1
             }
-          echo "renders with serviceAccount/database absent (cross-version --reuse-values safe)"
+          # A scalar the backend validates needs its default in the template too:
+          # an empty S3_ADDRESSING_STYLE fails boot.
+          if helm template geolens helm/geolens \
+              --set secrets.existingSecret=geolens-secrets \
+              --set-json 'storage.s3AddressingStyle=null' \
+              --show-only templates/configmap.yaml | grep -q S3_ADDRESSING_STYLE; then
+            echo "an absent storage.s3AddressingStyle renders S3_ADDRESSING_STYLE, which the backend rejects unless it is auto, path or virtual" >&2
+            exit 1
+          fi
+          echo "renders with serviceAccount, database and s3AddressingStyle absent (cross-version --reuse-values safe)"
 
       - name: Guard - a --reuse-values upgrade from the published chart keeps pods non-root
         # --reuse-values renders the new templates against
@@ -493,6 +502,15 @@ jobs:
             --set-json 'frontend.extraEnv=[{"name":"API_BASE_URL","value":"https://geo.example.com"}]' \
             --set-json 'api.extraEnv=[{"name":"GEOLENS_API_RUN_MIGRATIONS","value":"true"},{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"},{"name":"FORWARDED_ALLOW_IPS","value":"10.42.0.0/16"}]' \
             --set-json 'migrate.extraEnv=[{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"}]')
+          # Without existingSecret the migrate hook inlines its credentials, and
+          # each of those must give way to an operator entry too.
+          inlined=$(helm template geolens helm/geolens \
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://g:p@db/g' \
+            --set secrets.jwtSecretKey=0123456789abcdef0123456789abcdef \
+            --set secrets.adminUsername=admin --set secrets.adminPassword='chart-ci-only-Passw0rd!' \
+            --set-json 'api.extraEnv=[{"name":"DATABASE_URL_OVERRIDE","valueFrom":{"secretKeyRef":{"name":"db","key":"dsn"}}},{"name":"JWT_SECRET_KEY","valueFrom":{"secretKeyRef":{"name":"jwt","key":"key"}}}]' \
+            --set-json 'migrate.extraEnv=[{"name":"GEOLENS_ADMIN_USERNAME","value":"root"},{"name":"GEOLENS_ADMIN_PASSWORD","value":"other-Passw0rd!"},{"name":"POSTGRES_PASSWORD","value":"x"}]')
+          rendered=$(printf '%s\n---\n%s\n' "$rendered" "$inlined")
           # The migrate Job renders api.extraEnv AND migrate.extraEnv, so the
           # same name set in both would land twice in one container.
           # A name may legitimately appear once per CONTAINER, so scope the

@@ -114,7 +114,10 @@ when it copies file times.
 Since no browser ever talks to Blob Storage directly, the storage account can
 refuse everything but the Container Apps subnet: add a `Microsoft.Storage`
 service endpoint to that subnet and a network rule that allows it and denies
-the rest.
+the rest. Set the trusted-services exception to `None` as well
+(`az storage account update --bypass None`). It defaults to `AzureServices`,
+which lets Microsoft's trusted services past the rule, and nothing here needs
+it.
 
 ## Cache
 

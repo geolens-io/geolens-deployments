@@ -2,13 +2,16 @@ terraform {
   required_version = ">= 1.9"
 
   required_providers {
+    # Exact pins, moved by Dependabot. Given a range, its lock-file update
+    # resolves the newest version the range allows and skips the 7-day cooldown
+    # in dependabot.yml; a pin makes the lock follow the version it chose.
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 5.6"
+      version = "5.6.0"
     }
     random = {
       source  = "hashicorp/random"
-      version = "~> 3.6"
+      version = "3.9.1"
     }
   }
 }

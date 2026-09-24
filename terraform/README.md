@@ -8,7 +8,7 @@ variables, apply.
 | Recipe | Status | Manual path |
 | --- | --- | --- |
 | [`aws-ecs-fargate`](aws-ecs-fargate/) | Validated on a real account (2026-09-23, GeoLens 1.20.0). ECS Fargate, RDS PostgreSQL 17, S3, ElastiCache Valkey, ALB. | [`clouds/aws.md`](../clouds/aws.md) |
-| Azure | Planned, not started: [#41](https://github.com/geolens-io/geolens-deployments/issues/41). | [`clouds/azure.md`](../clouds/azure.md) |
+| [`azure-container-apps`](azure-container-apps/) | Validated on a real subscription (2026-09-23, GeoLens 1.20.0). Container Apps, PostgreSQL Flexible Server 17, Blob Storage with an Azure Files staging share, optional Azure Managed Redis. | [`clouds/azure.md`](../clouds/azure.md) |
 | Google Cloud | Planned, not started: [#42](https://github.com/geolens-io/geolens-deployments/issues/42). | [`clouds/google-cloud.md`](../clouds/google-cloud.md) |
 | DigitalOcean | Planned, not started: [#43](https://github.com/geolens-io/geolens-deployments/issues/43). | [`clouds/digitalocean.md`](../clouds/digitalocean.md) |
 
@@ -22,7 +22,9 @@ cloud:
    and the `geolens_reader` role before the first `alembic upgrade heads`.
 2. Object storage. The backend speaks S3 natively and Azure Blob through
    `STORAGE_PROVIDER=azure`. S3-compatible stores work by setting
-   `S3_ENDPOINT`.
+   `S3_ENDPOINT`. Only `s3` hands an upload to the worker through the bucket;
+   with any other provider the api stages it at `/app/staging` and the worker
+   reads it from there, so the two need a shared directory.
 3. An optional Redis-compatible cache reachable as `REDIS_URL`.
 4. Four containers: the frontend edge, the api, the worker, and titiler. The
    frontend must be the only public target, and when the api and titiler share
@@ -36,9 +38,6 @@ cloud:
 cloud, with the environment variables each one needs. What is left here is the
 container topology each runtime forces, which is a recipe decision rather than
 a provisioning one.
-
-Azure: Container Apps supports several containers in one app, so the loopback
-layout from the AWS recipe carries over, with the worker as a second app.
 
 Google Cloud: Cloud Run multi-container services cover the frontend, api and
 titiler. The worker is a long-running process, so it belongs in its own

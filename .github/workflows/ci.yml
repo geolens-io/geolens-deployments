@@ -754,11 +754,15 @@ jobs:
           terraform_wrapper: false
 
       - name: terraform fmt
-        run: terraform fmt -check -recursive terraform/aws-ecs-fargate
+        run: terraform fmt -check -recursive terraform
 
+      # Every recipe in this one job: main requires the check by its name.
       - name: terraform validate
-        working-directory: terraform/aws-ecs-fargate
         run: |
-          terraform init -backend=false
-          terraform validate
-          bash test-pilot-profile.sh
+          for dir in terraform/*/; do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done
+          bash terraform/aws-ecs-fargate/test-pilot-profile.sh

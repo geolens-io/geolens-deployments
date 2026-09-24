@@ -1,0 +1,36 @@
+# Copy to terraform.tfvars and edit.
+
+# az account show --query id -o tsv
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+name     = "geolens"
+location = "westus3"
+
+# Pin the release you want. Bumping this re-runs migrations, then rolls both
+# apps onto a new revision.
+geolens_version = "1.20.0"
+
+# Leave empty to serve on the app's own *.azurecontainerapps.io address, which
+# already has HTTPS. Set it once a custom domain is bound (see the README).
+# public_app_url = "https://geolens.example.com"
+
+# admin_username = "admin"
+# admin_password = ""   # empty generates one into the app's secrets
+
+# app_replicas       = 1       # more than one needs cache_enabled
+# cache_enabled      = false
+# upload_max_size_mb = 500
+# worker_concurrency = 1
+# api_cpu            = 1       # vCPU; memory is twice this in GiB
+# worker_cpu         = 1
+# db_sku_name        = "B_Standard_B1ms"
+# db_storage_mb      = 32768
+
+# Any other GeoLens setting. Plain values here, secrets as values that are
+# stored as Container Apps secrets (and in Terraform state).
+# extra_env = {
+#   REGISTRATION_ENABLED = "true"
+# }
+# extra_secrets = {
+#   OPENAI_API_KEY = "sk-..."
+# }

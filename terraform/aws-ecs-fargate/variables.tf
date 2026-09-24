@@ -105,13 +105,31 @@ variable "admin_username" {
   description = "Username of the bootstrap admin account."
   type        = string
   default     = "admin"
+
+  # GeoLens refuses to boot on a blank one, after everything is provisioned.
+  validation {
+    condition     = trimspace(var.admin_username) != ""
+    error_message = "admin_username must not be blank; GeoLens refuses to boot without one."
+  }
 }
 
 variable "admin_password" {
-  description = "Password for the bootstrap admin. Empty means generate one. The backend rejects passwords under 12 characters or using fewer than 3 character classes."
+  description = "Password for the bootstrap admin. Empty means generate one. A supplied one must meet the policy GeoLens holds every other password to: at least 12 characters, at most 72 bytes, and three of lowercase, uppercase, digit and symbol."
   type        = string
   default     = ""
   sensitive   = true
+
+  # GeoLens seeds the admin without this check and fails to boot only on a
+  # blank value, one over 72 bytes (bcrypt) or a known-public literal, all of
+  # which the policy also rules out (geolens-deployments#59).
+  validation {
+    condition = var.admin_password == "" || (
+      length(var.admin_password) >= 12 &&
+      length(base64encode(var.admin_password)) <= 96 &&
+      length([for re in ["\\p{Ll}", "\\p{Lu}", "\\p{Nd}", "[^\\p{L}\\p{Nd}]"] : re if can(regex(re, var.admin_password))]) >= 3
+    )
+    error_message = "admin_password must be empty, to generate one, or at least 12 characters and at most 72 bytes, with three of lowercase, uppercase, digit and symbol."
+  }
 }
 
 variable "skip_final_snapshot" {
@@ -225,16 +243,31 @@ variable "worker_concurrency" {
 # The two escape hatches that make every other GeoLens option reachable, the
 # same way the Helm chart's extraEnv and existingSecret do. The configuration
 # reference is https://docs.getgeolens.com/guides/quickstart/configuration/.
+locals {
+  # Neither may set these (as in the Azure recipe, #59): the generated secrets,
+  # the recipe's own wiring, the api-only metrics directory (the worker and
+  # migrate task crash on it), the shutdown window the worker's stopTimeout is
+  # sized for, values the frontend edge shares, which come from their
+  # variables, the storage and credentials titiler is wired to (a static key
+  # would also win over the task role), and the one database login with its
+  # TLS mode.
+  reserved_env = [
+    "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "JWT_SECRET_KEY", "SECRET_ENCRYPTION_KEY",
+    "EXTRA_SECRETS_REVISION", "GEOLENS_API_RUN_MIGRATIONS", "GEOLENS_BOOTSTRAP_B64",
+    "PROMETHEUS_MULTIPROC_DIR", "PUBLIC_API_URL", "PUBLIC_APP_URL", "UPLOAD_MAX_SIZE_MB", "WORKER_SHUTDOWN_TIMEOUT",
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "S3_ACCESS_KEY_ID", "S3_BUCKET", "S3_ENDPOINT", "S3_REGION", "S3_SECRET_ACCESS_KEY", "STORAGE_PROVIDER", "TITILER_BASE_URL",
+    "DATABASE_SSL_MODE", "GEOLENS_MIGRATION_DB_ROLE", "GEOLENS_RUNTIME_DB_PASSWORD", "GEOLENS_RUNTIME_DB_ROLE", "MIGRATION_DATABASE_URL_OVERRIDE", "POSTGRES_PASSWORD", "POSTGRES_USER",
+  ]
+}
+
 variable "extra_env" {
   description = "Extra plain environment for the api, worker and migrate containers, for example REGISTRATION_ENABLED, OPENAI_MODEL, SMTP_HOST or CORS_ALLOWED_ORIGINS. An entry here overrides a default of the same name."
   type        = map(string)
   default     = {}
 
-  # #53: these five come from the recipe's own secret; a plain entry would give
-  # the container two values for one name.
   validation {
-    condition     = length(setintersection(toset(keys(var.extra_env)), toset(["DATABASE_URL_OVERRIDE", "JWT_SECRET_KEY", "GEOLENS_ADMIN_USERNAME", "GEOLENS_ADMIN_PASSWORD", "SECRET_ENCRYPTION_KEY"]))) == 0
-    error_message = "extra_env cannot set DATABASE_URL_OVERRIDE, JWT_SECRET_KEY, GEOLENS_ADMIN_USERNAME, GEOLENS_ADMIN_PASSWORD or SECRET_ENCRYPTION_KEY; the recipe generates and stores them."
+    condition     = length(setintersection(toset(keys(var.extra_env)), toset(local.reserved_env))) == 0
+    error_message = "extra_env cannot set any of ${join(", ", local.reserved_env)}. The recipe owns them; public_app_url, upload_max_size_mb and the admin variables set the ones meant to change."
   }
 
   # #53: the same list as extra_secrets, so a reserved name cannot come in
@@ -274,13 +307,13 @@ variable "extra_env" {
 }
 
 variable "extra_secrets" {
-  description = "Extra secrets for the api, worker and migrate containers: env name to an ECS valueFrom, that is a Secrets Manager ARN with an optional :json-key:: suffix. Use it for OPENAI_API_KEY, ANTHROPIC_API_KEY, SMTP_PASSWORD, OAuth client secrets and TILE_SIGNING_SECRET. The execution role is granted read on each secret."
+  description = "Extra secrets for the api, worker and migrate containers: env name to an ECS valueFrom, that is a Secrets Manager ARN with an optional :json-key:: suffix. Use it for OPENAI_API_KEY, ANTHROPIC_API_KEY, SMTP_PASSWORD, OAuth client secrets and TILE_SIGNING_SECRET. The execution role is granted read on each secret. An entry here replaces a plain default of the same name."
   type        = map(string)
   default     = {}
 
   validation {
-    condition     = length(setintersection(toset(keys(var.extra_secrets)), toset(["DATABASE_URL_OVERRIDE", "JWT_SECRET_KEY", "GEOLENS_ADMIN_USERNAME", "GEOLENS_ADMIN_PASSWORD", "SECRET_ENCRYPTION_KEY"]))) == 0
-    error_message = "extra_secrets cannot redefine DATABASE_URL_OVERRIDE, JWT_SECRET_KEY, GEOLENS_ADMIN_USERNAME, GEOLENS_ADMIN_PASSWORD or SECRET_ENCRYPTION_KEY; the recipe generates and stores them."
+    condition     = length(setintersection(toset(keys(var.extra_secrets)), toset(local.reserved_env))) == 0
+    error_message = "extra_secrets cannot redefine any of ${join(", ", local.reserved_env)}. The recipe owns them; public_app_url, upload_max_size_mb and the admin variables set the ones meant to change."
   }
 
   validation {

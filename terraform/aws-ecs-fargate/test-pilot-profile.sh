@@ -4,14 +4,17 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 assert_profile_valid() {
+  local name=${1:-valid pilot profile}
+  shift || true
+
   local output normalized_output
-  output=$(terraform console -no-color -var-file=pilot.tfvars.example <<< 'var.pilot_profile' 2>&1)
+  output=$(terraform console -no-color -var-file=pilot.tfvars.example "$@" <<< 'var.pilot_profile' 2>&1)
   normalized_output=$(printf '%s' "$output" | tr '\n' ' ' | awk '{$1=$1; print}')
   if [[ "$normalized_output" != "true" ]]; then
-    printf 'FAIL: valid pilot profile was rejected:\n%s\n' "$output" >&2
+    printf 'FAIL: %s was rejected:\n%s\n' "$name" "$output" >&2
     return 1
   fi
-  printf 'PASS: valid pilot profile\n'
+  printf 'PASS: %s\n' "$name"
 }
 
 assert_profile_rejected() {
@@ -52,11 +55,11 @@ assert_profile_rejected \
   '-var=extra_secrets={STORAGE_PROVIDER="arn:aws:secretsmanager:us-east-1:111111111111:secret:geolens-org-slug/storage-AbCdEf"}'
 assert_profile_rejected \
   'extra_env cannot set a recipe-generated secret' \
-  'extra_env cannot set DATABASE_URL_OVERRIDE, JWT_SECRET_KEY' \
+  'extra_env cannot set any of' \
   '-var=extra_env={JWT_SECRET_KEY="weak"}'
 assert_profile_rejected \
   'extra_secrets cannot redefine a recipe-generated secret' \
-  'extra_secrets cannot redefine DATABASE_URL_OVERRIDE, JWT_SECRET_KEY' \
+  'extra_secrets cannot redefine any of' \
   '-var=extra_secrets={SECRET_ENCRYPTION_KEY="arn:aws:secretsmanager:us-east-1:111111111111:secret:geolens-org-slug/key-AbCdEf"}'
 assert_profile_rejected \
   'one name cannot be both plain and secret' \
@@ -71,3 +74,30 @@ assert_profile_rejected \
   'extra secrets must use the deployment-specific path' \
   'under the stack-specific Secrets Manager path <name>/' \
   '-var=extra_secrets={OPENAI_API_KEY="arn:aws:secretsmanager:us-east-1:111111111111:secret:other/ai-AbCdEf"}'
+# Outside the pilot profile too: the recipe's own wiring (as in the Azure
+# recipe, #59), and an admin credential GeoLens would refuse at boot.
+assert_profile_rejected \
+  'migrations cannot move back into the api' \
+  'extra_env cannot set any of' \
+  '-var=extra_env={GEOLENS_API_RUN_MIGRATIONS="true"}'
+assert_profile_rejected \
+  'the api metrics directory cannot reach the worker' \
+  'extra_env cannot set any of' \
+  '-var=extra_env={PROMETHEUS_MULTIPROC_DIR="/tmp/prometheus-multiproc"}'
+assert_profile_rejected \
+  'a static S3 key cannot bypass the task role' \
+  'extra_secrets cannot redefine any of' \
+  '-var=extra_secrets={S3_ACCESS_KEY_ID="arn:aws:secretsmanager:us-east-1:111111111111:secret:geolens-org-slug/s3-AbCdEf"}'
+assert_profile_rejected \
+  'a blank admin username' \
+  'admin_username must not be blank' \
+  '-var=admin_username= '
+assert_profile_valid 'a supplied admin password that meets the policy' '-var=admin_password=Str0ng-enough-pw'
+assert_profile_rejected \
+  'a short admin password' \
+  'admin_password must be empty' \
+  '-var=admin_password=Short1!'
+assert_profile_rejected \
+  'an admin password over 72 bytes' \
+  'admin_password must be empty' \
+  "-var=admin_password=Aa1$(printf '%070d' 0)"

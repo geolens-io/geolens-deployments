@@ -221,12 +221,27 @@ extra_secrets = {
 ```
 
 The [configuration reference](https://docs.getgeolens.com/guides/quickstart/configuration/)
-lists every setting. Do not put `S3_ACCESS_KEY_ID` or `S3_SECRET_ACCESS_KEY`
-in either map: a static key wins over the task role and defeats the keyless
-setup. Neither map may name one of the recipe's own secrets
-(`DATABASE_URL_OVERRIDE`, `JWT_SECRET_KEY`, the two `GEOLENS_ADMIN_*` values,
-`SECRET_ENCRYPTION_KEY`), and no name may appear in both; the plan fails
-instead.
+lists every setting. A few names are off limits in both maps, and the plan
+fails on any of them (`reserved_env` in `variables.tf` has the full list):
+
+- The secrets the recipe generates: `DATABASE_URL_OVERRIDE`, `JWT_SECRET_KEY`,
+  `SECRET_ENCRYPTION_KEY` and the two `GEOLENS_ADMIN_*` values.
+- Its own wiring: `EXTRA_SECRETS_REVISION`, `GEOLENS_BOOTSTRAP_B64`,
+  `GEOLENS_API_RUN_MIGRATIONS`, `WORKER_SHUTDOWN_TIMEOUT` and the api-only
+  `PROMETHEUS_MULTIPROC_DIR`.
+- What titiler is wired to: `STORAGE_PROVIDER`, `TITILER_BASE_URL`,
+  `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, and static keys (`S3_ACCESS_KEY_ID`,
+  `S3_SECRET_ACCESS_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`), which
+  would also win over the task role and defeat the keyless setup.
+- The one database login and its TLS mode: `DATABASE_SSL_MODE`,
+  `POSTGRES_USER`, `POSTGRES_PASSWORD`, `MIGRATION_DATABASE_URL_OVERRIDE`, and
+  the migration and runtime role settings.
+- `PUBLIC_APP_URL`, `PUBLIC_API_URL` and `UPLOAD_MAX_SIZE_MB`, which come from
+  `public_app_url` and `upload_max_size_mb` because the frontend edge needs
+  them too.
+
+No name may appear in both maps either. An `extra_secrets` entry replaces a
+plain default of the same name.
 
 The recipe generates `SECRET_ENCRYPTION_KEY`, the dedicated key for the
 secrets GeoLens stores such as SSO client secrets, so rotating the JWT secret

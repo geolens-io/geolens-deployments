@@ -5,7 +5,8 @@ locals {
 
   # Shared by api, worker and the migrate task. Maps rather than lists so a
   # later merge can override a name instead of emitting it twice; ECS does not
-  # define which duplicate wins.
+  # define which duplicate wins. For the same reason each container drops a
+  # plain entry that extra_secrets supplies as a secret.
   backend_env = merge({
     ENVIRONMENT          = "production"
     LOG_JSON             = "true"
@@ -161,7 +162,7 @@ resource "aws_ecs_task_definition" "app" {
         # creates this directory. Setting it for the worker or the migrate task
         # crashes them on the first Counter() with a missing-file error.
         PROMETHEUS_MULTIPROC_DIR = "/tmp/prometheus-multiproc"
-      }, var.extra_env) : { name = k, value = v }]
+      }, var.extra_env) : { name = k, value = v } if !contains(keys(var.extra_secrets), k)]
 
       secrets = local.backend_secrets
 
@@ -250,7 +251,7 @@ resource "aws_ecs_task_definition" "worker" {
         GEOLENS_API_RUN_MIGRATIONS = "false"
         WORKER_CONCURRENCY         = tostring(var.worker_concurrency)
         WORKER_SHUTDOWN_TIMEOUT    = "30"
-      }, var.extra_env) : { name = k, value = v }]
+      }, var.extra_env) : { name = k, value = v } if !contains(keys(var.extra_secrets), k)]
 
       # Compose's 35s (#52): SIGKILL lands after the worker's own 30s
       # shutdown window, so it releases its jobs first.
@@ -305,7 +306,7 @@ resource "aws_ecs_task_definition" "migrate" {
       environment = [for k, v in merge(local.backend_env, {
         GEOLENS_API_RUN_MIGRATIONS = "false"
         GEOLENS_BOOTSTRAP_B64      = base64encode(file("${path.module}/migrate.py"))
-      }, var.extra_env) : { name = k, value = v }]
+      }, var.extra_env) : { name = k, value = v } if !contains(keys(var.extra_secrets), k)]
 
       secrets = local.backend_secrets
 

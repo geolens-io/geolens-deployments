@@ -37,6 +37,7 @@ rejected 'extra_env cannot set a generated secret' 'extra_env cannot set' '-var=
 rejected 'extra_env cannot pin the secrets digest' 'extra_env cannot set' '-var=extra_env={SECRETS_REVISION="pinned"}'
 rejected 'extra_secrets cannot replace the migrate bootstrap' 'extra_secrets cannot redefine' \
   '-var=extra_secrets={GEOLENS_BOOTSTRAP_B64="x"}'
+rejected 'a secret key ending in an underscore' 'extra_secrets keys must be' '-var=extra_secrets={SMTP_PASSWORD_="x"}'
 rejected 'one name cannot be both plain and secret' 'A name cannot be in both' \
   '-var=extra_env={SMTP_PASSWORD="a"}' '-var=extra_secrets={SMTP_PASSWORD="b"}'
 rejected 'more than one app replica needs the cache' 'app_replicas above 1 needs cache_enabled' '-var=app_replicas=2'

@@ -192,9 +192,11 @@ variable "extra_secrets" {
     error_message = "A name cannot be in both extra_env and extra_secrets."
   }
 
-  # Container Apps secret names are the env names lowercased with - for _.
+  # Container Apps secret names are the env names lowercased with - for _, and
+  # must end in a letter or digit. The provider skips that check at plan time
+  # while any secret value is unknown, so the apply fails (codex review on #59).
   validation {
-    condition     = alltrue([for k in keys(var.extra_secrets) : can(regex("^[A-Z][A-Z0-9_]*$", k))])
-    error_message = "extra_secrets keys must be environment variable names: uppercase letters, digits and underscores."
+    condition     = alltrue([for k in keys(var.extra_secrets) : can(regex("^[A-Z]([A-Z0-9_]*[A-Z0-9])?$", k))])
+    error_message = "extra_secrets keys must be environment variable names of uppercase letters, digits and underscores, starting with a letter and ending with a letter or digit."
   }
 }

@@ -40,12 +40,12 @@ variable "vnet_cidr" {
   type        = string
   default     = "10.30.0.0/16"
 
-  # cidrsubnet takes IPv6 and a /0 as well, and cidrnetmask refuses IPv6; Azure
-  # refuses both, or anything larger than /2, once provisioning has begun
-  # (codex review on #59).
+  # cidrsubnet takes IPv6, a /0 and host bits as well, and cidrnetmask refuses
+  # only IPv6; Azure refuses all of them, and anything larger than /2, once
+  # provisioning has begun (codex review on #59).
   validation {
-    condition     = can(cidrnetmask(var.vnet_cidr)) && can(cidrsubnet(var.vnet_cidr, 24 - tonumber(split("/", var.vnet_cidr)[1]), 1)) && try(tonumber(split("/", var.vnet_cidr)[1]) >= 2, false)
-    error_message = "vnet_cidr must be an IPv4 CIDR from /2 to /23: Azure takes nothing larger, and two /24 subnets must fit in it."
+    condition     = can(cidrnetmask(var.vnet_cidr)) && can(cidrsubnet(var.vnet_cidr, 24 - tonumber(split("/", var.vnet_cidr)[1]), 1)) && try(tonumber(split("/", var.vnet_cidr)[1]) >= 2 && cidrhost(var.vnet_cidr, 0) == split("/", var.vnet_cidr)[0], false)
+    error_message = "vnet_cidr must be an IPv4 CIDR from /2 to /23 that starts at its network address (10.30.0.0/16, not 10.30.1.0/16): Azure takes nothing else, and two /24 subnets must fit in it."
   }
 
   # Azure refuses these in any network, and Container Apps refuses a subnet

@@ -54,6 +54,7 @@ accepted 'a supplied admin password that meets the policy' '-var=admin_password=
 rejected 'a short admin password' 'admin_password must be empty' '-var=admin_password=Short1!'
 rejected 'an admin password with two character classes' 'admin_password must be empty' '-var=admin_password=alllowercase123'
 rejected 'an admin password over 72 bytes' 'admin_password must be empty' "-var=admin_password=Aa1$(printf '%070d' 0)"
+rejected 'a network address with host bits set' 'vnet_cidr must be an IPv4 CIDR' '-var=vnet_cidr=10.30.1.0/16'
 rejected 'a link-local network' 'vnet_cidr must not overlap' '-var=vnet_cidr=169.254.0.0/16'
 rejected 'an apps subnet inside a Container Apps reserved range' 'Container Apps subnet and must not overlap' '-var=vnet_cidr=172.31.0.0/16'
 accepted 'a network around a reserved range whose apps subnet avoids it' '-var=vnet_cidr=172.16.0.0/12'

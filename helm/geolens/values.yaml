@@ -119,9 +119,11 @@ frontend:
     type: ClusterIP
     port: 80
   # Browser-facing base URLs injected into the SPA at container start
-  # (window.__ENV__). Empty means same-origin relative URLs — correct whenever
-  # the app is reached through this chart's ingress. Set tileBaseUrl only when
-  # serving tiles through a separate CDN hostname.
+  # (window.__ENV__). Empty means same-origin relative URLs, correct whenever
+  # the app is reached through this chart's ingress. An empty tileBaseUrl also
+  # defers to the api's CDN_BASE_URL, so setting that moves vector tile
+  # requests to it. Set tileBaseUrl only when serving tiles through a separate
+  # CDN hostname.
   apiBaseUrl: ""
   tileBaseUrl: ""
   # CIDRs of the proxies in front of this chart's frontend — typically the

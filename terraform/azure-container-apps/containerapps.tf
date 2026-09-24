@@ -19,7 +19,6 @@ locals {
     LOG_JSON                  = "true"
     PUBLIC_APP_URL            = local.public_app_url
     PUBLIC_API_URL            = "${local.public_app_url}/api"
-    CORS_ALLOWED_ORIGINS      = ""
     UPLOAD_MAX_SIZE_MB        = tostring(var.upload_max_size_mb)
     UPLOAD_STAGING_DIR        = "/app/staging"
     STORAGE_PROVIDER          = "azure"
@@ -28,9 +27,8 @@ locals {
     DATABASE_SSL_MODE         = "require"
     # Settings insists on this even though DATABASE_URL_OVERRIDE carries the
     # real credential, so it is a placeholder rather than a secret.
-    POSTGRES_PASSWORD    = "unused-database-url-override-in-use"
-    PROCRASTINATE_SCHEMA = "catalog"
-    SECRETS_REVISION     = local.secrets_revision
+    POSTGRES_PASSWORD = "unused-database-url-override-in-use"
+    SECRETS_REVISION  = local.secrets_revision
   }
 
   # Plain env per backend container: the shared defaults, the container's own,
@@ -66,8 +64,10 @@ locals {
   } }
 
   frontend_env = {
-    API_UPSTREAM   = "http://127.0.0.1:8000"
-    API_BASE_URL   = "/api"
+    API_UPSTREAM = "http://127.0.0.1:8000"
+    # As in GeoLens's production compose: a set value outranks the api's
+    # CDN_BASE_URL, which then only lights the admin Tile Cache badge instead
+    # of moving vector tiles off the edge.
     TILE_BASE_URL  = "/api"
     PUBLIC_APP_URL = local.public_app_url
     # Must match the api's UPLOAD_MAX_SIZE_MB or nginx rejects the upload

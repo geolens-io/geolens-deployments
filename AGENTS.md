@@ -73,10 +73,11 @@ bash terraform/azure-container-apps/test-validations.sh
 ## Recipe conventions
 
 - One root module per cloud, with no registry modules. A `# ponytail:` comment marks each deliberate shortcut and names its ceiling.
-- Set only the settings the recipe must control, and leave application defaults to the images: a hard-coded list goes stale when GeoLens adds to it.
+- Set a value only when the image's default is wrong for the deployment (`ENVIRONMENT`, `DATABASE_SSL_MODE`, `TILE_BASE_URL`) or another part of the recipe depends on it (the staging mount path, the timeout the worker's stop window is sized for). Leave the rest to the image, lists above all. GeoLens's compose files pin many defaults, but they ship with the app; a copy here goes stale when GeoLens changes it, which is how a pinned `WORKER_QUEUES` once stranded URL imports.
 - `extra_env` and `extra_secrets` reserve only the names the recipe must own, listed once as `reserved_env` in `variables.tf`: its generated secrets, its own machinery, and values another container or resource depends on, such as a URL the frontend edge also receives. Ordinary defaults like `ENVIRONMENT`, `LOG_JSON` and `CORS_ALLOWED_ORIGINS` stay overridable. Add a name only when overriding it would break the recipe.
 - An input that passes `terraform plan` but fails partway through `apply` gets a variable validation and a case in the recipe's test script. Providers skip their own checks on nested sets while any value is unknown, which is always the case on a first apply.
-- Validate a change on a real account from a scratch copy of the module, so no state or tfvars reach the repo. Check `/api/health`, run `ingest-smoke.sh` through the edge, destroy, and confirm nothing is left, including Azure's `<name>-rg-infra` and soft-deleted resources. Record the run in the recipe README's "Validated" section and in the PR.
+- Validate on a real account any change to what an apply creates or to the settings a container ends up with. Work from a scratch copy of the module, so no state or tfvars reach the repo. Check `/api/health`, run `ingest-smoke.sh` through the edge, destroy, and confirm nothing is left, including Azure's `<name>-rg-infra` and soft-deleted resources. Record the run in the recipe README's "Validated" section and in the PR.
+- Comments, docs, tests and variable validations need only the local checks. So does dropping a setting the pinned image already defaults to, once every reader of it (settings, entrypoints, the frontend bundle) is shown to resolve the same value in that image. Provider bumps within a major version merge on CI and the next real-account run exercises them; a new major gets its own run.
 
 ## Comments
 

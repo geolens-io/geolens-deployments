@@ -37,11 +37,14 @@ rejected 'extra_env cannot set a generated secret' 'extra_env cannot set' '-var=
 rejected 'extra_env cannot pin the secrets digest' 'extra_env cannot set' '-var=extra_env={SECRETS_REVISION="pinned"}'
 rejected 'extra_secrets cannot replace the migrate bootstrap' 'extra_secrets cannot redefine' \
   '-var=extra_secrets={GEOLENS_BOOTSTRAP_B64="x"}'
+rejected 'migrations cannot move back into the api' 'extra_env cannot set' '-var=extra_env={GEOLENS_API_RUN_MIGRATIONS="true"}'
+rejected 'the staging path cannot move off the share' 'extra_secrets cannot redefine' '-var=extra_secrets={UPLOAD_STAGING_DIR="/tmp/staging"}'
 rejected 'a secret key ending in an underscore' 'extra_secrets keys must be' '-var=extra_secrets={SMTP_PASSWORD_="x"}'
 rejected 'one name cannot be both plain and secret' 'A name cannot be in both' \
   '-var=extra_env={SMTP_PASSWORD="a"}' '-var=extra_secrets={SMTP_PASSWORD="b"}'
 rejected 'an IPv6 address space' 'vnet_cidr must be an IPv4 CIDR' '-var=vnet_cidr=2001:db8::/16'
 rejected 'an address space larger than Azure takes' 'vnet_cidr must be an IPv4 CIDR' '-var=vnet_cidr=0.0.0.0/1'
+rejected 'a blank admin username' 'admin_username must not be blank' '-var=admin_username= '
 accepted 'a supplied admin password that meets the policy' '-var=admin_password=Str0ng-enough-pw'
 rejected 'a short admin password' 'admin_password must be empty' '-var=admin_password=Short1!'
 rejected 'an admin password with two character classes' 'admin_password must be empty' '-var=admin_password=alllowercase123'

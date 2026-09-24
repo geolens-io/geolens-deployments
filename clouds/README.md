@@ -56,7 +56,8 @@ Two other paths exist and are usually less work:
 
 ## Status
 
-AWS is the only cloud with a recipe applied against a real account. The other
-three pages are written from the application's configuration contract and each
-provider's own documentation, not from a validated deployment. Corrections
-through issues and pull requests are welcome.
+AWS and Azure have recipes applied against a real account, and their pages
+carry what those runs found. The Google Cloud and DigitalOcean pages are written
+from the application's configuration contract and each provider's own
+documentation, not from a validated deployment. Corrections through issues and
+pull requests are welcome.

@@ -164,8 +164,9 @@ extra_secrets = {
 The [configuration reference](https://docs.getgeolens.com/guides/quickstart/configuration/)
 lists every setting. Neither map may name one of the recipe's own secrets
 (`DATABASE_URL_OVERRIDE`, `JWT_SECRET_KEY`, the two `GEOLENS_ADMIN_*` values,
-`SECRET_ENCRYPTION_KEY`, `AZURE_STORAGE_ACCOUNT_KEY`, `REDIS_URL`) or the two
-variables it keeps for itself (`SECRETS_REVISION`, `GEOLENS_BOOTSTRAP_B64`),
+`SECRET_ENCRYPTION_KEY`, `AZURE_STORAGE_ACCOUNT_KEY`, `REDIS_URL`) or the
+settings its own wiring depends on (`SECRETS_REVISION`,
+`GEOLENS_BOOTSTRAP_B64`, `GEOLENS_API_RUN_MIGRATIONS`, `UPLOAD_STAGING_DIR`),
 and no name may appear in both; the plan fails instead.
 
 Container Apps keeps running replicas on the old value of a changed secret.

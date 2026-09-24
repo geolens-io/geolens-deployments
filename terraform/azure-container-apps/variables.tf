@@ -8,11 +8,12 @@ variable "name" {
   type        = string
   default     = "geolens"
 
-  # Container App names stop at 32 characters and the longest suffix here is
-  # -migrate; the storage account keeps only 14 of these characters.
+  # Container App names stop at 32 characters, which leaves room for the
+  # longest suffix here, -migrate, and cannot contain "--" (codex review on
+  # #59). The storage account keeps the first 18 characters, hyphens dropped.
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{1,18}[a-z0-9]$", var.name))
-    error_message = "name must be 3 to 20 lowercase letters, digits or hyphens, starting with a letter and ending with a letter or digit."
+    condition     = can(regex("^[a-z][a-z0-9-]{1,18}[a-z0-9]$", var.name)) && !strcontains(var.name, "--")
+    error_message = "name must be 3 to 20 lowercase letters, digits or single hyphens, starting with a letter and ending with a letter or digit."
   }
 }
 

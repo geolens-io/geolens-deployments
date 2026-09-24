@@ -339,6 +339,7 @@ storage:
   # Kubernetes use "s3" (or "azure" via extraEnv). "local" writes into the
   # staging volume: without staging.persistence that is a per-pod emptyDir,
   # so stored data is LOST on pod restart and diverges across replicas.
+  # "azure" needs staging.persistence as well; see staging below.
   backend: "local"
   s3Endpoint: ""
   s3Region: ""
@@ -380,6 +381,9 @@ staging:
   #           filesystem. Measured across pods with no shared volume at all.
   #   local — yes. The only copy lives in one pod's emptyDir, so the worker
   #           cannot read it and stored artifacts are lost on pod restart.
+  #   azure — yes. Only s3 hands an upload over through the bucket; azure
+  #           stages it here as local does, so without a shared claim every
+  #           import fails with BlobNotFound (#59).
   #
   # On EKS the defaults below cannot bind: ReadWriteMany is rejected by the EBS
   # CSI driver, and an empty storageClass needs a cluster DEFAULT StorageClass

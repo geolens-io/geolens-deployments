@@ -66,8 +66,8 @@ http://{{ include "geolens.fullname" . }}-api.{{ .Release.Namespace }}.svc.{{ .V
 {{/*
 The shared /app/staging volume (GAP-022 handoff contract — see values.yaml).
 With persistence enabled, api/worker/titiler all mount one RWX claim; without
-it each pod gets its own emptyDir, which only storage.backend=local needs to
-share (s3 hands uploads over through the bucket).
+it each pod gets its own emptyDir, which every backend but s3 needs to share
+(only s3 hands uploads over through the bucket; #59).
 */}}
 {{- define "geolens.stagingVolume" -}}
 - name: staging

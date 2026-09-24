@@ -19,7 +19,7 @@ for Kubernetes and AWS. No application code lives here.
 - `ingress.yaml`: single route, everything to the frontend edge.
 - `pdb.yaml`: PodDisruptionBudgets (`maxUnavailable: 1`) for the api, frontend and titiler.
 - `networkpolicy.yaml`: opt-in NetworkPolicies; only the frontend reaches the api, only the api reaches titiler.
-- `NOTES.txt`: post-install URL plus warnings for old frontend and api tags and for `storage.backend=local` without staging persistence.
+- `NOTES.txt`: post-install URL plus warnings for old frontend and api tags and for `storage.backend=local` or `azure` without staging persistence.
 
 `examples/` holds values files to adapt (`values-aws.yaml`, an EKS install).
 `terraform/aws-ecs-fargate/` is a root module: ECS Fargate, RDS PostgreSQL, S3,
@@ -88,6 +88,7 @@ runs guards that each pin a bug rendering alone would not catch:
 - `extraEnv` overrides render exactly once per container and win.
 - All three api probes are `/health/live`; the api sets `FORWARDED_ALLOW_IPS` once and an `extraEnv` value replaces it.
 - The stored-secret encryption keys reach both the Secret and the migrate hook, while a previous key without a current one, or a key against an api or worker tag older than 1.18.2, fails to render.
+- NOTES, rendered by a client-side dry run, warn about the staging handoff for `storage.backend=local` or `azure` without staging persistence, and for nothing else.
 
 `install-test` needs that job. It creates a kind cluster on Calico (kindnet's
 policy engine breaks DNS for policy-selected pods), applies

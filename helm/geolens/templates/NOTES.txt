@@ -43,3 +43,12 @@ upload that landed on an api pod, so ingest fails, and stored rasters and
 exports are LOST whenever a pod restarts. Use storage.backend=s3, or enable
 staging.persistence (ReadWriteMany). See the README's Storage section.
 {{- end }}
+{{- if and (eq .Values.storage.backend "azure") (not .Values.staging.persistence.enabled) }}
+
+WARNING: storage.backend=azure without staging.persistence gives each pod a
+private emptyDir at /app/staging. Only s3 hands an upload to the worker
+through the bucket; with azure the api stages it there, so the worker cannot
+read it and every import fails at "validating" with BlobNotFound. Enable
+staging.persistence (ReadWriteMany: Azure Files on AKS). See the README's
+Storage section.
+{{- end }}

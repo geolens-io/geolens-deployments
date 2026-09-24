@@ -615,6 +615,34 @@ jobs:
           fi
           echo "encryption keys threaded, invalid combinations rejected, extraEnv override wins once"
 
+      - name: Guard - NOTES warn when no shared volume carries the staging handoff
+        # #59: only s3 hands an upload to the worker through the bucket, so
+        # local and azure without staging.persistence fail every import. helm
+        # template never renders NOTES, so this uses a client-side dry run.
+        run: |
+          notes() {
+            helm install geolens helm/geolens --dry-run=client \
+              --set secrets.existingSecret=geolens-secrets "$@" | sed -n '/^NOTES:/,$p'
+          }
+          for backend in local azure; do
+            out=$(notes --set "storage.backend=$backend")
+            if ! grep -q "WARNING: storage.backend=$backend without staging.persistence" <<<"$out"; then
+              echo "no staging warning for storage.backend=$backend" >&2
+              exit 1
+            fi
+            out=$(notes --set "storage.backend=$backend" --set staging.persistence.enabled=true)
+            if grep -q 'without staging.persistence' <<<"$out"; then
+              echo "staging warning shown for storage.backend=$backend with staging.persistence on" >&2
+              exit 1
+            fi
+          done
+          out=$(notes --set storage.backend=s3 --set storage.s3Bucket=geolens)
+          if grep -q 'without staging.persistence' <<<"$out"; then
+            echo "staging warning shown for storage.backend=s3" >&2
+            exit 1
+          fi
+          echo "NOTES warn exactly when a backend other than s3 has no shared staging volume"
+
   # Real install against a kind cluster: exercises the install-time failure
   # classes static rendering provably cannot catch (hook ordering, Job
   # immutability on upgrade, probe budgets, FQDN proxy resolution through the

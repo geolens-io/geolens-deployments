@@ -47,11 +47,11 @@ assert_profile_rejected \
   -var=s3_versioning_enabled=false
 assert_profile_rejected \
   'reserved storage environment variables cannot be overridden' \
-  'pilot_profile reserves the database, migration/runtime-role, TLS, admin, JWT, encryption-key, AWS credential and S3 settings' \
+  'extra_env cannot set any of' \
   '-var=extra_env={S3_BUCKET="another-org-bucket"}'
 assert_profile_rejected \
   'a reserved name cannot come in through extra_secrets either' \
-  'pilot_profile reserves the database, migration/runtime-role, TLS, admin, JWT, encryption-key, AWS credential and S3 settings' \
+  'extra_secrets cannot redefine any of' \
   '-var=extra_secrets={STORAGE_PROVIDER="arn:aws:secretsmanager:us-east-1:111111111111:secret:geolens-org-slug/storage-AbCdEf"}'
 assert_profile_rejected \
   'extra_env cannot set a recipe-generated secret' \
@@ -84,6 +84,10 @@ assert_profile_rejected \
   'the api metrics directory cannot reach the worker' \
   'extra_env cannot set any of' \
   '-var=extra_env={PROMETHEUS_MULTIPROC_DIR="/tmp/prometheus-multiproc"}'
+assert_profile_rejected \
+  "GDAL cannot be sent to another region than the bucket's" \
+  'extra_env cannot set any of' \
+  '-var=extra_env={AWS_DEFAULT_REGION="eu-west-1"}'
 assert_profile_rejected \
   'a static S3 key cannot bypass the task role' \
   'extra_secrets cannot redefine any of' \

@@ -161,6 +161,8 @@ variable "backup_retention_days" {
   }
 }
 
+# ponytail: off by default, so an overwrite or delete in the bucket is final.
+# pilot_profile turns it on with noncurrent-version expiry.
 variable "s3_versioning_enabled" {
   description = "Enable S3 object versioning and the configured noncurrent-version lifecycle. Required by pilot_profile."
   type        = bool
@@ -247,15 +249,17 @@ locals {
   # Neither may set these: the generated secrets, the recipe's own wiring, the
   # api-only metrics directory (the worker and migrate task crash on it), the
   # shutdown window the worker's stopTimeout is sized for, values the frontend
-  # edge shares, which come from their variables, the storage and credentials
-  # titiler is wired to (a static key would also win over the task role), and
-  # the one database login with its TLS mode.
+  # edge shares, which come from their variables, the bucket, region and
+  # credentials the app and GDAL are wired to (GDAL keeps an operator's
+  # AWS_DEFAULT_REGION over S3_REGION, and a static key would win over the task
+  # role), and the database TLS mode and role settings, which the app holds to
+  # the one login.
   reserved_env = [
     "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "JWT_SECRET_KEY", "SECRET_ENCRYPTION_KEY",
     "EXTRA_SECRETS_REVISION", "GEOLENS_API_RUN_MIGRATIONS", "GEOLENS_BOOTSTRAP_B64",
     "PROMETHEUS_MULTIPROC_DIR", "PUBLIC_API_URL", "PUBLIC_APP_URL", "UPLOAD_MAX_SIZE_MB", "WORKER_SHUTDOWN_TIMEOUT",
-    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "S3_ACCESS_KEY_ID", "S3_BUCKET", "S3_ENDPOINT", "S3_REGION", "S3_SECRET_ACCESS_KEY", "STORAGE_PROVIDER", "TITILER_BASE_URL",
-    "DATABASE_SSL_MODE", "GEOLENS_MIGRATION_DB_ROLE", "GEOLENS_RUNTIME_DB_PASSWORD", "GEOLENS_RUNTIME_DB_ROLE", "MIGRATION_DATABASE_URL_OVERRIDE", "POSTGRES_PASSWORD", "POSTGRES_USER",
+    "AWS_ACCESS_KEY_ID", "AWS_DEFAULT_REGION", "AWS_SECRET_ACCESS_KEY", "S3_ACCESS_KEY_ID", "S3_BUCKET", "S3_ENDPOINT", "S3_REGION", "S3_SECRET_ACCESS_KEY", "STORAGE_PROVIDER", "TITILER_BASE_URL",
+    "DATABASE_SSL_MODE", "GEOLENS_MIGRATION_DB_ROLE", "GEOLENS_RUNTIME_DB_ROLE",
   ]
 }
 
@@ -267,41 +271,6 @@ variable "extra_env" {
   validation {
     condition     = length(setintersection(toset(keys(var.extra_env)), toset(local.reserved_env))) == 0
     error_message = "extra_env cannot set any of ${join(", ", local.reserved_env)}. The recipe owns them; public_app_url, upload_max_size_mb and the admin variables set the ones meant to change."
-  }
-
-  # The same list as extra_secrets, so a reserved name cannot come in
-  # through whichever map is not checked.
-  validation {
-    condition = !var.pilot_profile || length(setintersection(
-      toset(keys(var.extra_env)),
-      toset([
-        "AWS_ACCESS_KEY_ID",
-        "AWS_DEFAULT_REGION",
-        "AWS_SECRET_ACCESS_KEY",
-        "DATABASE_SSL_MODE",
-        "DATABASE_URL_OVERRIDE",
-        "GEOLENS_ADMIN_PASSWORD",
-        "GEOLENS_ADMIN_USERNAME",
-        "GEOLENS_API_RUN_MIGRATIONS",
-        "GEOLENS_MIGRATION_DB_ROLE",
-        "GEOLENS_RUNTIME_DB_PASSWORD",
-        "GEOLENS_RUNTIME_DB_ROLE",
-        "JWT_SECRET_KEY",
-        "MIGRATION_DATABASE_URL_OVERRIDE",
-        "POSTGRES_PASSWORD",
-        "POSTGRES_USER",
-        "S3_ACCESS_KEY_ID",
-        "S3_BUCKET",
-        "S3_ENDPOINT",
-        "S3_REGION",
-        "S3_SECRET_ACCESS_KEY",
-        "SECRET_ENCRYPTION_KEY",
-        "STORAGE_PROVIDER",
-        "TITILER_S3_ACCESS_KEY_ID",
-        "TITILER_S3_SECRET_ACCESS_KEY",
-      ])
-    )) == 0
-    error_message = "pilot_profile reserves the database, migration/runtime-role, TLS, admin, JWT, encryption-key, AWS credential and S3 settings in extra_env and extra_secrets alike."
   }
 }
 
@@ -318,39 +287,6 @@ variable "extra_secrets" {
   validation {
     condition     = length(setintersection(toset(keys(var.extra_secrets)), toset(keys(var.extra_env)))) == 0
     error_message = "A name cannot be in both extra_env and extra_secrets."
-  }
-
-  validation {
-    condition = !var.pilot_profile || length(setintersection(
-      toset(keys(var.extra_secrets)),
-      toset([
-        "AWS_ACCESS_KEY_ID",
-        "AWS_DEFAULT_REGION",
-        "AWS_SECRET_ACCESS_KEY",
-        "DATABASE_SSL_MODE",
-        "DATABASE_URL_OVERRIDE",
-        "GEOLENS_ADMIN_PASSWORD",
-        "GEOLENS_ADMIN_USERNAME",
-        "GEOLENS_API_RUN_MIGRATIONS",
-        "GEOLENS_MIGRATION_DB_ROLE",
-        "GEOLENS_RUNTIME_DB_PASSWORD",
-        "GEOLENS_RUNTIME_DB_ROLE",
-        "JWT_SECRET_KEY",
-        "MIGRATION_DATABASE_URL_OVERRIDE",
-        "POSTGRES_PASSWORD",
-        "POSTGRES_USER",
-        "S3_ACCESS_KEY_ID",
-        "S3_BUCKET",
-        "S3_ENDPOINT",
-        "S3_REGION",
-        "S3_SECRET_ACCESS_KEY",
-        "SECRET_ENCRYPTION_KEY",
-        "STORAGE_PROVIDER",
-        "TITILER_S3_ACCESS_KEY_ID",
-        "TITILER_S3_SECRET_ACCESS_KEY",
-      ])
-    )) == 0
-    error_message = "pilot_profile reserves the database, migration/runtime-role, TLS, admin, JWT, encryption-key, AWS credential and S3 settings in extra_env and extra_secrets alike."
   }
 
   validation {

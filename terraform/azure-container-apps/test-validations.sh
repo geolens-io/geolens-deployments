@@ -45,7 +45,7 @@ rejected 'storage cannot switch away from what titiler reads' 'extra_env cannot 
 rejected 'a connection string cannot move the api to another account' 'extra_secrets cannot redefine' '-var=extra_secrets={AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=other"}'
 rejected 'the api cannot lose its titiler sidecar' 'extra_env cannot set' '-var=extra_env={TITILER_BASE_URL="http://titiler:8000"}'
 rejected 'the database TLS mode is pinned' 'extra_env cannot set' '-var=extra_env={DATABASE_SSL_MODE="disable"}'
-rejected 'migrations cannot move to another login' 'extra_secrets cannot redefine' '-var=extra_secrets={MIGRATION_DATABASE_URL_OVERRIDE="postgresql://other:pw@db/geolens"}'
+rejected 'the migration role stays the one login' 'extra_secrets cannot redefine' '-var=extra_secrets={GEOLENS_MIGRATION_DB_ROLE="other"}'
 rejected 'a secret key ending in an underscore' 'extra_secrets keys must be' '-var=extra_secrets={SMTP_PASSWORD_="x"}'
 rejected 'one name cannot be both plain and secret' 'A name cannot be in both' \
   '-var=extra_env={SMTP_PASSWORD="a"}' '-var=extra_secrets={SMTP_PASSWORD="b"}'

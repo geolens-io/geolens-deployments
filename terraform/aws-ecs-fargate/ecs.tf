@@ -423,6 +423,8 @@ resource "aws_ecs_service" "app" {
   depends_on = [aws_lb_listener.http, aws_lb_listener.https, terraform_data.migrate]
 }
 
+# ponytail: one worker task, which runs worker_concurrency jobs at a time. Make
+# the count a variable when that task's CPU becomes the limit.
 resource "aws_ecs_service" "worker" {
   name            = "${var.name}-worker"
   cluster         = aws_ecs_cluster.this.id

@@ -8,9 +8,9 @@ and traps, and link to the source for detail.
 
 ## Project map
 
-- `helm/geolens/`: the chart. `values.yaml` documents every value with the reason for its default; `templates/` renders the api, worker, frontend and titiler workloads, the migrate hook, NetworkPolicies, PodDisruptionBudgets and the optional `/app/staging` claim.
+- `helm/geolens/`: the chart. `values.yaml` gives the reason for every default that is not obvious; `templates/` renders the api, worker, frontend and titiler workloads, the migrate hook, NetworkPolicies, PodDisruptionBudgets and the optional `/app/staging` claim.
 - `terraform/aws-ecs-fargate/`, `terraform/azure-container-apps/`: one root-module recipe per cloud. Each README covers what it deploys, cost, teardown and a "Validated" record.
-- `clouds/`: the manual counterpart of each recipe, one page per cloud. Change a recipe and its page together; provider-neutral material belongs on the docs site.
+- `clouds/`: one provisioning guide per cloud, and for AWS and Azure the manual counterpart of the recipe. Change a recipe and its page together; provider-neutral material belongs on the docs site.
 - `examples/`: values files to adapt.
 - `.github/ci/`: CI-only fixtures. `postgres.yaml` is not a production manifest. `ingest-smoke.sh <url> <user> <password>` pushes a vector and a raster through any running install's edge and fetches a tile.
 - `.github/workflows/`: `ci.yml`, `release-charts.yml`, `version-drift.yml`.
@@ -92,7 +92,7 @@ bash terraform/azure-container-apps/test-validations.sh
 
 ## Security
 
-- Never commit secrets, kubeconfigs, `.tfvars` with real values, or Terraform state. Example files carry `<placeholder>` values only, and `values-aws.yaml` points at an `existingSecret` instead of holding a DSN.
+- Never commit secrets, kubeconfigs, `.tfvars` with real values, or Terraform state. Example files carry only `<placeholder>` values or obvious dummies (`example.com`, repeated-digit account IDs and GUIDs), never a name someone else could register, such as a bucket. `values-aws.yaml` points at an `existingSecret` instead of holding a DSN.
 - Keep credentials off Helm command lines; use a pre-created Secret.
 - The backend refuses to boot on known-public example passwords; never reintroduce one as a default.
 - Report a chart or recipe vulnerability to security@getgeolens.com, not in a public issue.

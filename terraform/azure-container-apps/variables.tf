@@ -214,14 +214,14 @@ locals {
   # api-only metrics directory (the worker and migrate job crash on it), the
   # shutdown window the worker's grace period is sized for, values the frontend
   # edge shares, which come from their variables, the storage and port titiler
-  # is wired to, and the one database login with its TLS mode, which the
-  # migrate job's provisioner borrow is written for.
+  # is wired to, and the database TLS mode and role settings, which the app
+  # holds to the one login the migrate job's provisioner borrow is written for.
   reserved_env = [
     "AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "JWT_SECRET_KEY", "REDIS_URL", "SECRET_ENCRYPTION_KEY",
     "GEOLENS_API_RUN_MIGRATIONS", "GEOLENS_BOOTSTRAP_B64", "SECRETS_REVISION", "UPLOAD_STAGING_DIR",
     "PROMETHEUS_MULTIPROC_DIR", "PUBLIC_API_URL", "PUBLIC_APP_URL", "UPLOAD_MAX_SIZE_MB", "WORKER_SHUTDOWN_TIMEOUT",
     "AZURE_STORAGE_ACCOUNT_URL", "AZURE_STORAGE_CONNECTION_STRING", "STORAGE_PROVIDER", "TITILER_BASE_URL",
-    "DATABASE_SSL_MODE", "GEOLENS_MIGRATION_DB_ROLE", "GEOLENS_RUNTIME_DB_PASSWORD", "GEOLENS_RUNTIME_DB_ROLE", "MIGRATION_DATABASE_URL_OVERRIDE", "POSTGRES_PASSWORD", "POSTGRES_USER",
+    "DATABASE_SSL_MODE", "GEOLENS_MIGRATION_DB_ROLE", "GEOLENS_RUNTIME_DB_ROLE",
   ]
 }
 

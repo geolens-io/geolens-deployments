@@ -284,6 +284,8 @@ resource "azurerm_container_app" "app" {
         }
       }
 
+      # ponytail: titiler reads with the account key, which can also write and
+      # delete. A read-only SAS is the upgrade, at the price of rotating it.
       env {
         name        = "AZURE_STORAGE_ACCESS_KEY"
         secret_name = local.secret_names["AZURE_STORAGE_ACCOUNT_KEY"]

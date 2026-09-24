@@ -229,13 +229,14 @@ fails on any of them (`reserved_env` in `variables.tf` has the full list):
 - Its own wiring: `EXTRA_SECRETS_REVISION`, `GEOLENS_BOOTSTRAP_B64`,
   `GEOLENS_API_RUN_MIGRATIONS`, `WORKER_SHUTDOWN_TIMEOUT` and the api-only
   `PROMETHEUS_MULTIPROC_DIR`.
-- What titiler is wired to: `STORAGE_PROVIDER`, `TITILER_BASE_URL`,
-  `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, and static keys (`S3_ACCESS_KEY_ID`,
-  `S3_SECRET_ACCESS_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`), which
-  would also win over the task role and defeat the keyless setup.
-- The one database login and its TLS mode: `DATABASE_SSL_MODE`,
-  `POSTGRES_USER`, `POSTGRES_PASSWORD`, `MIGRATION_DATABASE_URL_OVERRIDE`, and
-  the migration and runtime role settings.
+- What the app, titiler and GDAL are wired to: `STORAGE_PROVIDER`,
+  `TITILER_BASE_URL`, `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`,
+  `AWS_DEFAULT_REGION` (GDAL would read the bucket in that region instead), and
+  static keys (`S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `AWS_ACCESS_KEY_ID`,
+  `AWS_SECRET_ACCESS_KEY`), which would also win over the task role and defeat
+  the keyless setup.
+- The database TLS mode and the role settings GeoLens holds to the one login:
+  `DATABASE_SSL_MODE`, `GEOLENS_MIGRATION_DB_ROLE` and `GEOLENS_RUNTIME_DB_ROLE`.
 - `PUBLIC_APP_URL`, `PUBLIC_API_URL` and `UPLOAD_MAX_SIZE_MB`, which come from
   `public_app_url` and `upload_max_size_mb` because the frontend edge needs
   them too.
@@ -302,6 +303,7 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
 - The database is single-AZ and the cache is one node. Bucket versioning stays
   off on the generic path; the hosted pilot profile enables it and expires
   noncurrent versions after the configured number of days.
+- One worker task runs every background job, `worker_concurrency` at a time.
 
 ## Cost
 

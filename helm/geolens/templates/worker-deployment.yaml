@@ -18,19 +18,17 @@ spec:
         app.kubernetes.io/component: worker
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- /* codex review on #29: Helm updates the ServiceAccount in place when
-             its IRSA / Pod Identity annotations change, but pods keep the
-             AWS_ROLE_ARN and token volume the webhook injected at admission.
-             Without this checksum a role change silently leaves every pod on
-             the old credentials — or on none — until someone restarts them. */}}
+        {{- /* The IRSA / Pod Identity webhook injects AWS_ROLE_ARN and a token volume
+             only at admission, so a ServiceAccount annotation change must roll the
+             pods, or they keep the old credentials (or none) until restarted. */}}
         checksum/serviceaccount: {{ include (print $.Template.BasePath "/serviceaccount.yaml") . | sha256sum }}
         {{- if not .Values.secrets.existingSecret }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "geolens.serviceAccountName" . | quote }}
-      # fix(#52): outlast WORKER_SHUTDOWN_TIMEOUT (default 30s) like compose's
-      # 35s stop_grace_period, so jobs are released before SIGKILL, not during.
+      # Outlasts WORKER_SHUTDOWN_TIMEOUT (default 30s), like compose's 35s
+      # stop_grace_period, so jobs are released before SIGKILL, not during.
       terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds | default 35 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -66,10 +64,9 @@ spec:
             {{- with .Values.worker.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          # The worker starts its health server only after schema-sync,
-          # storage bootstrap, and stale-job recovery, so give startup a real
-          # budget before liveness applies (slow DB/S3 would otherwise
-          # crash-loop a normally-booting worker).
+          # The health server starts only after schema-sync, storage bootstrap and
+          # stale-job recovery, so startup gets a budget before liveness applies;
+          # a slow database or bucket would otherwise crash-loop a healthy boot.
           startupProbe:
             httpGet:
               path: /health/live

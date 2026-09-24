@@ -8,7 +8,7 @@ resource "aws_lb" "this" {
   # A large export or a slow multipart handshake outlives the 60 s default.
   idle_timeout = 300
 
-  # #53: refuse headers whose names are not valid HTTP tokens instead of
+  # Refuse headers whose names are not valid HTTP tokens instead of
   # forwarding them to nginx (Security Hub ELB.4).
   drop_invalid_header_fields = true
 }
@@ -26,9 +26,9 @@ resource "aws_lb_target_group" "app" {
 
   deregistration_delay = 15
 
-  # Through the edge to the api (codex review on #40), process-only (#52): ECS
-  # stops a task that fails this check, and the deep /health 503s on any S3 or
-  # cache outage, so the recipe replaced healthy tasks it could not fix.
+  # Through the edge to the api's process-only check: ECS stops a task that
+  # fails it, and the deep /health 503s on any S3 or cache outage, so ECS would
+  # replace healthy tasks that a restart cannot fix.
   health_check {
     path    = "/api/health/live"
     matcher = "200"

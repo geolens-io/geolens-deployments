@@ -36,15 +36,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
-{{/*
-The ServiceAccount the api, worker and titiler pods run as. With the default
-create: false and no name, this resolves to "default" — what every release
-before this value existed already ran as, so an upgrade that sets neither keeps
-its current identity, and anything bound to that account (imagePullSecrets,
-RBAC, its own workload-identity annotations) keeps applying.
-
-The migrate Job deliberately does not use this; see migrate-job.yaml.
-*/}}
+{{/* The account api, worker and titiler run as. Unset, it is "default", what releases
+     ran as before this value existed, so an upgrade keeps that account's
+     imagePullSecrets, RBAC and annotations. The migrate hook never uses it. */}}
 {{- define "geolens.serviceAccountName" -}}
 {{- $sa := .Values.serviceAccount | default dict -}}
 {{- if $sa.create -}}
@@ -54,20 +48,16 @@ The migrate Job deliberately does not use this; see migrate-job.yaml.
 {{- end -}}
 {{- end -}}
 
-{{/*
-Fully qualified on purpose: the frontend nginx resolves this through its
-`resolver` directive, which does not apply resolv.conf search domains — a
-short Service name would NXDOMAIN at CoreDNS.
-*/}}
+{{/* Fully qualified: the frontend nginx resolves it through its `resolver`
+     directive, which skips resolv.conf search domains, so a short Service name
+     would NXDOMAIN at CoreDNS. */}}
 {{- define "geolens.apiUrl" -}}
 http://{{ include "geolens.fullname" . }}-api.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.service.api.port }}
 {{- end -}}
 
-{{/*
-Shared /app/staging (GAP-022, see values.yaml): with persistence, api, worker
-and titiler mount one RWX claim, else each pod gets its own emptyDir, which
-only s3 tolerates: it alone hands uploads over through the bucket (#59).
-*/}}
+{{/* /app/staging: one RWX claim that api, worker and titiler share when persistence
+     is on, else a per-pod emptyDir, which only the s3 backend tolerates because
+     it alone hands uploads to the worker through the bucket. See values.yaml. */}}
 {{- define "geolens.stagingVolume" -}}
 - name: staging
 {{- if .Values.staging.persistence.enabled }}
@@ -78,9 +68,9 @@ only s3 tolerates: it alone hands uploads over through the bucket (#59).
 {{- end }}
 {{- end -}}
 
-{{/* fix(#52, #53): Pod Security "restricted" plus a read-only root, as compose
-     runs these images. Titiler states the same inline. An absent value
-     (--reuse-values from an older release) keeps the root read-only. */}}
+{{/* Pod Security "restricted" plus a read-only root, as compose runs these
+     images; titiler states the same inline. An absent value (--reuse-values
+     from an older release) keeps the root read-only. */}}
 {{- define "geolens.containerSecurityContext" -}}
 readOnlyRootFilesystem: {{ ternary .Values.readOnlyRootFilesystem true (hasKey .Values "readOnlyRootFilesystem") }}
 allowPrivilegeEscalation: false
@@ -90,9 +80,9 @@ seccompProfile:
   type: RuntimeDefault
 {{- end -}}
 
-{{/* #53: what the backend images write outside /app/staging, as compose mounts tmpfs.
-     codex review on #53: a path the pod already mounts stays the operator's, and an operator
-     volume by a name used here fails the render. (list extraVolumeMounts podVolumes "mounts"|"volumes") */}}
+{{/* (list extraVolumeMounts podVolumes "mounts"|"volumes"): emptyDirs where the backend
+     images write outside /app/staging, as compose mounts tmpfs. A path the operator
+     already mounts stays theirs; an operator volume reusing one of these names fails. */}}
 {{- define "geolens.backendScratch" -}}
 {{- $taken := list -}}
 {{- range (index . 0 | default list) }}{{ $taken = append $taken .mountPath }}{{ end -}}
@@ -113,7 +103,7 @@ seccompProfile:
 {{- end }}
 {{- end -}}
 
-{{/* #53: one component's placement (nodeSelector, affinity, tolerations,
+{{/* One component's placement (nodeSelector, affinity, tolerations,
      topologySpreadConstraints), rendered only when set. Takes the component's
      values map; the migrate hook passes the api's. */}}
 {{- define "geolens.scheduling" -}}
@@ -135,7 +125,7 @@ topologySpreadConstraints:
 {{- end }}
 {{- end -}}
 
-{{/* fix(#39): one set of encryption-key checks, shared by the Secret and
+{{/* One set of encryption-key checks, shared by the Secret and
      the migrate hook so the two can never disagree. */}}
 {{- define "geolens.validateEncryptionKeys" -}}
 {{- $cur := .Values.secrets.secretEncryptionKey | default "" | toString -}}

@@ -29,7 +29,7 @@ locals {
 
 # Metadata only, never the value: enough to learn whether the secret sits
 # under a customer-managed KMS key, which GetSecretValue then also needs
-# kms:Decrypt on (codex review on #40).
+# kms:Decrypt on.
 data "aws_secretsmanager_secret" "extra" {
   for_each = toset(local.extra_secret_arns)
   arn      = each.value

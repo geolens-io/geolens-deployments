@@ -140,7 +140,7 @@ resource "azurerm_storage_account" "this" {
     default_action             = "Deny"
     virtual_network_subnet_ids = [azurerm_subnet.apps.id]
     # Left out, bypass keeps Azure's AzureServices default, which also lets the
-    # trusted Microsoft services past this rule (codex review on #59).
+    # trusted Microsoft services past this rule.
     bypass = ["None"]
   }
 }

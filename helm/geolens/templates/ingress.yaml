@@ -21,12 +21,9 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          # Everything flows through the frontend's edge nginx: it proxies
-          # /api and raster tiles to the api service (stripping the /api
-          # prefix the backend does not serve), 404s the unauthenticated
-          # /api/metrics endpoint, rate-limits anonymous raster traffic, and
-          # redacts credentialed paths from access logs. Adding a direct-to-api
-          # path here would bypass all of that.
+          # Everything goes through the frontend's edge nginx, which strips the /api
+          # prefix, 404s /api/metrics, rate-limits anonymous raster traffic and redacts
+          # credentialed paths from logs. A direct-to-api path would bypass all of it.
           - path: /
             pathType: Prefix
             backend:

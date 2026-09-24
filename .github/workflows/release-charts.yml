@@ -4,7 +4,7 @@
 #      the classic `helm repo add` install path.
 #   2. The same package is pushed OCI to ghcr.io/geolens-io/charts/geolens and
 #      signed keylessly with cosign.
-# #53: it runs only after chart-ci passes on a push to main, from the commit
+# It runs only after chart-ci passes on a push to main, from the commit
 # chart-ci tested, so a red main never publishes. skip_existing and the
 # registry probe keep re-runs and merges without a version bump from
 # republishing an existing chart version; the OCI leg still signs this
@@ -34,8 +34,8 @@ jobs:
   release:
     # workflow_run also fires for chart-ci on pull requests, including a fork's
     # branch named main. Only a green push to this repository may publish.
-    # codex review on #53: a manual run must be on main too, or its signing
-    # identity names another ref and the README's verify command rejects it.
+    # A manual run must be on main too, or its signing identity names another
+    # ref and the README's verify command rejects it.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -83,10 +83,10 @@ jobs:
         id: oci
         # Helm derives the OCI tag from the chart version, so probe the registry
         # first and a rerun or non-bump merge never re-pushes an existing version.
-        # #53: sign the digest helm reports, never a tag, so the signature
-        # covers exactly the bytes in the registry. #57: every run checks this
-        # commit's version, not only a chart chart-releaser just packaged, so
-        # the next green push finishes a release that stopped before signing.
+        # Sign the digest helm reports, never a tag, so the signature covers
+        # exactly the bytes in the registry. Every run checks this commit's
+        # version, not only a chart chart-releaser just packaged, so the next
+        # green push finishes a release that stopped before signing.
         env:
           CHARTS: ghcr.io/${{ github.repository_owner }}/charts
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -100,14 +100,14 @@ jobs:
             pkg=$RUNNER_TEMP/pkg/geolens-$version.tgz
           fi
           echo "$TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          # #57: cosign reads Docker's credential store, not helm's. A store
+          # cosign reads Docker's credential store, not helm's. A store
           # local to this step keeps the next step's verify anonymous.
           export DOCKER_CONFIG="$RUNNER_TEMP/docker"
           echo "$TOKEN" | cosign login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           identity="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/.github/workflows/release-charts.yml@refs/heads/main"
           pulled=$(mktemp -d)
           if out=$(helm pull "oci://$CHARTS/geolens" --version "$version" -d "$pulled" 2>&1); then
-            # codex review on #53: a run that pushed but died before signing
+            # A run that pushed but died before signing
             # leaves this version unsigned. Sign it only if its files match
             # this commit's (helm 3 tarballs differ by mtime).
             digest=$(sed -n 's/^Digest: //p' <<<"$out")
@@ -139,7 +139,7 @@ jobs:
             fi
             cosign sign --yes "$CHARTS/geolens@$digest"
           else
-            # #57: push only a version GHCR reports missing; any other pull
+            # Push only a version GHCR reports missing; any other pull
             # failure could otherwise move a published tag to new bytes.
             echo "::error::cannot tell whether geolens-$version is in GHCR: $out"
             exit 1

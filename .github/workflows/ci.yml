@@ -15,10 +15,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # #53: pinned rather than whatever the runner image ships, and both
-        # majors, since operators use both. Dependabot does not bump these
-        # inputs; move them by hand. #58: main requires these checks by name,
-        # so the name carries only the major and a bump renames nothing.
+        # Pinned rather than whatever the runner image ships, and both majors,
+        # since operators use both. Dependabot does not bump these inputs; move
+        # them by hand. main requires these checks by name, so the name carries
+        # only the major and a bump renames nothing.
         include:
           - {major: 3, helm: v3.22.0}
           - {major: 4, helm: v4.3.0}
@@ -67,9 +67,9 @@ jobs:
             > /dev/null
 
       - name: Guard - Titiler selects one S3 credential source
-        # geolens#1191: the empty/default selector must remain byte-compatible
-        # with existing installs, while a dedicated read-only Secret must
-        # replace (not accompany) the shared storage credential in the sidecar.
+        # The default credential reference must stay byte-compatible with
+        # existing installs, and a dedicated read-only Secret must replace, not
+        # accompany, the shared storage credential.
         run: |
           credential_ref() {
             env_name="$1"
@@ -144,7 +144,7 @@ jobs:
             exit 1
           fi
 
-          # fix(#21 review): Secret names and keys are strings even when their
+          # Secret names and keys are strings even when their
           # spelling looks like a YAML boolean, null, or number. Keep the
           # rendered scalars quoted so Kubernetes receives valid string fields.
           scalar_like=$(helm template geolens helm/geolens \
@@ -264,7 +264,7 @@ jobs:
           echo "renders with serviceAccount/database absent (cross-version --reuse-values safe)"
 
       - name: Guard - a --reuse-values upgrade from the published chart keeps pods non-root
-        # codex review on #52: --reuse-values renders the new templates against
+        # --reuse-values renders the new templates against
         # the previous release's values, so values added since are absent. Render
         # exactly that, against the latest published chart's values.yaml, and
         # require the non-root pod defaults Pod Security "restricted" admits.
@@ -286,7 +286,7 @@ jobs:
               exit 1
             fi
           done
-          # #53: the read-only roots and the PDBs must survive the same upgrade.
+          # The read-only roots and the PDBs must survive the same upgrade.
           all=$(helm template geolens "$chart" --set secrets.existingSecret=geolens-secrets)
           containers=$(grep -cE '^        - name: (api|worker|frontend|titiler|migrate)$' <<<"$all")
           readonly=$(grep -c 'readOnlyRootFilesystem: true' <<<"$all")
@@ -298,7 +298,7 @@ jobs:
           echo "reused published values still render titiler as uid 1001, the frontend as uid 101, every container read-only and 3 PDBs"
 
       - name: Guard - NetworkPolicies render only when enabled, and only the frontend reaches the api
-        # #53: the policies are opt-in, and the api's is what keeps other pods
+        # The policies are opt-in, and the api's is what keeps other pods
         # from routing around the edge or forging X-Forwarded-For.
         run: |
           count() { grep -c '^kind: NetworkPolicy$' || true; }
@@ -315,8 +315,8 @@ jobs:
           echo "policies render only when enabled; the api admits only the frontend"
 
       - name: Guard - PodDisruptionBudgets keep an explicit maxUnavailable
-        # codex review on #53: 0 is how an operator blocks voluntary evictions,
-        # and a `default` fallback silently turned it into 1.
+        # 0 is how an operator blocks voluntary evictions, and a `default`
+        # fallback would silently turn it into 1.
         run: |
           render() { helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets "$@"; }
           [ "$(render | grep -c '^  maxUnavailable: 1$')" -eq 3 ] || { echo "want three PDBs at maxUnavailable 1 by default" >&2; exit 1; }
@@ -327,9 +327,9 @@ jobs:
           echo "PDBs default to maxUnavailable 1 and keep an explicit 0"
 
       - name: Guard - placement reaches its pods, and the migrate hook takes the api's node placement
-        # #53: a hook left off a tainted node pool stays Pending and times out
-        # the install, so the api's tolerations must reach it too. codex review
-        # on #53: never its pod affinity or spread, which select api pods.
+        # A hook left off a tainted node pool stays Pending and times out the
+        # install, so the api's tolerations must reach it too, but never its pod
+        # affinity or spread, which select api pods.
         run: |
           cat > "$RUNNER_TEMP/placement.yaml" <<'EOF'
           api:
@@ -375,7 +375,7 @@ jobs:
           echo "placement renders per component; the migrate hook takes only the api's node placement"
 
       - name: Guard - operator volumes never collide with the backend scratch volumes
-        # codex review on #53: an extraVolumes entry named like a chart volume,
+        # An extraVolumes entry named like a chart volume,
         # or a component mount at /tmp or /home/appuser, must not duplicate a
         # volume name or mountPath. Admission rejects that; a render does not.
         # A name the chart cannot give way on fails the render instead.
@@ -431,10 +431,11 @@ jobs:
           echo "database.sslMode reaches both the ConfigMap and the migrate hook"
 
       - name: Guard - no no-op GDAL_HTTP_FOLLOWLOCATION in rendered output
-        # geolens#937: the variable is not a GDAL option and does nothing, so
-        # setting it reads as a redirect defense that is not there. The main
-        # repo removed it and pins that in backend/tests/test_titiler_redirect_env.py;
-        # this is the chart-side equivalent so the two cannot drift apart again.
+        # The variable is not a GDAL option and does nothing, so setting it reads
+        # as a redirect defense that is not there. GDAL cannot be made
+        # redirect-safe from the inside; the controls are the api revalidating
+        # remote object URLs per hop and titiler's CPL_VSIL_CURL_ALLOWED_EXTENSIONS
+        # clamp. The main repo pins the same in backend/tests/test_titiler_redirect_env.py.
         run: |
           if helm template geolens helm/geolens \
             --set secrets.existingSecret=geolens-secrets \
@@ -451,13 +452,11 @@ jobs:
           fi
 
       - name: Guard - GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE is a value GDAL accepts
-        # geolens#1192: this shipped as "NETWORK_OR_LOCAL" for months, which is
-        # not one of GDAL's four accepted forms (SIBLING_OR_CHILD_OF_VRT_PATH |
-        # ONLY_REMOTE | ALL | <absolute path>). GDAL parsed it as a bogus
-        # absolute path and refused every VRTRawRasterBand source, so the
-        # setting silently meant the opposite of its comment. The check fails on
-        # any unrecognised token rather than passing it — an unknown value here
-        # is exactly the case that must be loud.
+        # GDAL accepts four forms (SIBLING_OR_CHILD_OF_VRT_PATH | ONLY_REMOTE |
+        # ALL | <absolute path>) and parses anything else as an absolute path
+        # that refuses every VRTRawRasterBand source, so a plausible-looking value
+        # can silently mean the opposite. The check fails on any unrecognised
+        # token rather than passing it.
         run: |
           value=$(helm template geolens helm/geolens \
             --set secrets.existingSecret=geolens-secrets \
@@ -477,7 +476,7 @@ jobs:
           echo "GDAL_VRT_RAWRASTERBAND_ALLOWED_SOURCE=$value is accepted by GDAL"
 
       - name: Guard - extraEnv overrides never render duplicate env names
-        # fix(#16 review): an operator overriding a chart-default env var via
+        # An operator overriding a chart-default env var via
         # extraEnv (e.g. opting back into raw-band VRTs) must yield exactly one
         # entry with that name. The runtime tolerates duplicates but
         # strategic-merge tooling keys `env` by `name`, so an Argo/Helm upgrade
@@ -495,8 +494,7 @@ jobs:
             --set-json 'api.extraEnv=[{"name":"GEOLENS_API_RUN_MIGRATIONS","value":"true"},{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"},{"name":"FORWARDED_ALLOW_IPS","value":"10.42.0.0/16"}]' \
             --set-json 'migrate.extraEnv=[{"name":"DATABASE_SSL_CA_CERT","value":"/etc/ssl/db/ca.pem"}]')
           # The migrate Job renders api.extraEnv AND migrate.extraEnv, so the
-          # same name set in both lands twice in one container — the case the
-          # README's verify-full recipe walked into (codex review on #29).
+          # same name set in both would land twice in one container.
           # A name may legitimately appear once per CONTAINER, so scope the
           # count per container: container list entries (lowercase names at
           # 8-space indent) and document separators both reset the seen-set;
@@ -525,10 +523,10 @@ jobs:
           echo "extraEnv overrides render uniquely and win"
 
       - name: Guard - api probes are all process-only
-        # #36 / geolens#1804: as liveness, /health restarted every api pod in a
-        # loop during a database outage. #52: it also 503s on the optional
-        # cache, so as readiness a Valkey outage 502'd all of /api, and as the
-        # startup probe it crash-looped any pod that started during one.
+        # /health fails during a database outage and on the optional cache, so
+        # as liveness it would restart every api pod in a loop, as readiness a
+        # Valkey outage would 502 all of /api, and as the startup probe it would
+        # crash-loop any pod that started during one.
         run: |
           api=$(helm template geolens helm/geolens \
             --set secrets.existingSecret=geolens-secrets \
@@ -543,9 +541,9 @@ jobs:
           echo "api startup, readiness and liveness all use /health/live"
 
       - name: Guard - the api trusts the X-Forwarded-For the edge writes
-        # #52: uvicorn trusts forwarded headers only from 127.0.0.1 by default,
-        # so every client shared the frontend pod's rate-limit buckets and five
-        # failed logins from anyone locked out everyone. An operator override
+        # uvicorn trusts forwarded headers only from 127.0.0.1 by default, so
+        # every client would share the frontend pod's rate-limit buckets and five
+        # failed logins from anyone would lock out everyone. An operator override
         # must replace the default, not duplicate it.
         run: |
           api=$(helm template geolens helm/geolens \
@@ -567,7 +565,7 @@ jobs:
           echo "the api trusts the edge's X-Forwarded-For; an extraEnv override replaces it"
 
       - name: Guard - stored-secret encryption keys are threaded and validated
-        # #39 / geolens#1882: both keys reach the Secret AND the migrate hook,
+        # Both keys reach the Secret AND the migrate hook,
         # a previous key without a current one fails at template time, and so
         # does a key against an api image too old to read it.
         run: |
@@ -645,7 +643,7 @@ jobs:
           wait: 0s
 
       - name: Install Calico
-        # #53: see kind-calico.yaml for why not kindnet. Images come from quay.io.
+        # See kind-calico.yaml for why not kindnet. Images come from quay.io.
         run: |
           kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.2/manifests/calico.yaml
           kubectl -n kube-system rollout status ds/calico-node --timeout=300s
@@ -657,7 +655,7 @@ jobs:
           kubectl rollout status deployment/geolens-ci-db --timeout=300s
 
       - name: Diagnose CI PostgreSQL rollout failure
-        # fix(#47): geolens-ci-db has no app.kubernetes.io/instance=geolens
+        # geolens-ci-db has no app.kubernetes.io/instance=geolens
         # label, so the job-level Diagnostics step below never sees it; name
         # the failure here instead of leaving a bare rollout timeout.
         if: failure()
@@ -667,11 +665,11 @@ jobs:
           kubectl logs -l app=geolens-ci-db --all-containers --tail=200 --prefix
 
       - name: helm install --wait
-        # #52: into a namespace that enforces Pod Security "restricted", so a
-        # pod spec that renders cleanly but that admission rejects fails here
-        # rather than on an operator's hardened cluster. #53: with the
-        # NetworkPolicies on and a shared staging claim (kind's single node
-        # serves ReadWriteOnce to every pod), so the steps below can ingest.
+        # Into a namespace that enforces Pod Security "restricted", so a pod spec
+        # that renders cleanly but that admission rejects fails here rather than
+        # on an operator's hardened cluster. The NetworkPolicies are on and
+        # staging uses a shared claim (kind's single node serves ReadWriteOnce to
+        # every pod), so the steps below can ingest.
         run: |
           kubectl create namespace geolens
           kubectl label namespace geolens pod-security.kubernetes.io/enforce=restricted
@@ -689,7 +687,7 @@ jobs:
             --wait --timeout 20m
 
       - name: NOTES warn when no shared volume carries the staging handoff
-        # #59: only s3 hands an upload to the worker through the bucket, so
+        # Only s3 hands an upload to the worker through the bucket, so
         # local and azure without staging.persistence fail every import. Helm
         # 3 renders NOTES only in a dry run, and that one needs a cluster.
         run: |
@@ -725,7 +723,7 @@ jobs:
             curl -sf --retry 5 --retry-delay 3 http://geolens-frontend.geolens/api/health
 
       - name: Ingest through the frontend edge
-        # #53: the data path a render cannot prove. The api hands an upload to
+        # The data path a render cannot prove. The api hands an upload to
         # the worker through /app/staging, both under read-only roots, and
         # titiler serves the ingested raster through the api's tile proxy,
         # which the NetworkPolicies must still allow.

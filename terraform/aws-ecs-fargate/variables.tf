@@ -121,7 +121,7 @@ variable "admin_password" {
 
   # GeoLens seeds the admin without this check and fails to boot only on a
   # blank value, one over 72 bytes (bcrypt) or a known-public literal, all of
-  # which the policy also rules out (geolens-deployments#59).
+  # which the policy also rules out.
   validation {
     condition = var.admin_password == "" || (
       length(var.admin_password) >= 12 &&
@@ -244,13 +244,12 @@ variable "worker_concurrency" {
 # same way the Helm chart's extraEnv and existingSecret do. The configuration
 # reference is https://docs.getgeolens.com/guides/quickstart/configuration/.
 locals {
-  # Neither may set these (as in the Azure recipe, #59): the generated secrets,
-  # the recipe's own wiring, the api-only metrics directory (the worker and
-  # migrate task crash on it), the shutdown window the worker's stopTimeout is
-  # sized for, values the frontend edge shares, which come from their
-  # variables, the storage and credentials titiler is wired to (a static key
-  # would also win over the task role), and the one database login with its
-  # TLS mode.
+  # Neither may set these: the generated secrets, the recipe's own wiring, the
+  # api-only metrics directory (the worker and migrate task crash on it), the
+  # shutdown window the worker's stopTimeout is sized for, values the frontend
+  # edge shares, which come from their variables, the storage and credentials
+  # titiler is wired to (a static key would also win over the task role), and
+  # the one database login with its TLS mode.
   reserved_env = [
     "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "JWT_SECRET_KEY", "SECRET_ENCRYPTION_KEY",
     "EXTRA_SECRETS_REVISION", "GEOLENS_API_RUN_MIGRATIONS", "GEOLENS_BOOTSTRAP_B64",
@@ -270,7 +269,7 @@ variable "extra_env" {
     error_message = "extra_env cannot set any of ${join(", ", local.reserved_env)}. The recipe owns them; public_app_url, upload_max_size_mb and the admin variables set the ones meant to change."
   }
 
-  # #53: the same list as extra_secrets, so a reserved name cannot come in
+  # The same list as extra_secrets, so a reserved name cannot come in
   # through whichever map is not checked.
   validation {
     condition = !var.pilot_profile || length(setintersection(

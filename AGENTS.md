@@ -127,6 +127,7 @@ error, and verifies the signature anonymously.
 
 - Bump `Chart.yaml` `version` for every chart change that should be released. Landing that bump on `main` is what cuts the release: once `chart-ci` passes on that push, `release-charts` packages the tested commit with chart-releaser, attaches it to a GitHub Release, updates `gh-pages`, and pushes the same package to `ghcr.io/geolens-io/charts/geolens`, signed with keyless cosign. Both legs probe first, so a rerun or a merge without a version bump republishes nothing.
 - `appVersion`, the three `ghcr.io/geolens-io/*` tags in `values.yaml`, and the `geolens_version` default in each recipe's `variables.tf` track GeoLens releases and move together. `version-drift` fails when any of them is behind the latest GeoLens release.
+- Each recipe pins its Terraform providers to exact versions, and Dependabot moves the pins. Given a range, Dependabot's lock-file update resolves the newest version the range allows, which skips the 7-day cooldown in `dependabot.yml` (#56, #62).
 - The `ghcr.io/developmentseed/titiler` tag is bumped deliberately, not on a schedule. Upstream ships security fixes as ordinary bugfix releases with no advisory (geolens#1190).
 
 ## Conventions

@@ -106,8 +106,10 @@ frontend but not the api, titiler or worker, then runs
 `helm upgrade --reuse-values --wait` to re-exercise the migrate hook.
 
 `terraform-validate` runs `terraform fmt -check -recursive` over `terraform/`,
-`terraform init -backend=false && terraform validate` in every recipe, and
-`test-pilot-profile.sh` in `terraform/aws-ecs-fargate`. It never touches a cloud
+`terraform init -backend=false && terraform validate` in every recipe, then
+`test-pilot-profile.sh` in `terraform/aws-ecs-fargate` and
+`test-validations.sh` in `terraform/azure-container-apps`, which run the
+variable validations through `terraform console`. It never touches a cloud
 account.
 
 `release-charts.yml` runs when `chart-ci` succeeds on a push to `main`, from

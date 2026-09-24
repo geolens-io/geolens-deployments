@@ -766,3 +766,4 @@ jobs:
             echo "::endgroup::"
           done
           bash terraform/aws-ecs-fargate/test-pilot-profile.sh
+          bash terraform/azure-container-apps/test-validations.sh

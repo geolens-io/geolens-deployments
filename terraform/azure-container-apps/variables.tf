@@ -167,9 +167,12 @@ variable "extra_env" {
   type        = map(string)
   default     = {}
 
+  # SECRETS_REVISION and GEOLENS_BOOTSTRAP_B64 are reserved with the secrets:
+  # overriding either stops secret changes from rolling or replaces the migrate
+  # bootstrap (codex review on #59). extra_secrets reserves the same list.
   validation {
-    condition     = length(setintersection(toset(keys(var.extra_env)), toset(["AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "JWT_SECRET_KEY", "REDIS_URL", "SECRET_ENCRYPTION_KEY"]))) == 0
-    error_message = "extra_env cannot set AZURE_STORAGE_ACCOUNT_KEY, DATABASE_URL_OVERRIDE, GEOLENS_ADMIN_PASSWORD, GEOLENS_ADMIN_USERNAME, JWT_SECRET_KEY, REDIS_URL or SECRET_ENCRYPTION_KEY; the recipe generates them and passes them as secrets."
+    condition     = length(setintersection(toset(keys(var.extra_env)), toset(["AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "GEOLENS_BOOTSTRAP_B64", "JWT_SECRET_KEY", "REDIS_URL", "SECRETS_REVISION", "SECRET_ENCRYPTION_KEY"]))) == 0
+    error_message = "extra_env cannot set AZURE_STORAGE_ACCOUNT_KEY, DATABASE_URL_OVERRIDE, GEOLENS_ADMIN_PASSWORD, GEOLENS_ADMIN_USERNAME, GEOLENS_BOOTSTRAP_B64, JWT_SECRET_KEY, REDIS_URL, SECRETS_REVISION or SECRET_ENCRYPTION_KEY; the recipe generates them."
   }
 }
 
@@ -180,8 +183,8 @@ variable "extra_secrets" {
   sensitive   = true
 
   validation {
-    condition     = length(setintersection(toset(keys(var.extra_secrets)), toset(["AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "JWT_SECRET_KEY", "REDIS_URL", "SECRET_ENCRYPTION_KEY"]))) == 0
-    error_message = "extra_secrets cannot redefine AZURE_STORAGE_ACCOUNT_KEY, DATABASE_URL_OVERRIDE, GEOLENS_ADMIN_PASSWORD, GEOLENS_ADMIN_USERNAME, JWT_SECRET_KEY, REDIS_URL or SECRET_ENCRYPTION_KEY; the recipe generates them."
+    condition     = length(setintersection(toset(keys(var.extra_secrets)), toset(["AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "GEOLENS_BOOTSTRAP_B64", "JWT_SECRET_KEY", "REDIS_URL", "SECRETS_REVISION", "SECRET_ENCRYPTION_KEY"]))) == 0
+    error_message = "extra_secrets cannot redefine AZURE_STORAGE_ACCOUNT_KEY, DATABASE_URL_OVERRIDE, GEOLENS_ADMIN_PASSWORD, GEOLENS_ADMIN_USERNAME, GEOLENS_BOOTSTRAP_B64, JWT_SECRET_KEY, REDIS_URL, SECRETS_REVISION or SECRET_ENCRYPTION_KEY; the recipe generates them."
   }
 
   validation {

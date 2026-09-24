@@ -100,10 +100,11 @@ variable "public_app_url" {
   default     = ""
 
   # Label by label: 1 to 63 letters, digits or inner hyphens, at least two of
-  # them, so geo..example.com cannot pass (codex review on #59).
+  # them, so geo..example.com cannot pass, and 253 characters in all, the DNS
+  # limit (codex review on #59).
   validation {
-    condition     = var.public_app_url == "" || can(regex("^https://([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$", trimsuffix(var.public_app_url, "/")))
-    error_message = "public_app_url must be empty or an https:// origin whose hostname has valid DNS labels, with no port or path."
+    condition     = var.public_app_url == "" || (can(regex("^https://([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$", trimsuffix(var.public_app_url, "/"))) && length(trimprefix(trimsuffix(var.public_app_url, "/"), "https://")) <= 253)
+    error_message = "public_app_url must be empty or an https:// origin whose hostname has valid DNS labels and at most 253 characters, with no port or path."
   }
 }
 

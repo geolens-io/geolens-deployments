@@ -62,5 +62,6 @@ rejected 'an apps subnet inside a Container Apps reserved range' 'Container Apps
 accepted 'a network around a reserved range whose apps subnet avoids it' '-var=vnet_cidr=172.16.0.0/12'
 accepted 'a custom domain origin' '-var=public_app_url=https://geolens.example.com/'
 rejected 'a hostname with an empty label' 'public_app_url must be empty' '-var=public_app_url=https://geo..example.com'
+rejected 'a hostname past the DNS length limit' 'public_app_url must be empty' "-var=public_app_url=https://$(printf '%060d.' 1 2 3 4 5)com"
 rejected 'a label that starts with a hyphen' 'public_app_url must be empty' '-var=public_app_url=https://geo.-example.com'
 rejected 'more than one app replica needs the cache' 'app_replicas above 1 needs cache_enabled' '-var=app_replicas=2'

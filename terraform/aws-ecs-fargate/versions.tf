@@ -7,7 +7,7 @@ terraform {
     # in dependabot.yml; a pin makes the lock follow the version it chose.
     aws = {
       source  = "hashicorp/aws"
-      version = "6.63.0"
+      version = "6.65.0"
     }
     random = {
       source  = "hashicorp/random"

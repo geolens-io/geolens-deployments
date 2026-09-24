@@ -1,15 +1,19 @@
 # Azure
 
-PostgreSQL Flexible Server, Blob Storage, and optionally Azure Cache for
-Redis, with the containers on Container Apps.
+PostgreSQL Flexible Server, Blob Storage, and optionally Azure Managed Redis,
+with the containers on Container Apps.
 
-There is no Terraform recipe yet;
-[#41](https://github.com/geolens-io/geolens-deployments/issues/41) tracks one.
-Azure Blob Storage is a first-class storage backend in the application, so the
-manual path below is a supported deployment, not a workaround.
+[`terraform/azure-container-apps`](../terraform/azure-container-apps/)
+automates everything on this page and was validated against a real
+subscription. Azure Blob Storage is a first-class storage backend in the
+application, so the manual path below is a supported deployment, not a
+workaround.
 
-Nothing here has been applied against a real subscription. Treat it as a
-starting point and open an issue when a step is wrong.
+Many subscriptions cannot create a Flexible Server in the busiest regions
+(eastus, eastus2 and westus2 among them), and Container Apps turns new
+environments away in regions short of capacity. Check with
+`az postgres flexible-server list-skus --location <region>` before you
+provision anything.
 
 ## Database: PostgreSQL Flexible Server
 
@@ -50,6 +54,15 @@ bootstrap SQL from the
 which creates the extensions, the `catalog` and `data` schemas, and the
 `geolens_reader` role.
 
+The administrator is not a superuser, and GeoLens 1.20.0's migrations hand
+the tenant boundary functions to the `geolens_tenant_provisioner` role, which
+PostgreSQL allows only when that role may `CREATE` in `catalog` and the caller
+may `SET ROLE` to it. Lend both before `alembic upgrade heads` and take them
+back afterwards, as steps 2b and 2g of the GeoLens RUNBOOK describe. On a fresh
+database the role does not exist yet, so create it first with the attributes
+migration 0019 checks for (`NOLOGIN NOSUPERUSER NOCREATEDB CREATEROLE NOINHERIT
+NOREPLICATION NOBYPASSRLS`). The recipe's `migrate.py` does all three.
+
 Flexible Server enforces TLS, so set `DATABASE_SSL_MODE=require`. Networking
 is chosen at creation and cannot be changed afterwards: either public access
 with a firewall rule covering the Container Apps environment's outbound
@@ -84,9 +97,27 @@ file translates it at the container boundary; on Container Apps you do it in
 the app definition.
 
 No CORS policy is needed. Presigned uploads are an S3-only path, so with
-`STORAGE_PROVIDER=azure` the browser posts files to the api and the api writes
-them to the container. Large uploads therefore traverse the api, and any body
-size limit on the ingress applies to them.
+`STORAGE_PROVIDER=azure` the browser posts files to the api. Large uploads
+therefore traverse the api, and any body size limit on the ingress applies to
+them.
+
+**The api and the worker need a shared `/app/staging`.** Only
+`STORAGE_PROVIDER=s3` hands an upload to the worker through the bucket. With
+`azure` the api writes it to `/app/staging` and queues the local path, and a
+worker that cannot see that path fails the ingest at "validating" with a
+`BlobNotFound`. On Container Apps, create an Azure Files share, register it
+with the environment, and mount it at `/app/staging` in both apps with the
+mount options `uid=1001,gid=1001`. Without them the share presents every file
+as owned by root, and raster conversion fails with `Operation not permitted`
+when it copies file times.
+
+Since no browser ever talks to Blob Storage directly, the storage account can
+refuse everything but the Container Apps subnet: add a `Microsoft.Storage`
+service endpoint to that subnet and a network rule that allows it and denies
+the rest. Set the trusted-services exception to `None` as well
+(`az storage account update --bypass None`). It defaults to `AzureServices`,
+which lets Microsoft's trusted services past the rule, and nothing here needs
+it.
 
 ## Cache
 
@@ -134,6 +165,12 @@ Put external ingress on the frontend only, on port 8080. It is the application
 edge: it proxies `/api`, maps `/raster-tiles`, blocks unauthenticated
 `/api/metrics`, and rate-limits anonymous raster traffic.
 
+Set `TRUSTED_PROXY_CIDRS` on the frontend to the ranges a workload profiles
+environment reserves for itself,
+`100.100.0.0/17,100.100.128.0/19,100.100.160.0/19,100.100.192.0/19`. The
+ingress proxies connect from there, not from your virtual network, and without
+it every visitor shares one rate-limit bucket and logs as one address.
+
 ## HTTPS
 
 Container Apps terminates TLS on its own `*.azurecontainerapps.io` hostname
@@ -172,6 +209,13 @@ AZURE_STORAGE_ACCOUNT=<account>
 AZURE_STORAGE_ACCESS_KEY=<account-key>
 ```
 
+On the frontend:
+
+```bash
+API_UPSTREAM=http://127.0.0.1:8000
+TRUSTED_PROXY_CIDRS=100.100.0.0/17,100.100.128.0/19,100.100.160.0/19,100.100.192.0/19
+```
+
 ## When it goes wrong
 
 **`psql` reports that the `geolens` database does not exist.** The server was
@@ -193,3 +237,17 @@ this surfaces at first use rather than at startup.
 
 **Imports stay queued and nothing processes them.** The worker app scaled to
 zero and has nothing to wake it.
+
+**Every import fails at "validating" with `BlobNotFound`.** The worker cannot
+see the api's `/app/staging`. Mount one share there in both apps.
+
+**Vector imports work but rasters fail at "cog_convert" with `Operation not
+permitted`.** The staging share is mounted without `uid=1001,gid=1001`.
+
+**The first migration fails with `permission denied for schema catalog`.** The
+administrator is not a superuser; lend the provisioner role its two privileges
+first, as described under the database.
+
+**Every request logs the same `100.100.x.x` client.** `TRUSTED_PROXY_CIDRS` is
+missing or names the virtual network instead of the environment's reserved
+ranges.

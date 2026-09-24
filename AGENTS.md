@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 Infrastructure only. This repo packages [GeoLens](https://github.com/geolens-io/geolens)
-for Kubernetes and AWS. No application code lives here.
+for Kubernetes, AWS and Azure. No application code lives here.
 
 ## Project Structure & Module Organization
 
@@ -26,6 +26,11 @@ for Kubernetes and AWS. No application code lives here.
 ElastiCache Valkey, ALB. `terraform fmt -check` and `terraform validate` are its
 gates. A real apply needs an AWS profile, and the migrate step runs a one-shot
 ECS task through `aws ecs run-task` from a `local-exec` provisioner.
+`terraform/azure-container-apps/` is the Azure counterpart: Container Apps,
+PostgreSQL Flexible Server, Blob Storage plus an Azure Files share for
+`/app/staging`, and optional Azure Managed Redis. Its migrate step starts a
+Container Apps job through `az containerapp job start`, and its `migrate.py`
+also lends the tenant provisioner role what a non-superuser migrator needs.
 
 `clouds/` is prose, one page per cloud, covering the managed database, bucket
 and cache a deployment sits on plus that cloud's environment deltas. It is the
@@ -52,9 +57,10 @@ helm template geolens helm/geolens \
   --set secrets.jwtSecretKey="$(openssl rand -hex 32)" \
   --set secrets.adminUsername=admin --set secrets.adminPassword='a-strong-unique-password'
 
-terraform -chdir=terraform/aws-ecs-fargate fmt -check
-terraform -chdir=terraform/aws-ecs-fargate init -backend=false && \
-  terraform -chdir=terraform/aws-ecs-fargate validate
+terraform fmt -check -recursive terraform
+for dir in terraform/*/; do
+  terraform -chdir="$dir" init -backend=false && terraform -chdir="$dir" validate
+done
 ```
 
 `helm lint` does not enforce `required`, so lint with the same values the
@@ -99,9 +105,11 @@ through a port-forward, checks that a pod outside the release reaches the
 frontend but not the api, titiler or worker, then runs
 `helm upgrade --reuse-values --wait` to re-exercise the migrate hook.
 
-`terraform-validate` runs `terraform fmt -check -recursive`,
-`terraform init -backend=false && terraform validate`, and
-`test-pilot-profile.sh` in `terraform/aws-ecs-fargate`. It never touches an AWS
+`terraform-validate` runs `terraform fmt -check -recursive` over `terraform/`,
+`terraform init -backend=false && terraform validate` in every recipe, then
+`test-pilot-profile.sh` in `terraform/aws-ecs-fargate` and
+`test-validations.sh` in `terraform/azure-container-apps`, which run the
+variable validations through `terraform console`. It never touches a cloud
 account.
 
 `release-charts.yml` runs when `chart-ci` succeeds on a push to `main`, from
@@ -115,7 +123,7 @@ error, and verifies the signature anonymously.
 ## Versioning
 
 - Bump `Chart.yaml` `version` for every chart change that should be released. Landing that bump on `main` is what cuts the release: once `chart-ci` passes on that push, `release-charts` packages the tested commit with chart-releaser, attaches it to a GitHub Release, updates `gh-pages`, and pushes the same package to `ghcr.io/geolens-io/charts/geolens`, signed with keyless cosign. Both legs probe first, so a rerun or a merge without a version bump republishes nothing.
-- `appVersion`, the three `ghcr.io/geolens-io/*` tags in `values.yaml`, and the `geolens_version` default in `terraform/aws-ecs-fargate/variables.tf` track GeoLens releases and move together. `version-drift` fails when any of them is behind the latest GeoLens release.
+- `appVersion`, the three `ghcr.io/geolens-io/*` tags in `values.yaml`, and the `geolens_version` default in each recipe's `variables.tf` track GeoLens releases and move together. `version-drift` fails when any of them is behind the latest GeoLens release.
 - The `ghcr.io/developmentseed/titiler` tag is bumped deliberately, not on a schedule. Upstream ships security fixes as ordinary bugfix releases with no advisory (geolens#1190).
 
 ## Conventions

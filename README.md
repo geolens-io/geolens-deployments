@@ -17,8 +17,8 @@ Everything here is community maintained and support is best effort. CI installs
 every change into a throwaway [kind](https://kind.sigs.k8s.io/) cluster under
 the restricted Pod Security standard and the chart's NetworkPolicies, ingests a
 vector and a raster dataset through the frontend edge, then upgrades the
-release. The
-Terraform recipe was applied to a real AWS account and torn down again. Nobody
+release. Each
+Terraform recipe was applied to a real account and torn down again. Nobody
 keeps a long-lived production cluster running from this repo, so that CI run is
 what backs the chart. Issues and pull requests are welcome.
 
@@ -28,7 +28,8 @@ what backs the chart. Issues and pull requests are welcome.
 | --- | --- |
 | [`helm/geolens`](helm/geolens/) | Helm chart for Kubernetes: API, worker, frontend edge, Titiler, and an Alembic migration hook Job. Values, required secrets, storage, database, and upgrade notes are in the [chart README](helm/geolens/README.md). |
 | [`examples/`](examples/) | Values files to adapt. [`values-aws.yaml`](examples/values-aws.yaml) is an EKS install with S3 and RDS PostgreSQL, validated on a real cluster. |
-| [`terraform/aws-ecs-fargate`](terraform/aws-ecs-fargate/) | Terraform recipe: ECS Fargate, RDS PostgreSQL, S3, ElastiCache Valkey, and an ALB. Validated against a real AWS account, then torn down. See its own README. Azure, Google Cloud and DigitalOcean recipes are planned; [`terraform/README.md`](terraform/README.md) has the notes. |
+| [`terraform/aws-ecs-fargate`](terraform/aws-ecs-fargate/) | Terraform recipe: ECS Fargate, RDS PostgreSQL, S3, ElastiCache Valkey, and an ALB. Validated against a real AWS account, then torn down. See its own README. |
+| [`terraform/azure-container-apps`](terraform/azure-container-apps/) | Terraform recipe: Container Apps, PostgreSQL Flexible Server, Blob Storage with an Azure Files staging share, and optional Azure Managed Redis. Validated against a real Azure subscription, then torn down. Google Cloud and DigitalOcean recipes are planned; [`terraform/README.md`](terraform/README.md) has the notes. |
 | [`clouds/`](clouds/) | Provisioning the managed database, bucket and cache on [AWS](clouds/aws.md), [Azure](clouds/azure.md), [Google Cloud](clouds/google-cloud.md) and [DigitalOcean](clouds/digitalocean.md), with the environment variables each one needs. Each page sits beside the recipe for the same cloud. |
 
 The docs site's
@@ -72,8 +73,8 @@ database URL, so none of those commands work bare. The
 ## Versioning and releases
 
 `appVersion`, the three `ghcr.io/geolens-io/*` image tags in `values.yaml`,
-and the Terraform recipe's `geolens_version` default track GeoLens releases and
-move together. The `version-drift` workflow runs weekly and fails when any of
+and each Terraform recipe's `geolens_version` default track GeoLens releases
+and move together. The `version-drift` workflow runs weekly and fails when any of
 them has fallen behind the latest GeoLens release.
 
 Chart releases are cut by landing a `Chart.yaml` `version` bump on `main`. Once

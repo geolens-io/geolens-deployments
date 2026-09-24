@@ -6,7 +6,7 @@ cloud, kept next to the Terraform recipes that automate the same services.
 | Cloud | Managed services | Recipe |
 | --- | --- | --- |
 | [AWS](aws.md) | RDS for PostgreSQL, S3, ElastiCache | [`terraform/aws-ecs-fargate`](../terraform/aws-ecs-fargate/) |
-| [Azure](azure.md) | PostgreSQL Flexible Server, Blob Storage, Azure Cache for Redis | Planned: [#41](https://github.com/geolens-io/geolens-deployments/issues/41) |
+| [Azure](azure.md) | PostgreSQL Flexible Server, Blob Storage, Azure Managed Redis | [`terraform/azure-container-apps`](../terraform/azure-container-apps/) |
 | [Google Cloud](google-cloud.md) | Cloud SQL, Cloud Storage, Memorystore | Planned: [#42](https://github.com/geolens-io/geolens-deployments/issues/42) |
 | [DigitalOcean](digitalocean.md) | Managed PostgreSQL, Spaces, Managed Valkey | Planned: [#43](https://github.com/geolens-io/geolens-deployments/issues/43) |
 
@@ -33,13 +33,13 @@ diff against the guide; everything else in `.env` stays as the guide has it.
 The database password goes into a URL, so percent-encode it or generate one
 without URI delimiters. A `#`, `?`, `@`, `/` or `%` in the raw password changes
 where the parser thinks the host begins, and the API, worker and migration all
-fail to connect. The AWS recipe sidesteps this by generating a password with no
+fail to connect. The recipes sidestep this by generating a password with no
 special characters at all, which is the easier habit.
 
 Every `DATABASE_URL_OVERRIDE` here uses the plain `postgresql://` form. The
 backend rewrites it to `postgresql+asyncpg://` and strips any `sslmode`
 parameter, since `DATABASE_SSL_MODE` owns that setting. An explicit
-`postgresql+asyncpg://`, which is what the AWS recipe emits, is accepted
+`postgresql+asyncpg://`, which is what the recipes emit, is accepted
 unchanged.
 
 ## Which path
@@ -56,7 +56,8 @@ Two other paths exist and are usually less work:
 
 ## Status
 
-AWS is the only cloud with a recipe applied against a real account. The other
-three pages are written from the application's configuration contract and each
-provider's own documentation, not from a validated deployment. Corrections
-through issues and pull requests are welcome.
+AWS and Azure have recipes applied against a real account, and their pages
+carry what those runs found. The Google Cloud and DigitalOcean pages are written
+from the application's configuration contract and each provider's own
+documentation, not from a validated deployment. Corrections through issues and
+pull requests are welcome.

@@ -42,6 +42,7 @@ rejected 'the staging path cannot move off the share' 'extra_secrets cannot rede
 rejected 'the api metrics directory cannot reach the worker' 'extra_env cannot set' '-var=extra_env={PROMETHEUS_MULTIPROC_DIR="/tmp/prometheus-multiproc"}'
 rejected 'the upload limit comes from its variable' 'extra_secrets cannot redefine' '-var=extra_secrets={UPLOAD_MAX_SIZE_MB="2000"}'
 rejected 'storage cannot switch away from what titiler reads' 'extra_env cannot set' '-var=extra_env={STORAGE_PROVIDER="s3"}'
+rejected 'a connection string cannot move the api to another account' 'extra_secrets cannot redefine' '-var=extra_secrets={AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=other"}'
 rejected 'the api cannot lose its titiler sidecar' 'extra_env cannot set' '-var=extra_env={TITILER_BASE_URL="http://titiler:8000"}'
 rejected 'a secret key ending in an underscore' 'extra_secrets keys must be' '-var=extra_secrets={SMTP_PASSWORD_="x"}'
 rejected 'one name cannot be both plain and secret' 'A name cannot be in both' \

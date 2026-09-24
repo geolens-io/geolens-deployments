@@ -168,8 +168,9 @@ lists every setting. Neither map may name one of the recipe's own secrets
 setting its wiring depends on (`SECRETS_REVISION`, `GEOLENS_BOOTSTRAP_B64`,
 `GEOLENS_API_RUN_MIGRATIONS`, `UPLOAD_STAGING_DIR`, the api-only
 `PROMETHEUS_MULTIPROC_DIR`, `WORKER_SHUTDOWN_TIMEOUT`, and the
-`STORAGE_PROVIDER`, `AZURE_STORAGE_ACCOUNT_URL` and `TITILER_BASE_URL` that
-titiler is wired to).
+`STORAGE_PROVIDER`, `AZURE_STORAGE_ACCOUNT_URL`,
+`AZURE_STORAGE_CONNECTION_STRING` and `TITILER_BASE_URL` that titiler is wired
+to).
 `PUBLIC_APP_URL`, `PUBLIC_API_URL` and `UPLOAD_MAX_SIZE_MB` come from
 `public_app_url` and `upload_max_size_mb`, which also configure the frontend
 edge. No name may appear in both maps. Any of these fails the plan.

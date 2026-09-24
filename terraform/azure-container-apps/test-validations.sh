@@ -39,6 +39,8 @@ rejected 'extra_secrets cannot replace the migrate bootstrap' 'extra_secrets can
   '-var=extra_secrets={GEOLENS_BOOTSTRAP_B64="x"}'
 rejected 'migrations cannot move back into the api' 'extra_env cannot set' '-var=extra_env={GEOLENS_API_RUN_MIGRATIONS="true"}'
 rejected 'the staging path cannot move off the share' 'extra_secrets cannot redefine' '-var=extra_secrets={UPLOAD_STAGING_DIR="/tmp/staging"}'
+rejected 'the api metrics directory cannot reach the worker' 'extra_env cannot set' '-var=extra_env={PROMETHEUS_MULTIPROC_DIR="/tmp/prometheus-multiproc"}'
+rejected 'the upload limit comes from its variable' 'extra_secrets cannot redefine' '-var=extra_secrets={UPLOAD_MAX_SIZE_MB="2000"}'
 rejected 'a secret key ending in an underscore' 'extra_secrets keys must be' '-var=extra_secrets={SMTP_PASSWORD_="x"}'
 rejected 'one name cannot be both plain and secret' 'A name cannot be in both' \
   '-var=extra_env={SMTP_PASSWORD="a"}' '-var=extra_secrets={SMTP_PASSWORD="b"}'

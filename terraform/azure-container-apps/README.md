@@ -164,10 +164,13 @@ extra_secrets = {
 The [configuration reference](https://docs.getgeolens.com/guides/quickstart/configuration/)
 lists every setting. Neither map may name one of the recipe's own secrets
 (`DATABASE_URL_OVERRIDE`, `JWT_SECRET_KEY`, the two `GEOLENS_ADMIN_*` values,
-`SECRET_ENCRYPTION_KEY`, `AZURE_STORAGE_ACCOUNT_KEY`, `REDIS_URL`) or the
-settings its own wiring depends on (`SECRETS_REVISION`,
-`GEOLENS_BOOTSTRAP_B64`, `GEOLENS_API_RUN_MIGRATIONS`, `UPLOAD_STAGING_DIR`),
-and no name may appear in both; the plan fails instead.
+`SECRET_ENCRYPTION_KEY`, `AZURE_STORAGE_ACCOUNT_KEY`, `REDIS_URL`) or a
+setting its wiring depends on (`SECRETS_REVISION`, `GEOLENS_BOOTSTRAP_B64`,
+`GEOLENS_API_RUN_MIGRATIONS`, `UPLOAD_STAGING_DIR`, the api-only
+`PROMETHEUS_MULTIPROC_DIR`, `WORKER_SHUTDOWN_TIMEOUT`). `PUBLIC_APP_URL`,
+`PUBLIC_API_URL` and `UPLOAD_MAX_SIZE_MB` come from `public_app_url` and
+`upload_max_size_mb`, which also configure the frontend edge. No name may
+appear in both maps. Any of these fails the plan.
 
 Container Apps keeps running replicas on the old value of a changed secret.
 The recipe renders a digest of every secret value into the templates, so any

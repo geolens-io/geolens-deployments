@@ -183,17 +183,26 @@ variable "worker_concurrency" {
 # The two escape hatches that make every other GeoLens option reachable, the
 # same way the Helm chart's extraEnv and existingSecret do. The configuration
 # reference is https://docs.getgeolens.com/guides/quickstart/configuration/.
+locals {
+  # Neither may set these (codex review on #59): the generated secrets, the
+  # recipe's own wiring, the api-only metrics directory (the worker and migrate
+  # job crash on it), the shutdown window the worker's grace period is sized
+  # for, and values the frontend edge shares, which come from their variables.
+  reserved_env = [
+    "AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "JWT_SECRET_KEY", "REDIS_URL", "SECRET_ENCRYPTION_KEY",
+    "GEOLENS_API_RUN_MIGRATIONS", "GEOLENS_BOOTSTRAP_B64", "SECRETS_REVISION", "UPLOAD_STAGING_DIR",
+    "PROMETHEUS_MULTIPROC_DIR", "PUBLIC_API_URL", "PUBLIC_APP_URL", "UPLOAD_MAX_SIZE_MB", "WORKER_SHUTDOWN_TIMEOUT",
+  ]
+}
+
 variable "extra_env" {
   description = "Extra plain environment for the api, worker and migrate containers, for example REGISTRATION_ENABLED, OPENAI_MODEL, SMTP_HOST or CORS_ALLOWED_ORIGINS. An entry here overrides a default of the same name."
   type        = map(string)
   default     = {}
 
-  # Reserved with the secrets, the names the recipe's own wiring depends on:
-  # the secrets digest, the migrate bootstrap, migrations only in the job, and
-  # the staging mount (codex review on #59). extra_secrets reserves the same.
   validation {
-    condition     = length(setintersection(toset(keys(var.extra_env)), toset(["AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "GEOLENS_API_RUN_MIGRATIONS", "GEOLENS_BOOTSTRAP_B64", "JWT_SECRET_KEY", "REDIS_URL", "SECRETS_REVISION", "SECRET_ENCRYPTION_KEY", "UPLOAD_STAGING_DIR"]))) == 0
-    error_message = "extra_env cannot set AZURE_STORAGE_ACCOUNT_KEY, DATABASE_URL_OVERRIDE, GEOLENS_ADMIN_PASSWORD, GEOLENS_ADMIN_USERNAME, GEOLENS_API_RUN_MIGRATIONS, GEOLENS_BOOTSTRAP_B64, JWT_SECRET_KEY, REDIS_URL, SECRETS_REVISION, SECRET_ENCRYPTION_KEY or UPLOAD_STAGING_DIR; the recipe owns them."
+    condition     = length(setintersection(toset(keys(var.extra_env)), toset(local.reserved_env))) == 0
+    error_message = "extra_env cannot set any of ${join(", ", local.reserved_env)}. The recipe owns them; public_app_url, upload_max_size_mb and the admin variables set the ones meant to change."
   }
 }
 
@@ -204,8 +213,8 @@ variable "extra_secrets" {
   sensitive   = true
 
   validation {
-    condition     = length(setintersection(toset(keys(var.extra_secrets)), toset(["AZURE_STORAGE_ACCOUNT_KEY", "DATABASE_URL_OVERRIDE", "GEOLENS_ADMIN_PASSWORD", "GEOLENS_ADMIN_USERNAME", "GEOLENS_API_RUN_MIGRATIONS", "GEOLENS_BOOTSTRAP_B64", "JWT_SECRET_KEY", "REDIS_URL", "SECRETS_REVISION", "SECRET_ENCRYPTION_KEY", "UPLOAD_STAGING_DIR"]))) == 0
-    error_message = "extra_secrets cannot redefine AZURE_STORAGE_ACCOUNT_KEY, DATABASE_URL_OVERRIDE, GEOLENS_ADMIN_PASSWORD, GEOLENS_ADMIN_USERNAME, GEOLENS_API_RUN_MIGRATIONS, GEOLENS_BOOTSTRAP_B64, JWT_SECRET_KEY, REDIS_URL, SECRETS_REVISION, SECRET_ENCRYPTION_KEY or UPLOAD_STAGING_DIR; the recipe owns them."
+    condition     = length(setintersection(toset(keys(var.extra_secrets)), toset(local.reserved_env))) == 0
+    error_message = "extra_secrets cannot redefine any of ${join(", ", local.reserved_env)}. The recipe owns them; public_app_url, upload_max_size_mb and the admin variables set the ones meant to change."
   }
 
   validation {

@@ -34,7 +34,7 @@ variable "region" {
 variable "geolens_version" {
   description = "GeoLens release tag for the api, worker and frontend images."
   type        = string
-  default     = "1.20.0"
+  default     = "1.21.0"
 }
 
 variable "titiler_version" {

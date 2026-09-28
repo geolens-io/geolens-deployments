@@ -48,7 +48,7 @@ api:
   replicas: 2
   image:
     repository: ghcr.io/geolens-io/geolens-api
-    tag: "1.20.0"
+    tag: "1.21.0"
     pullPolicy: IfNotPresent
   publicAppUrl: "https://geolens.example.com"
   publicApiUrl: "https://geolens.example.com/api"
@@ -89,7 +89,7 @@ worker:
   replicas: 1
   image:
     repository: ghcr.io/geolens-io/geolens-worker
-    tag: "1.20.0"
+    tag: "1.21.0"
     pullPolicy: IfNotPresent
   resources: {}
   # Seconds between SIGTERM and SIGKILL. Keep it above WORKER_SHUTDOWN_TIMEOUT
@@ -113,7 +113,7 @@ frontend:
     repository: ghcr.io/geolens-io/geolens-frontend
     # Must stay >= 1.4.9: older frontend images predate the parameterized
     # edge proxy (API_UPSTREAM) and cannot reach the api on Kubernetes.
-    tag: "1.20.0"
+    tag: "1.21.0"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP

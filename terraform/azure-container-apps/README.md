@@ -135,6 +135,11 @@ az containerapp revision list --resource-group <name>-rg --name <name>-app \
   --query "[?properties.active].{revision:name, health:properties.healthState}" --output table
 ```
 
+Upgrading to 1.22.0 from an earlier release: file replacements use a new
+worker task. A replacement submitted while a worker from the previous release
+is still running can fail as an unknown task. Nothing is published when that
+happens, so submit the replacement again once every worker runs 1.22.0.
+
 ## Configuration
 
 The variables cover the infrastructure and the application settings a first

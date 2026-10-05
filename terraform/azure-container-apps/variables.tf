@@ -26,7 +26,7 @@ variable "location" {
 variable "geolens_version" {
   description = "GeoLens release tag for the api, worker and frontend images."
   type        = string
-  default     = "1.21.1"
+  default     = "1.22.0"
 }
 
 variable "titiler_version" {

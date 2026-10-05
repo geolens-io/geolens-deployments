@@ -8,7 +8,7 @@ location = "westus3"
 
 # Pin the release you want. Bumping this re-runs migrations, then rolls both
 # apps onto a new revision.
-geolens_version = "1.21.1"
+geolens_version = "1.22.0"
 
 # Leave empty to serve on the app's own *.azurecontainerapps.io address, which
 # already has HTTPS. Set it once a custom domain is bound (see the README).

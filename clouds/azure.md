@@ -171,6 +171,11 @@ environment reserves for itself,
 ingress proxies connect from there, not from your virtual network, and without
 it every visitor shares one rate-limit bucket and logs as one address.
 
+Upgrading to 1.22.0 from an earlier release: file replacements use a new
+worker task. A replacement submitted while a worker from the previous release
+is still running can fail as an unknown task. Nothing is published when that
+happens, so submit the replacement again once every worker runs 1.22.0.
+
 ## HTTPS
 
 Container Apps terminates TLS on its own `*.azurecontainerapps.io` hostname

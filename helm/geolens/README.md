@@ -457,6 +457,11 @@ hook is enabled (`migrate.enabled=true`, the default). Extra env for the hook
 To upgrade GeoLens: bump the three `ghcr.io/geolens-io/*` image tags (they
 track GeoLens releases; a weekly CI check flags drift) and `helm upgrade`.
 
+Upgrading to 1.22.0 from an earlier release: file replacements use a new
+worker task. A replacement submitted while a worker from the previous release
+is still running can fail as an unknown task. Nothing is published when that
+happens, so submit the replacement again once every worker runs 1.22.0.
+
 ## Render locally
 
 The values below are placeholders for a template render, not credentials.

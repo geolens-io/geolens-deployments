@@ -193,6 +193,11 @@ migration runs again against the new image, and only then do the services roll.
 The circuit breaker rolls a failed deployment back to the previous task
 definition.
 
+Upgrading to 1.22.0 from an earlier release: file replacements use a new
+worker task. A replacement submitted while a worker from the previous release
+is still running can fail as an unknown task. Nothing is published when that
+happens, so submit the replacement again once every worker runs 1.22.0.
+
 ## Configuration
 
 The variables cover the infrastructure and the application settings that a

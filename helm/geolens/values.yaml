@@ -413,9 +413,10 @@ podDisruptionBudget:
 
 # NetworkPolicies, off by default because they only work with a CNI that
 # enforces them and the frontend's rule depends on where your ingress
-# controller runs. When enabled, only this release's frontend reaches the api
-# (so nothing can route around the edge or feed the api a forged
-# X-Forwarded-For), only the api reaches titiler, and nothing reaches the
+# controller runs. When enabled, only this release's frontend and titiler reach
+# the api (so nothing can route around the edge or feed the api a forged
+# X-Forwarded-For; titiler reads remote rasters through the api's internal relay
+# route), only the api reaches titiler, and nothing reaches the
 # worker. Kubelet probes are unaffected. Egress is left open: the database,
 # bucket and cache live wherever you put them.
 networkPolicy:

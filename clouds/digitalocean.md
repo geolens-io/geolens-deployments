@@ -126,8 +126,9 @@ App Platform has no sidecar concept, so the four containers become four
 components: the frontend as the public service, the api and titiler as
 internal services, and the worker as a worker component. That makes the
 inter-component wiring mandatory. Point `API_UPSTREAM` on the frontend at the
-api component and `TITILER_BASE_URL` on the api at the titiler component,
-using App Platform's internal hostnames. The Compose defaults
+api component, `TITILER_BASE_URL` on the api at the titiler component, and
+`REMOTE_RASTER_RELAY_BASE_URL` on the api and worker at the api component
+(titiler reads remote rasters through it), using App Platform's internal hostnames. The Compose defaults
 (`http://api:8000` and `http://titiler:8000`) resolve to nothing between
 components.
 

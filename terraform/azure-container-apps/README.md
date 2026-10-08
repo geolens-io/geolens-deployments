@@ -176,8 +176,9 @@ fails on any of them (`reserved_env` in `variables.tf` has the full list):
 - Its own wiring: `SECRETS_REVISION`, `GEOLENS_BOOTSTRAP_B64`,
   `GEOLENS_API_RUN_MIGRATIONS`, `UPLOAD_STAGING_DIR`, `WORKER_SHUTDOWN_TIMEOUT`
   and the api-only `PROMETHEUS_MULTIPROC_DIR`.
-- What titiler is wired to: `STORAGE_PROVIDER`, `TITILER_BASE_URL`, and the
-  storage account URL and connection string.
+- What titiler is wired to: `STORAGE_PROVIDER`, `TITILER_BASE_URL`,
+  `REMOTE_RASTER_RELAY_BASE_URL` (titiler reads remote rasters through the api),
+  and the storage account URL and connection string.
 - The database TLS mode and the role settings GeoLens holds to the one login:
   `DATABASE_SSL_MODE`, `GEOLENS_MIGRATION_DB_ROLE` and `GEOLENS_RUNTIME_DB_ROLE`.
 - `PUBLIC_APP_URL`, `PUBLIC_API_URL` and `UPLOAD_MAX_SIZE_MB`, which come from

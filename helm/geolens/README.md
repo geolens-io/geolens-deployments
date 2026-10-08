@@ -332,8 +332,10 @@ blocks outright, even at one replica. Turn them off with
 `networkPolicy.enabled=true` adds NetworkPolicies that hold the "everything
 through the edge" rule below the ingress too:
 
-- only this release's frontend reaches the api, so no other pod can route
-  around the edge or hand the api a forged `X-Forwarded-For`;
+- only this release's frontend and TiTiler reach the api, so no other pod can
+  route around the edge or hand the api a forged `X-Forwarded-For`. TiTiler
+  reads remote (STAC) rasters through the api's internal relay route, at
+  `REMOTE_RASTER_RELAY_BASE_URL`, which the chart sets to the api Service;
 - only the api reaches TiTiler;
 - nothing reaches the worker.
 

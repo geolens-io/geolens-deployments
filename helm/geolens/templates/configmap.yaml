@@ -42,4 +42,6 @@ data:
   {{- end }}
   {{- if .Values.titiler.enabled }}
   TITILER_BASE_URL: http://{{ include "geolens.fullname" . }}-titiler:8000
+  {{- /* Titiler reads remote rasters through the api's internal relay route. */}}
+  REMOTE_RASTER_RELAY_BASE_URL: http://{{ include "geolens.fullname" . }}-api:{{ .Values.service.api.port }}
   {{- end }}

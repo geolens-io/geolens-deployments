@@ -175,7 +175,8 @@ of minutes.
 Set `API_UPSTREAM` on the frontend and `TITILER_BASE_URL` on the api. Within
 one multi-container service both are loopback addresses, and titiler has to
 move off port 8000 because the api holds it. Across separate services they are
-the other service's URL, and that is where Cloud Run gets interesting: a
+the other service's URL (and `REMOTE_RASTER_RELAY_BASE_URL`, which titiler uses
+to read remote rasters through the api, follows the same rule), and that is where Cloud Run gets interesting: a
 private service expects a Google-signed ID token on every request, and neither
 hop mints one. The frontend proxies with plain nginx whose `Authorization`
 header already carries the user's GeoLens JWT, and the api's titiler client is

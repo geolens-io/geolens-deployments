@@ -306,7 +306,7 @@ jobs:
           fi
           echo "reused published values still render titiler as uid 1001, the frontend as uid 101, every container read-only and 3 PDBs"
 
-      - name: Guard - NetworkPolicies render only when enabled, and only the frontend reaches the api
+      - name: Guard - NetworkPolicies render only when enabled, and only the frontend and titiler reach the api
         # The policies are opt-in, and the api's is what keeps other pods
         # from routing around the edge or forging X-Forwarded-For.
         run: |
@@ -317,11 +317,20 @@ jobs:
           [ "$(render --set networkPolicy.enabled=true --set titiler.enabled=false | count)" -eq 2 ] || { echo "a titiler policy rendered without titiler" >&2; exit 1; }
           [ "$(render --set networkPolicy.enabled=true --set-json 'networkPolicy.frontendFrom=[{"podSelector":{}}]' | count)" -eq 4 ] || { echo "frontendFrom did not add the frontend policy" >&2; exit 1; }
           api=$(render --set networkPolicy.enabled=true | awk 'BEGIN{RS="---"} /kind: NetworkPolicy/ && index($0, "name: geolens-api\n")')
-          if ! grep -q 'app.kubernetes.io/component: frontend' <<<"$api" || grep -q 'namespaceSelector' <<<"$api"; then
-            echo "the api policy must admit only this release's frontend pods" >&2
+          if ! grep -q 'app.kubernetes.io/component: frontend' <<<"$api" || ! grep -q 'app.kubernetes.io/component: titiler' <<<"$api" || grep -q 'namespaceSelector' <<<"$api"; then
+            echo "the api policy must admit only this release's frontend and titiler pods" >&2
             exit 1
           fi
-          echo "policies render only when enabled; the api admits only the frontend"
+          api=$(render --set networkPolicy.enabled=true --set titiler.enabled=false | awk 'BEGIN{RS="---"} /kind: NetworkPolicy/ && index($0, "name: geolens-api\n")')
+          if grep -q 'app.kubernetes.io/component: titiler' <<<"$api"; then
+            echo "the api policy admitted titiler pods with titiler disabled" >&2
+            exit 1
+          fi
+          render | grep -q 'REMOTE_RASTER_RELAY_BASE_URL: http://geolens-api:8000$' || {
+            echo "the api and worker must find the relay at the api Service" >&2
+            exit 1
+          }
+          echo "policies render only when enabled; the api admits only the frontend and titiler"
 
       - name: Guard - PodDisruptionBudgets keep an explicit maxUnavailable
         # 0 is how an operator blocks voluntary evictions, and a `default`

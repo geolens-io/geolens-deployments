@@ -40,6 +40,8 @@ locals {
       # advisory lock, so several api replicas starting together would race.
       GEOLENS_API_RUN_MIGRATIONS = "false"
       TITILER_BASE_URL           = "http://127.0.0.1:8081"
+      # Titiler, in this app, reads remote rasters through the api's relay.
+      REMOTE_RASTER_RELAY_BASE_URL = "http://127.0.0.1:8000"
       # The image's own command reads these. The frontend overwrites
       # X-Forwarded-For before proxying, so trusting it gives the api the
       # real client.
@@ -54,6 +56,8 @@ locals {
       GEOLENS_API_RUN_MIGRATIONS = "false"
       WORKER_CONCURRENCY         = tostring(var.worker_concurrency)
       WORKER_SHUTDOWN_TIMEOUT    = "30"
+      # The api app is where titiler runs: the worker only builds the addresses.
+      REMOTE_RASTER_RELAY_BASE_URL = "http://127.0.0.1:8000"
     }
     migrate = {
       GEOLENS_API_RUN_MIGRATIONS = "false"

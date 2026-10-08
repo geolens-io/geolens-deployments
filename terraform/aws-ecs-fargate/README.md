@@ -235,7 +235,7 @@ fails on any of them (`reserved_env` in `variables.tf` has the full list):
   `GEOLENS_API_RUN_MIGRATIONS`, `WORKER_SHUTDOWN_TIMEOUT` and the api-only
   `PROMETHEUS_MULTIPROC_DIR`.
 - What the app, titiler and GDAL are wired to: `STORAGE_PROVIDER`,
-  `TITILER_BASE_URL`, `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`,
+  `TITILER_BASE_URL`, `REMOTE_RASTER_RELAY_BASE_URL`, `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`,
   `AWS_DEFAULT_REGION` (GDAL would read the bucket in that region instead), and
   static keys (`S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `AWS_ACCESS_KEY_ID`,
   `AWS_SECRET_ACCESS_KEY`), which would also win over the task role and defeat

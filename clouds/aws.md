@@ -189,6 +189,11 @@ Service Connect or Cloud Map names when they are separate services. Left at
 their defaults, `/api` returns an nginx upstream error and raster tiles never
 render.
 
+Titiler reads remote (STAC) rasters through an internal route on the api, so
+set `REMOTE_RASTER_RELAY_BASE_URL` on the api and worker to an origin titiler
+can reach: `http://127.0.0.1:8000` in a shared task. Route `/api` to the
+frontend edge, which refuses `/api/internal/`, never straight to the api.
+
 Titiler defaults to port 8000, which the api already holds. The recipe moves
 it to 8081 by overriding the container command; do the same wherever the two
 share a network namespace.

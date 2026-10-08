@@ -50,6 +50,10 @@ assert_profile_rejected \
   'extra_env cannot set any of' \
   '-var=extra_env={S3_BUCKET="another-org-bucket"}'
 assert_profile_rejected \
+  'titiler cannot lose the api relay' \
+  'extra_env cannot set any of' \
+  '-var=extra_env={REMOTE_RASTER_RELAY_BASE_URL="http://api:8000"}'
+assert_profile_rejected \
   'a reserved name cannot come in through extra_secrets either' \
   'extra_secrets cannot redefine any of' \
   '-var=extra_secrets={STORAGE_PROVIDER="arn:aws:secretsmanager:us-east-1:111111111111:secret:geolens-org-slug/storage-AbCdEf"}'

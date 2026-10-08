@@ -151,6 +151,8 @@ resource "aws_ecs_task_definition" "app" {
       environment = [for k, v in merge(local.backend_env, {
         GEOLENS_API_RUN_MIGRATIONS = "false"
         TITILER_BASE_URL           = "http://127.0.0.1:8081"
+        # Titiler, in this task, reads remote rasters through the api's relay.
+        REMOTE_RASTER_RELAY_BASE_URL = "http://127.0.0.1:8000"
         # The image's own command reads these, so the app's settings see the
         # real worker count. The frontend overwrites X-Forwarded-For
         # before proxying, so trusting it gives the api the real client.
@@ -243,13 +245,16 @@ resource "aws_ecs_task_definition" "worker" {
       # storage-key helpers from that module and renders quicklooks
       # in-process, as in the prod compose file, which also leaves the worker
       # without it.
+      # The relay origin is the api container in the app task, where titiler
+      # runs: the worker only builds the addresses.
       # No WORKER_QUEUES: the image default names every queue its release
       # enqueues to, and a pinned list would leave a queue a release adds, such
       # as 1.19.0's "download", with no consumer.
       environment = [for k, v in merge(local.backend_env, {
-        GEOLENS_API_RUN_MIGRATIONS = "false"
-        WORKER_CONCURRENCY         = tostring(var.worker_concurrency)
-        WORKER_SHUTDOWN_TIMEOUT    = "30"
+        GEOLENS_API_RUN_MIGRATIONS   = "false"
+        WORKER_CONCURRENCY           = tostring(var.worker_concurrency)
+        WORKER_SHUTDOWN_TIMEOUT      = "30"
+        REMOTE_RASTER_RELAY_BASE_URL = "http://127.0.0.1:8000"
       }, var.extra_env) : { name = k, value = v } if !contains(keys(var.extra_secrets), k)]
 
       # Compose's 35s: SIGKILL lands after the worker's own 30s

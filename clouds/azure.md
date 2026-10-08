@@ -161,6 +161,11 @@ command to move it, as
 resolve to nothing on Container Apps, and leaving them alone gives you an
 nginx upstream error on `/api` and no raster tiles.
 
+Titiler also reads remote (STAC) rasters through an internal route on the api.
+Set `REMOTE_RASTER_RELAY_BASE_URL` on the api and worker to
+`http://127.0.0.1:8000`, and keep ingress on the frontend edge, which refuses
+`/api/internal/`.
+
 Put external ingress on the frontend only, on port 8080. It is the application
 edge: it proxies `/api`, maps `/raster-tiles`, blocks unauthenticated
 `/api/metrics`, and rate-limits anonymous raster traffic.

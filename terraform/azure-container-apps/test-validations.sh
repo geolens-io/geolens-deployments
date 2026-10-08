@@ -44,6 +44,7 @@ rejected 'the upload limit comes from its variable' 'extra_secrets cannot redefi
 rejected 'storage cannot switch away from what titiler reads' 'extra_env cannot set' '-var=extra_env={STORAGE_PROVIDER="s3"}'
 rejected 'a connection string cannot move the api to another account' 'extra_secrets cannot redefine' '-var=extra_secrets={AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=other"}'
 rejected 'the api cannot lose its titiler sidecar' 'extra_env cannot set' '-var=extra_env={TITILER_BASE_URL="http://titiler:8000"}'
+rejected 'titiler cannot lose the api relay' 'extra_env cannot set' '-var=extra_env={REMOTE_RASTER_RELAY_BASE_URL="http://api:8000"}'
 rejected 'the database TLS mode is pinned' 'extra_env cannot set' '-var=extra_env={DATABASE_SSL_MODE="disable"}'
 rejected 'the migration role stays the one login' 'extra_secrets cannot redefine' '-var=extra_secrets={GEOLENS_MIGRATION_DB_ROLE="other"}'
 rejected 'a secret key ending in an underscore' 'extra_secrets keys must be' '-var=extra_secrets={SMTP_PASSWORD_="x"}'

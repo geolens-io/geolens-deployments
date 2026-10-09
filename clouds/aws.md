@@ -174,7 +174,7 @@ Optional, and only worth provisioning when more than one API instance runs.
 A single-node `cache.t3.micro` Redis or Valkey cluster in the application's
 VPC is enough. Open TCP 6379 from the application security group. With
 `REDIS_URL` unset the application caches in process memory, which is correct
-for a single instance and wrong for several.
+for a single instance and wrong for several. From 1.23.0, importing, re-uploading or refreshing a service that needs a token also needs the cache, even for a single instance.
 
 ## Containers
 
@@ -202,6 +202,11 @@ Upgrading to 1.22.0 from an earlier release: file replacements use a new
 worker task. A replacement submitted while a worker from the previous release
 is still running can fail as an unknown task. Nothing is published when that
 happens, so submit the replacement again once every worker runs 1.22.0.
+
+Upgrading to 1.23.0: importing, re-uploading or refreshing a service that
+needs a token now requires a cache the api and worker share. With `REDIS_URL` unset
+those requests answer 503 `credential_store_unavailable`. Services without a
+token are unaffected.
 
 ## HTTPS
 

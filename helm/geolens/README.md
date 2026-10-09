@@ -464,6 +464,11 @@ worker task. A replacement submitted while a worker from the previous release
 is still running can fail as an unknown task. Nothing is published when that
 happens, so submit the replacement again once every worker runs 1.22.0.
 
+Upgrading to 1.23.0: importing, re-uploading or refreshing a service that
+needs a token now requires `redis.url` to point at a Valkey or Redis instance
+that the api and worker share. Without one those requests answer 503
+`credential_store_unavailable`. Services without a token are unaffected.
+
 ## Render locally
 
 The values below are placeholders for a template render, not credentials.

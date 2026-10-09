@@ -3,13 +3,14 @@
 pilot_profile = true
 name          = "geolens-org-slug"
 region        = "us-east-1"
-geolens_version = "1.22.0"
+geolens_version = "1.23.0"
 
 # The ACM certificate must be ISSUED in this region and cover this hostname.
 public_app_url      = "https://maps.example.org"
 acm_certificate_arn = "arn:aws:acm:us-east-1:111111111111:certificate/11111111-1111-1111-1111-111111111111"
 
 # Per-organization resource and workload limits for the first pilot profile.
+# Token-protected service imports need the cache from GeoLens 1.23.0 on.
 cache_enabled                 = false
 app_desired_count             = 1
 worker_concurrency            = 1

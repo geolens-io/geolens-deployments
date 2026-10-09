@@ -147,7 +147,9 @@ while uploads keep working, so the symptom looks unrelated to the endpoint.
 
 ## Cache: Memorystore
 
-Optional, and only worth provisioning for more than one API instance.
+Optional, and only worth provisioning for more than one API instance, except
+that from 1.23.0 importing, re-uploading or refreshing a service that needs a
+token also needs the cache.
 
 ```bash
 gcloud redis instances create geolens-cache --size=1 --region=us-central1

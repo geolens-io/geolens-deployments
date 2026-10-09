@@ -123,7 +123,7 @@ it.
 
 Optional, and only worth provisioning for more than one API instance. With
 `REDIS_URL` unset the application caches in process memory, which is correct
-for a single instance and wrong for several.
+for a single instance and wrong for several. From 1.23.0, importing, re-uploading or refreshing a service that needs a token also needs the cache, even for a single instance.
 
 Azure Managed Redis is the service to create for a new deployment. Azure Cache
 for Redis is on a retirement path, and its Basic, Standard and Premium tiers
@@ -180,6 +180,11 @@ Upgrading to 1.22.0 from an earlier release: file replacements use a new
 worker task. A replacement submitted while a worker from the previous release
 is still running can fail as an unknown task. Nothing is published when that
 happens, so submit the replacement again once every worker runs 1.22.0.
+
+Upgrading to 1.23.0: importing, re-uploading or refreshing a service that
+needs a token now requires a cache the api and worker share. With `REDIS_URL` unset
+those requests answer 503 `credential_store_unavailable`. Services without a
+token are unaffected.
 
 ## HTTPS
 

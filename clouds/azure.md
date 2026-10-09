@@ -181,6 +181,11 @@ worker task. A replacement submitted while a worker from the previous release
 is still running can fail as an unknown task. Nothing is published when that
 happens, so submit the replacement again once every worker runs 1.22.0.
 
+Upgrading to 1.23.0: importing, re-uploading or refreshing a service that
+needs a token now requires a cache the api and worker share. With `REDIS_URL` unset
+those requests answer 503 `credential_store_unavailable`. Services without a
+token are unaffected.
+
 ## HTTPS
 
 Container Apps terminates TLS on its own `*.azurecontainerapps.io` hostname

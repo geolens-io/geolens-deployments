@@ -113,7 +113,9 @@ uploads keep working, so the symptom looks unrelated to the endpoint.
 
 Managed Valkey where the region offers it, otherwise Valkey on a Droplet. The
 application uses redis-py, which speaks to either. Skip it entirely for a
-single instance, where the in-process cache is the right answer.
+single instance, where the in-process cache is the right answer, except that
+from 1.23.0 importing, re-uploading or refreshing a service that needs a token
+also needs the cache.
 
 A managed cluster requires TLS and a password on port 25061, so its URL is
 `rediss://default:<password>@<host>:25061/0`. Take it from the console rather

@@ -174,7 +174,7 @@ Optional, and only worth provisioning when more than one API instance runs.
 A single-node `cache.t3.micro` Redis or Valkey cluster in the application's
 VPC is enough. Open TCP 6379 from the application security group. With
 `REDIS_URL` unset the application caches in process memory, which is correct
-for a single instance and wrong for several.
+for a single instance and wrong for several. From 1.23.0, importing, re-uploading or refreshing a service that needs a token also needs the cache, even for a single instance.
 
 ## Containers
 

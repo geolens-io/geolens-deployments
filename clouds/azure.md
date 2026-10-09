@@ -123,7 +123,7 @@ it.
 
 Optional, and only worth provisioning for more than one API instance. With
 `REDIS_URL` unset the application caches in process memory, which is correct
-for a single instance and wrong for several.
+for a single instance and wrong for several. From 1.23.0, importing, re-uploading or refreshing a service that needs a token also needs the cache, even for a single instance.
 
 Azure Managed Redis is the service to create for a new deployment. Azure Cache
 for Redis is on a retirement path, and its Basic, Standard and Premium tiers

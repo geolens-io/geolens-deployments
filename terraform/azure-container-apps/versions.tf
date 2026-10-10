@@ -7,7 +7,7 @@ terraform {
     # in dependabot.yml; a pin makes the lock follow the version it chose.
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "5.6.0"
+      version = "5.7.0"
     }
     random = {
       source  = "hashicorp/random"

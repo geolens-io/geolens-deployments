@@ -5,7 +5,7 @@ region = "us-east-1"
 
 # Pin the release you want. Bumping this re-runs migrations, then rolls the
 # services.
-geolens_version = "1.23.0"
+geolens_version = "1.23.1"
 
 # Leave empty to use the load balancer's DNS name over plain HTTP.
 # Set both of these to serve a domain over HTTPS. Hosted pilot data requires

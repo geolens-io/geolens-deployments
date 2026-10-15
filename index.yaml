@@ -3,6 +3,32 @@ entries:
   geolens:
   - apiVersion: v2
     appVersion: 1.24.0
+    created: "2026-10-15T11:01:43.182213331Z"
+    description: Community-maintained Helm chart for GeoLens, the Apache-2.0 spatial
+      data hub. Deploys the API, worker, frontend edge, and Titiler against an operator-managed
+      PostgreSQL.
+    digest: 51b0f9e52c1f1c7d74fa38e781560a0594e6e292418f992a7293f32f308513cc
+    home: https://github.com/geolens-io/geolens-deployments
+    keywords:
+    - gis
+    - geospatial
+    - postgis
+    - data-catalog
+    - maps
+    kubeVersion: '>=1.21.0-0'
+    maintainers:
+    - name: Ian Shiland
+      url: https://github.com/ishiland
+    name: geolens
+    sources:
+    - https://github.com/geolens-io/geolens-deployments
+    - https://github.com/geolens-io/geolens
+    type: application
+    urls:
+    - https://github.com/geolens-io/geolens-deployments/releases/download/geolens-0.4.47/geolens-0.4.47.tgz
+    version: 0.4.47
+  - apiVersion: v2
+    appVersion: 1.24.0
     created: "2026-10-11T20:38:36.743231007Z"
     description: Community-maintained Helm chart for GeoLens, the Apache-2.0 spatial
       data hub. Deploys the API, worker, frontend edge, and Titiler against an operator-managed
@@ -1239,4 +1265,4 @@ entries:
     urls:
     - https://github.com/geolens-io/geolens-deployments/releases/download/geolens-0.3.0/geolens-0.3.0.tgz
     version: 0.3.0
-generated: "2026-10-11T20:38:36.743590381Z"
+generated: "2026-10-15T11:01:43.182374254Z"

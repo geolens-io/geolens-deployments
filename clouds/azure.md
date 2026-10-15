@@ -170,6 +170,14 @@ Put external ingress on the frontend only, on port 8080. It is the application
 edge: it proxies `/api`, maps `/raster-tiles`, blocks unauthenticated
 `/api/metrics`, and rate-limits anonymous raster traffic.
 
+Probe the api container on port 8000. Use `/health/live` for startup and
+liveness, and `/health/ready` for readiness on GeoLens 1.21.0 and later: it
+answers 503 while the api cannot query the database, so a revision with a wrong
+connection string never takes over from the one serving. Older images answer
+404 on `/health/ready`, so keep `/health/live` for readiness there. Don't use
+`/health` for any of them, since an object store or cache blip would fail every
+replica at once.
+
 Set `TRUSTED_PROXY_CIDRS` on the frontend to the ranges a workload profiles
 environment reserves for itself,
 `100.100.0.0/17,100.100.128.0/19,100.100.160.0/19,100.100.192.0/19`. The

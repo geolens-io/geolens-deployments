@@ -326,3 +326,11 @@ rendered the raster. Plain HTTP redirected to HTTPS, `/api/metrics` returned
 was refused by the network rules, the database name resolved only inside the
 virtual network, and the edge logged the real client address and ignored a
 spoofed `X-Forwarded-For`.
+
+Applied again on 2026-10-15 in westus3 with GeoLens 1.24.0 and the defaults,
+cache off, and destroyed. The api revision ran Healthy with its readiness
+probe on `/health/ready`, and the api logged that probe answering 200 every
+ten seconds. `/api/health` reported the database, storage and cache over
+HTTPS, `.github/ci/ingest-smoke.sh` ingested a vector and a raster through the
+edge and fetched a tile, plain HTTP redirected to HTTPS, and `/api/metrics`
+returned 404 at the edge.

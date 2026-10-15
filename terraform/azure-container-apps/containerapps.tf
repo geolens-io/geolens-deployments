@@ -1,14 +1,7 @@
 locals {
   api_image      = "ghcr.io/geolens-io/geolens-api:${var.geolens_version}"
   frontend_image = "ghcr.io/geolens-io/geolens-frontend:${var.geolens_version}"
-
-  # Images before 1.21.0 answer 404 on /health/ready, as does any tag that is not a plain release.
-  api_version_parts = try(regex("^v?(?P<major>[0-9]+)\\.(?P<minor>[0-9]+)\\.[0-9]+$", var.geolens_version), null)
-  api_readiness_path = try(
-    tonumber(local.api_version_parts.major) > 1 || tonumber(local.api_version_parts.minor) >= 21 ? "/health/ready" : "/health/live",
-    "/health/live"
-  )
-  titiler_image = "ghcr.io/developmentseed/titiler:${var.titiler_version}"
+  titiler_image  = "ghcr.io/developmentseed/titiler:${var.titiler_version}"
 
   # Env name to Container Apps secret name. The names are not secret; the
   # values in local.app_secrets are.
@@ -249,11 +242,10 @@ resource "azurerm_container_app" "app" {
         }
       }
 
-      # Startup and liveness are process-only: restarting the api for a
-      # dependency outage would hide the cause. Readiness checks the database
-      # where the image has it, so a revision that cannot reach it never takes
-      # over from the old one.
-      # The api waits on the database at boot, hence the five minutes to start.
+      # Process-only, like the chart's probes and the AWS recipe's: /health
+      # also probes the database, object store and cache, and restarting the
+      # api for a dependency outage would hide the cause. The api waits on
+      # the database at boot, hence the five minutes to start.
       startup_probe {
         transport               = "HTTP"
         port                    = 8000
@@ -273,7 +265,7 @@ resource "azurerm_container_app" "app" {
       readiness_probe {
         transport = "HTTP"
         port      = 8000
-        path      = local.api_readiness_path
+        path      = "/health/live"
       }
     }
 

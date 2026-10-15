@@ -242,10 +242,10 @@ resource "azurerm_container_app" "app" {
         }
       }
 
-      # Process-only, like the chart's probes and the AWS recipe's: /health
-      # also probes the database, object store and cache, and restarting the
-      # api for a dependency outage would hide the cause. The api waits on
-      # the database at boot, hence the five minutes to start.
+      # Startup and liveness are process-only: restarting the api for a
+      # dependency outage would hide the cause. Readiness checks the database,
+      # so a revision that cannot reach it never takes over from the old one.
+      # The api waits on the database at boot, hence the five minutes to start.
       startup_probe {
         transport               = "HTTP"
         port                    = 8000
@@ -265,7 +265,7 @@ resource "azurerm_container_app" "app" {
       readiness_probe {
         transport = "HTTP"
         port      = 8000
-        path      = "/health/live"
+        path      = "/health/ready"
       }
     }
 

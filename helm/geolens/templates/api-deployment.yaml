@@ -82,9 +82,9 @@ spec:
             {{- with .Values.api.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          # Every probe is the process-only /health/live (images >= 1.18.0): /health
-          # also fails on the optional cache, so a Valkey blip would 502 all of /api.
-          # Startup keeps a budget because boot waits on the database.
+          # Startup and liveness are the process-only /health/live (images >= 1.18.0):
+          # /health also fails on the optional cache, so a Valkey blip would 502 all
+          # of /api. Readiness adds the database check where the image has it (>= 1.21.0).
           startupProbe:
             httpGet:
               path: /health/live
@@ -93,7 +93,7 @@ spec:
             failureThreshold: 24
           readinessProbe:
             httpGet:
-              path: /health/live
+              path: {{ include "geolens.apiReadinessPath" . }}
               port: http
           livenessProbe:
             httpGet:

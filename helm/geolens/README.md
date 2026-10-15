@@ -28,13 +28,18 @@ blocking the unauthenticated `/api/metrics` endpoint, rate-limiting anonymous
 raster traffic, and redacting credentialed paths from its access log. Don't
 route around it.
 
-Probes: the api's startup, readiness and liveness probes all use the
-process-only `/health/live` (app images 1.18.0 and later). The deep `/health`
-check fails whenever the optional cache is unreachable, even though the api
-keeps serving from its in-memory fallback, so as a readiness probe it would pull
-every api pod out of the Service during a Valkey outage and every `/api`
-request would return 502. A pod that cannot reach the database at boot still
-never becomes ready: the api exits rather than serve. Point monitoring at
+Probes: the api's startup and liveness probes use the process-only
+`/health/live` (app images 1.18.0 and later). Readiness uses `/health/ready`
+when `api.image.tag` is a release tag of 1.21.0 or later, so a pod that cannot
+reach the database stays out of the Service and a rollout with a bad DSN or a
+blocking NetworkPolicy stalls while the old pods keep serving. Older and
+non-release tags keep `/health/live`, which older images still answer.
+`/health/ready` leaves out the cache and the object store on purpose. The deep
+`/health` check fails whenever the optional cache is unreachable, even though
+the api keeps serving from its in-memory fallback, so as a readiness probe it
+would pull every api pod out of the Service during a Valkey outage and every
+`/api` request would return 502. Liveness stays process-only because restarting
+pods during a database outage only churns them. Point monitoring at
 `/api/health` for dependency status.
 
 Client addresses: the chart sets `FORWARDED_ALLOW_IPS="*"` on the api, so

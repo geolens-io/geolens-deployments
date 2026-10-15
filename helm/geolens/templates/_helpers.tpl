@@ -140,3 +140,13 @@ topologySpreadConstraints:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{- /* /health/ready needs an image that ships it; other tags keep the process-only probe, which older images still answer. */ -}}
+{{- define "geolens.apiReadinessPath" -}}
+{{- $tag := .Values.api.image.tag | toString -}}
+{{- if and (regexMatch "^v?\\d+\\.\\d+\\.\\d+$" $tag) (semverCompare ">=1.21.0-0" $tag) -}}
+/health/ready
+{{- else -}}
+/health/live
+{{- end -}}
+{{- end -}}

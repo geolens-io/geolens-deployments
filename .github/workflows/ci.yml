@@ -549,23 +549,37 @@ jobs:
           fi
           echo "extraEnv overrides render uniquely and win"
 
-      - name: Guard - api probes are all process-only
+      - name: Guard - api probes match the image's health endpoints
         # /health fails during a database outage and on the optional cache, so
         # as liveness it would restart every api pod in a loop, as readiness a
         # Valkey outage would 502 all of /api, and as the startup probe it would
-        # crash-loop any pod that started during one.
+        # crash-loop any pod that started during one. Readiness may use
+        # /health/ready only on an image that ships it; older images answer 404.
         run: |
-          api=$(helm template geolens helm/geolens \
-            --set secrets.existingSecret=geolens-secrets \
-            --show-only templates/api-deployment.yaml)
-          for probe in startupProbe readinessProbe livenessProbe; do
-            path=$(printf '%s\n' "$api" | awk -v p="$probe:" '$1 == p {f=1} f && /path:/{print $2; exit}')
-            if [ "$path" != "/health/live" ]; then
-              echo "api $probe path is '$path'; every api probe must be /health/live" >&2
-              exit 1
-            fi
-          done
-          echo "api startup, readiness and liveness all use /health/live"
+          probe_path() {
+            printf '%s\n' "$2" | awk -v p="$1:" '$1 == p {f=1} f && /path:/{print $2; exit}'
+          }
+          render() {
+            helm template geolens helm/geolens \
+              --set secrets.existingSecret=geolens-secrets "$@" \
+              --show-only templates/api-deployment.yaml
+          }
+          check() {
+            want=$1; shift
+            api=$(render "$@")
+            for probe in startupProbe livenessProbe; do
+              got=$(probe_path "$probe" "$api")
+              [ "$got" = "/health/live" ] || { echo "api $probe path is '$got'; must be /health/live" >&2; exit 1; }
+            done
+            got=$(probe_path readinessProbe "$api")
+            [ "$got" = "$want" ] || { echo "api readinessProbe path is '$got' for '$*'; want $want" >&2; exit 1; }
+          }
+          check /health/ready
+          check /health/ready --set api.image.tag=v1.21.0
+          check /health/live --set api.image.tag=1.20.0
+          check /health/live --set api.image.tag=latest
+          check /health/live --set api.image.tag=1.24.0-rc1
+          echo "api readiness uses /health/ready only on images that ship it; startup and liveness stay /health/live"
 
       - name: Guard - the api trusts the X-Forwarded-For the edge writes
         # uvicorn trusts forwarded headers only from 127.0.0.1 by default, so

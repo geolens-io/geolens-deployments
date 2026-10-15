@@ -4,9 +4,9 @@ locals {
 
   # Images before 1.21.0 answer 404 on /health/ready, as does any tag that is not a plain release.
   api_version_parts = try(regex("^v?(?P<major>[0-9]+)\\.(?P<minor>[0-9]+)\\.[0-9]+$", var.geolens_version), null)
-  api_readiness_path = (
-    local.api_version_parts != null && (tonumber(local.api_version_parts.major) > 1 || tonumber(local.api_version_parts.minor) >= 21)
-    ? "/health/ready" : "/health/live"
+  api_readiness_path = try(
+    tonumber(local.api_version_parts.major) > 1 || tonumber(local.api_version_parts.minor) >= 21 ? "/health/ready" : "/health/live",
+    "/health/live"
   )
   titiler_image = "ghcr.io/developmentseed/titiler:${var.titiler_version}"
 

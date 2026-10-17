@@ -8,7 +8,7 @@ variables, apply.
 | Recipe | Status | Manual path |
 | --- | --- | --- |
 | [`aws-ecs-fargate`](aws-ecs-fargate/) | Validated on a real account (2026-10-16, GeoLens 1.24.0 upgraded in place to 1.25.1). ECS Fargate, RDS PostgreSQL 17, S3, ElastiCache Valkey, ALB. | [`clouds/aws.md`](../clouds/aws.md) |
-| [`azure-container-apps`](azure-container-apps/) | Validated on a real subscription (2026-09-23, GeoLens 1.20.0). Container Apps, PostgreSQL Flexible Server 17, Blob Storage with an Azure Files staging share, optional Azure Managed Redis. | [`clouds/azure.md`](../clouds/azure.md) |
+| [`azure-container-apps`](azure-container-apps/) | Validated on a real subscription (2026-10-16, GeoLens 1.24.0 upgraded in place to 1.25.1). Container Apps, PostgreSQL Flexible Server 17, Blob Storage with an Azure Files staging share, optional Azure Managed Redis. | [`clouds/azure.md`](../clouds/azure.md) |
 | Google Cloud | Planned, not started: [#42](https://github.com/geolens-io/geolens-deployments/issues/42). | [`clouds/google-cloud.md`](../clouds/google-cloud.md) |
 | DigitalOcean | Planned, not started: [#43](https://github.com/geolens-io/geolens-deployments/issues/43). | [`clouds/digitalocean.md`](../clouds/digitalocean.md) |
 

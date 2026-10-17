@@ -26,7 +26,7 @@ variable "location" {
 variable "geolens_version" {
   description = "GeoLens release tag for the api, worker and frontend images."
   type        = string
-  default     = "1.24.0"
+  default     = "1.25.1"
 }
 
 variable "titiler_version" {
@@ -89,7 +89,7 @@ variable "app_replicas" {
 }
 
 variable "cache_enabled" {
-  description = "Create an Azure Managed Redis instance and point the app at it. Only worth it for more than one api replica: with no REDIS_URL the api caches in process memory, which is correct for one."
+  description = "Create an Azure Managed Redis instance, about $12 a month, and point the api and worker at it. Since GeoLens 1.23.0, importing, re-uploading or refreshing a service that needs a token answers 503 without it. More than one api replica needs it too; otherwise the api caches in process memory."
   type        = bool
   default     = false
 }

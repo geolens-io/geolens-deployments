@@ -4,9 +4,11 @@ fullnameOverride: ""
 imagePullSecrets: []
 
 # ServiceAccount for the api, worker and titiler pods. Its reason to exist is
-# cloud credentials: annotate it and the platform injects credentials the
-# AWS/Azure SDKs resolve on their own, so no long-lived key ever lands in a
-# Secret.
+# AWS credentials: annotate it and the platform injects credentials the AWS
+# SDKs and GDAL resolve on their own, so no long-lived key ever lands in a
+# Secret. Azure workload identity does nothing here: GeoLens ships without
+# azure-identity and authenticates to Blob Storage only with a connection
+# string or account key.
 #
 # `create: false` is the default deliberately. Every release before this value
 # existed ran under the namespace's `default` ServiceAccount, and switching an
@@ -330,8 +332,15 @@ secrets:
   secretEncryptionKeyPrevious: ""
 
 redis:
-  # Optional Redis-compatible tile/query cache (the compose stack ships
-  # Valkey). Empty disables caching.
+  # Redis-compatible cache the api and worker share (the compose stack ships
+  # Valkey). Empty disables caching, and since GeoLens 1.23.0 it also makes
+  # importing, re-uploading or refreshing a token-protected service answer 503
+  # (credential_store_unavailable); services without a token are unaffected.
+  # It stays empty by default because the chart deploys no cache.
+  #
+  # The URL goes into the chart Secret. With secrets.existingSecret it is
+  # rendered into the ConfigMap instead, so a URL carrying a password belongs
+  # in that Secret as a REDIS_URL key, which wins over this value.
   url: ""
 
 storage:
@@ -339,7 +348,10 @@ storage:
   # Kubernetes use "s3" (or "azure" via extraEnv). "local" writes into the
   # staging volume: without staging.persistence that is a per-pod emptyDir,
   # so stored data is LOST on pod restart and diverges across replicas.
-  # "azure" needs staging.persistence as well; see staging below.
+  # "azure" needs staging.persistence as well; see staging below. Titiler
+  # also needs its own Azure credentials in titiler.extraEnv
+  # (AZURE_STORAGE_ACCOUNT, and AZURE_STORAGE_ACCESS_KEY from a secretKeyRef),
+  # or every raster tile fails; see the README's Azure Blob Storage section.
   backend: "local"
   s3Endpoint: ""
   s3Region: ""

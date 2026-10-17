@@ -89,43 +89,24 @@ spec:
             {{- end }}
             {{- end }}
             {{- if not .Values.secrets.existingSecret }}
-            # Inlined rather than referencing the chart-managed Secret: as a
-            # pre-install hook this Job runs before regular resources exist,
-            # so a secretRef would deadlock a fresh install.
-            {{- if not (has "DATABASE_URL_OVERRIDE" $overrideNames) }}
-            - name: DATABASE_URL_OVERRIDE
-              value: {{ required "secrets.databaseUrlOverride is required (or provide secrets.existingSecret)" .Values.secrets.databaseUrlOverride | quote }}
+            {{- /* From the hook Secret in migrate-secret.yaml: a secretRef to the chart Secret
+                 would deadlock a fresh install, and an inline value is readable by
+                 anyone who can view Jobs. */}}
+            {{- $hookSecret := printf "%s-migrate-secrets" (include "geolens.fullname" .) }}
+            {{- $keys := list "DATABASE_URL_OVERRIDE" "JWT_SECRET_KEY" "GEOLENS_ADMIN_USERNAME" "GEOLENS_ADMIN_PASSWORD" "POSTGRES_PASSWORD" }}
+            {{- if .Values.secrets.secretEncryptionKey }}
+            {{- $keys = append $keys "SECRET_ENCRYPTION_KEY" }}
             {{- end }}
-            {{- if not (has "JWT_SECRET_KEY" $overrideNames) }}
-            - name: JWT_SECRET_KEY
-              value: {{ required "secrets.jwtSecretKey is required — generate with `openssl rand -hex 32` (or provide secrets.existingSecret)" .Values.secrets.jwtSecretKey | quote }}
+            {{- if .Values.secrets.secretEncryptionKeyPrevious }}
+            {{- $keys = append $keys "SECRET_ENCRYPTION_KEY_PREVIOUS" }}
             {{- end }}
-            {{- if not (has "GEOLENS_ADMIN_USERNAME" $overrideNames) }}
-            - name: GEOLENS_ADMIN_USERNAME
-              value: {{ required "secrets.adminUsername is required (or provide secrets.existingSecret)" .Values.secrets.adminUsername | quote }}
-            {{- end }}
-            {{- if not (has "GEOLENS_ADMIN_PASSWORD" $overrideNames) }}
-            - name: GEOLENS_ADMIN_PASSWORD
-              value: {{ required "secrets.adminPassword is required (or provide secrets.existingSecret)" .Values.secrets.adminPassword | quote }}
-            {{- end }}
-            {{- if not (has "POSTGRES_PASSWORD" $overrideNames) }}
-            # Required at settings construction even though the override DSN
-            # carries the real credentials (see secret.yaml).
-            - name: POSTGRES_PASSWORD
-              value: "unused-database-url-override-in-use"
-            {{- end }}
-            {{- /* The same checks as secret.yaml. */}}
-            {{- include "geolens.validateEncryptionKeys" . }}
-            {{- if not (has "SECRET_ENCRYPTION_KEY" $overrideNames) }}
-            {{- with .Values.secrets.secretEncryptionKey }}
-            - name: SECRET_ENCRYPTION_KEY
-              value: {{ . | toString | quote }}
-            {{- end }}
-            {{- end }}
-            {{- if not (has "SECRET_ENCRYPTION_KEY_PREVIOUS" $overrideNames) }}
-            {{- with .Values.secrets.secretEncryptionKeyPrevious }}
-            - name: SECRET_ENCRYPTION_KEY_PREVIOUS
-              value: {{ . | toString | quote }}
+            {{- range $keys }}
+            {{- if not (has . $overrideNames) }}
+            - name: {{ . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $hookSecret }}
+                  key: {{ . }}
             {{- end }}
             {{- end }}
             {{- end }}

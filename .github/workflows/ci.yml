@@ -670,6 +670,87 @@ jobs:
           fi
           echo "encryption keys threaded, invalid combinations rejected, extraEnv override wins once"
 
+      - name: Guard - the migrate hook reads its credentials from a hook Secret, never a plain value
+        # A plain `value:` in the Job spec is readable by anyone with the built-in
+        # view role, and a failed Job keeps it. The hook Secret must be a hook too
+        # (the chart Secret does not exist before a pre-install hook) with a lower
+        # weight, because Helm breaks equal weights by name and the Job sorts first.
+        run: |
+          rendered=$(helm template geolens helm/geolens \
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://u:guard-dsn-pw@db:5432/g' \
+            --set secrets.jwtSecretKey='guard-jwt-0123456789abcdef0123456789' \
+            --set secrets.adminUsername=guard-admin \
+            --set secrets.adminPassword='guard-admin-Passw0rd!' \
+            --set secrets.secretEncryptionKey=guard-enc-new \
+            --set secrets.secretEncryptionKeyPrevious=guard-enc-old)
+          job=$(awk 'BEGIN{RS="---"} /kind: Job/' <<<"$rendered")
+          hook=$(awk 'BEGIN{RS="---"} /kind: Secret/ && index($0, "name: geolens-migrate-secrets\n")' <<<"$rendered")
+          for k in DATABASE_URL_OVERRIDE JWT_SECRET_KEY GEOLENS_ADMIN_USERNAME GEOLENS_ADMIN_PASSWORD \
+                   POSTGRES_PASSWORD SECRET_ENCRYPTION_KEY SECRET_ENCRYPTION_KEY_PREVIOUS; do
+            if [ "$(grep -c -- "- name: $k$" <<<"$job")" -ne 1 ]; then
+              echo "$k is not set exactly once in the migrate hook" >&2
+              exit 1
+            fi
+            if ! grep -A1 -- "- name: $k$" <<<"$job" | grep -q 'valueFrom:'; then
+              echo "$k renders as a plain value in the migrate hook" >&2
+              exit 1
+            fi
+            grep -q "^  $k:" <<<"$hook" || { echo "$k missing from the migrate hook Secret" >&2; exit 1; }
+          done
+          for v in guard-dsn-pw guard-jwt guard-admin-Passw0rd guard-enc-new guard-enc-old; do
+            if grep -q "$v" <<<"$job"; then
+              echo "a supplied credential ($v) appears in the migrate Job spec" >&2
+              exit 1
+            fi
+          done
+          refs=$(grep -A2 'secretKeyRef:' <<<"$job" | awk '$1 == "name:" {print $2}' | sort -u)
+          [ "$refs" = "geolens-migrate-secrets" ] || { echo "the migrate hook reads a Secret other than its own hook Secret: $refs" >&2; exit 1; }
+          grep -q '"helm.sh/hook": pre-install,pre-upgrade' <<<"$hook" || { echo "the migrate hook Secret is not a pre-install,pre-upgrade hook" >&2; exit 1; }
+          grep -q '"helm.sh/hook-weight": "-1"' <<<"$hook" || { echo "the migrate hook Secret lost the weight that orders it before the Job" >&2; exit 1; }
+          if grep -q 'helm.sh/hook-weight' <<<"$job"; then
+            echo "the migrate Job now carries a hook weight; re-check that its Secret still sorts first" >&2
+            exit 1
+          fi
+          if grep -q '^stringData:' <<<"$hook"; then
+            echo "the migrate hook Secret renders stringData" >&2
+            exit 1
+          fi
+          # existingSecret installs need no hook Secret: the Job reads the operator's Secret.
+          existing=$(helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets)
+          if grep -q 'name: geolens-migrate-secrets' <<<"$existing"; then
+            echo "the migrate hook Secret rendered alongside secrets.existingSecret" >&2
+            exit 1
+          fi
+          echo "migrate hook credentials come only from its own pre-install hook Secret"
+
+      - name: Guard - a password-bearing redis.url stays out of the ConfigMap when the chart Secret renders
+        # ConfigMaps are readable by the built-in view role. With
+        # secrets.existingSecret the URL stays in the ConfigMap, so those
+        # upgrades keep rendering; a REDIS_URL key in that Secret wins there.
+        run: |
+          url='rediss://:guard-valkey-pw@cache:6379/0'
+          rendered=$(helm template geolens helm/geolens \
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://u:p@db:5432/g' \
+            --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef' \
+            --set secrets.adminUsername=admin \
+            --set secrets.adminPassword='chart-ci-only-Passw0rd!' \
+            --set redis.url="$url")
+          config=$(awk 'BEGIN{RS="---"} /kind: ConfigMap/' <<<"$rendered")
+          secret=$(awk 'BEGIN{RS="---"} /kind: Secret/ && index($0, "name: geolens-secrets\n")' <<<"$rendered")
+          if grep -q 'guard-valkey-pw\|REDIS_URL' <<<"$config"; then
+            echo "redis.url rendered into the ConfigMap while the chart Secret renders" >&2
+            exit 1
+          fi
+          got=$(grep -E '^  REDIS_URL:' <<<"$secret" | sed 's/.*: //; s/"//g' | base64 -d)
+          [ "$got" = "$url" ] || { echo "REDIS_URL missing from the chart Secret or altered: $got" >&2; exit 1; }
+          existing=$(helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets \
+            --set redis.url="$url" --show-only templates/configmap.yaml)
+          grep -q "REDIS_URL: \"$url\"" <<<"$existing" || {
+            echo "secrets.existingSecret with redis.url no longer renders REDIS_URL; those installs would lose their cache on upgrade" >&2
+            exit 1
+          }
+          echo "REDIS_URL lives in the chart Secret; existingSecret installs keep it in the ConfigMap"
+
   # Real install against a kind cluster: exercises the install-time failure
   # classes static rendering provably cannot catch (hook ordering, Job
   # immutability on upgrade, probe budgets, FQDN proxy resolution through the

@@ -56,6 +56,14 @@ secrets:
   # Must hold DATABASE_URL_OVERRIDE, JWT_SECRET_KEY, GEOLENS_ADMIN_USERNAME,
   # GEOLENS_ADMIN_PASSWORD and POSTGRES_PASSWORD (a placeholder is fine).
   # DSN form: postgresql+asyncpg://<user>:<pw>@<endpoint>:5432/<db>
+  #
+  # Add REDIS_URL for an ElastiCache (Valkey or Redis OSS) cache the api and
+  # worker share. Since GeoLens 1.23.0, importing, re-uploading or refreshing
+  # a token-protected service answers 503 without one. With in-transit
+  # encryption and an AUTH token:
+  #   rediss://:<auth-token>@<primary-endpoint>:6379/0
+  # Keep it in this Secret rather than redis.url, which with an existingSecret
+  # renders into the ConfigMap.
   existingSecret: geolens-secrets
 
 database:

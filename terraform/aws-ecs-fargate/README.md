@@ -226,11 +226,17 @@ task=$(aws ecs run-task --cluster "$cluster" --task-definition "$cluster-migrate
   --launch-type FARGATE --network-configuration "$network" \
   --overrides '{"containerOverrides":[{"name":"migrate","command":["/app/.venv/bin/python","-m","scripts.trust_login_device","<username>"]}]}' \
   --query 'tasks[0].taskArn' --output text)
-aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task"
-aws ecs describe-tasks --cluster "$cluster" --tasks "$task" \
-  --query "tasks[0].containers[?name=='migrate'] | [0].exitCode"
-aws logs tail "/ecs/$cluster-migrate" --log-stream-names "migrate/migrate/${task##*/}" --format short
+case $task in arn:*) ;; *) echo "run-task started no task: $task" >&2; false ;; esac &&
+aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task" &&
+aws logs tail "/ecs/$cluster-migrate" --log-stream-names "migrate/migrate/${task##*/}" --format short &&
+code=$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" \
+  --query "tasks[0].containers[?name=='migrate'] | [0].exitCode" --output text) &&
+{ [ "$code" = 0 ] || { echo "the command failed with exit code $code" >&2; false; }; }
 ```
+
+The block stops at the first step that fails and leaves a nonzero status, so
+a failed run never reads as done; it uses `false` rather than `exit` so a
+pasted copy doesn't close your shell.
 
 That example is the lockout recovery from section 12 of the GeoLens
 [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.25.1/RUNBOOK.md). Its

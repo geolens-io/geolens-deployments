@@ -306,8 +306,8 @@ environment, and the Log Analytics workspace is purged rather than
 soft-deleted, so its name is free for the next apply. Take a restore point or
 copy the data first if you need it.
 
-azurerm 5.6 reports every Container App, job and environment delete as a
-failure, `polling after Delete: ... Content-Type "" was not implemented`,
+azurerm 5.8 still reports every Container App, job and environment delete as
+a failure, `polling after Delete: ... Content-Type "" was not implemented`,
 although the delete goes through
 ([hashicorp/terraform-provider-azurerm#33433](https://github.com/hashicorp/terraform-provider-azurerm/issues/33433)).
 Each report stops the destroy, so run it until it completes. Expect four runs:
@@ -339,3 +339,17 @@ ten seconds. `/api/health` reported the database, storage and cache over
 HTTPS, `.github/ci/ingest-smoke.sh` ingested a vector and a raster through the
 edge and fetched a tile, plain HTTP redirected to HTTPS, and `/api/metrics`
 returned 404 at the edge.
+
+Upgraded in place on 2026-10-16 in westus3: the previous recipe applied
+GeoLens 1.24.0 with the defaults, cache off, then this one applied 1.25.1 over
+it with `cache_enabled = true`, and the stack was destroyed. Before and after
+the upgrade `/api/health` reported the database, storage and cache over HTTPS
+and `.github/ci/ingest-smoke.sh` ingested a vector and a raster through the
+edge and fetched a tile. The upgrade created the Managed Redis instance and
+handed its URL to the api and worker, and the migrate job ran 0082 and 0083.
+`/api/health` answered 200 throughout, from the 1.24.0 revision until the
+1.25.1 one took the traffic. The datasets ingested on 1.24.0 still listed and
+served vector and raster tiles. A Sentinel-2 item from Earth Search,
+registered by reference through `/api/services/stac/import`, served a raster
+tile through the edge, and the api logged titiler's reads on
+`/internal/raster-relay/`. The destroy took the four runs Teardown describes.

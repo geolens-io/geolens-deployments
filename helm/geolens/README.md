@@ -220,7 +220,8 @@ titiler:
 
 An account key can also write and delete. For a read-only Titiler, store a
 read-only SAS token and pass it as `AZURE_STORAGE_SAS_TOKEN` instead of the
-key, at the cost of rotating it before it expires.
+key, at the cost of rotating it before it expires. GDAL wants the token
+URL-encoded and without a leading `?` or `&`.
 
 ### Keyless object storage (IRSA / Pod Identity)
 

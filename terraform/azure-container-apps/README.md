@@ -141,9 +141,9 @@ is still running can fail as an unknown task. Nothing is published when that
 happens, so submit the replacement again once every worker runs 1.22.0.
 
 Upgrading to 1.23.0: importing, re-uploading or refreshing a service that
-needs a token now requires a cache the api and worker share. With `cache_enabled = false`
-those requests answer 503 `credential_store_unavailable`. Services without a
-token are unaffected.
+needs a token now requires a cache the api and worker share. With
+`cache_enabled = false` those requests answer 503
+`credential_store_unavailable`. Services without a token are unaffected.
 
 ## Configuration
 
@@ -209,6 +209,10 @@ api: presigned uploads are an S3-only path.
 
 ## Scaling
 
+- `cache_enabled` creates an Azure Managed Redis instance. Since GeoLens
+  1.23.0 any import, re-upload or refresh of a service that needs a token
+  answers 503 without it, whatever the replica count. It stays off by default
+  because it bills from the moment it exists.
 - `app_replicas` runs more copies of the app. More than one needs
   `cache_enabled = true`; the plan refuses otherwise, since each api would
   keep its own in-memory cache.
@@ -254,7 +258,8 @@ busy, the worker's 1 vCPU and 2 GiB to $24 and $79, less about $5 of monthly
 free grant. The rest is steady: $16 for PostgreSQL B1ms with its 32 GiB, about
 $22 for the load balancer and public IP the environment puts in its
 infrastructure resource group, and a few dollars for logs, blobs and the
-staging share. The cache adds about $12 a month.
+staging share. The cache, which importing a service that needs a token
+requires, adds about $12 a month.
 
 ## Backups and restore
 
@@ -270,7 +275,7 @@ az postgres flexible-server restore --resource-group <name>-rg \
 
 The new server has a new name, and this module generates the DSN from its own
 server, so repointing the stack at a restored database is a manual step:
-follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.20.0/RUNBOOK.md)
+follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.25.1/RUNBOOK.md)
 for the managed-PostgreSQL restore, and rehearse it before you rely on it.
 Blob Storage has no versioning or soft delete here; turn them on if you want
 them.

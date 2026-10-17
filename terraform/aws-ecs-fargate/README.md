@@ -39,6 +39,12 @@ Tasks run on ARM64 (Graviton) by default. The bucket refuses plain-HTTP
 requests, and the load balancer drops headers whose names are not valid HTTP
 tokens.
 
+As in the Helm chart, every container has a read-only root filesystem and no
+Linux capabilities, and titiler runs as UID 1001. Each container writes only
+to the task volumes mounted at its scratch paths. Fargate creates those
+volumes owned by root, so a short `volume-init` container in each task opens
+them before the others start.
+
 ## Prerequisites
 
 - Terraform 1.9 or newer
@@ -112,16 +118,18 @@ migration/runtime-role, TLS, admin, JWT, encryption-key, AWS credential or S3
 settings. Use provider keys only when needed, store a separate key for each
 organization, and set the provider's own spend limits.
 
-The example sets one app task, one worker slot, a 500 MB per-file upload limit,
-50 GiB of fixed RDS storage, and 50 GiB of worker scratch. S3 has no total
-bucket quota in this recipe, and a per-resource AWS Budget is an alert rather
-than a hard stop. Activate the `Deployment` cost-allocation tag, agree S3,
-database, egress and AI limits with the organization, and configure AWS Budgets
-and provider-side alerts before accepting data.
+The example sets one app task, one worker slot, the cache, a 500 MB per-file
+upload limit, 50 GiB of fixed RDS storage, and 50 GiB of worker scratch. The
+cache stays on because token-protected service imports need it (see Upgrading
+GeoLens). S3 has no total bucket quota in this recipe, and a per-resource AWS
+Budget is an alert rather than a hard stop. Activate the `Deployment`
+cost-allocation tag, agree S3, database, egress and AI limits with the
+organization, and configure AWS Budgets and provider-side alerts before
+accepting data.
 
-### Database identity limit in release 1.20.0
+### Database identity limit as of release 1.25.1
 
-GeoLens 1.20.0 supports its canonical runtime-role environment settings and
+GeoLens 1.25.1 supports its canonical runtime-role environment settings and
 requires migrations to run separately when that mode is enabled. The published
 API image does not include the repository-level `scripts/init-db.sh` or
 `scripts/lib/configure-runtime-db-role.sh` helper, and this Terraform recipe's
@@ -203,6 +211,41 @@ needs a token now requires a cache the api and worker share. With `cache_enabled
 those requests answer 503 `credential_store_unavailable`. Services without a
 token are unaffected.
 
+## Running one-off commands
+
+The services have no ECS Exec. Run a GeoLens maintenance script as a one-off
+task instead: the migrate task definition with its command replaced, on the
+app service's network. Nothing else runs in that task, so no migration
+either. Run these with the stack's region as your AWS CLI region:
+
+```sh
+cluster=$(terraform output -raw cluster_name)
+network=$(aws ecs describe-services --cluster "$cluster" --services "$cluster-app" \
+  --query 'services[0].networkConfiguration' --output json)
+task=$(aws ecs run-task --cluster "$cluster" --task-definition "$cluster-migrate" \
+  --launch-type FARGATE --network-configuration "$network" \
+  --overrides '{"containerOverrides":[{"name":"migrate","command":["/app/.venv/bin/python","-m","scripts.trust_login_device","<username>"]}]}' \
+  --query 'tasks[0].taskArn' --output text)
+case $task in arn:*) ;; *) echo "run-task started no task: $task" >&2; false ;; esac &&
+aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task" &&
+aws logs tail "/ecs/$cluster-migrate" --log-stream-names "migrate/migrate/${task##*/}" --format short &&
+code=$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task" \
+  --query "tasks[0].containers[?name=='migrate'] | [0].exitCode" --output text) &&
+{ [ "$code" = 0 ] || { echo "the command failed with exit code $code" >&2; false; }; }
+```
+
+The block stops at the first step that fails and leaves a nonzero status, so
+a failed run never reads as done; it uses `false` rather than `exit` so a
+pasted copy doesn't close your shell.
+
+That example is the lockout recovery from section 12 of the GeoLens
+[RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.25.1/RUNBOOK.md). Its
+single-use link lands in the migrate log group, which keeps it for 14 days;
+the link expires 10 minutes after it is printed. For the section 11 key
+rotation, the command is
+`["/app/.venv/bin/python","-m","scripts.rotate_secrets","--dry-run"]`, then
+the same without `--dry-run`.
+
 ## Configuration
 
 The variables cover the infrastructure and the application settings that a
@@ -259,7 +302,10 @@ secrets GeoLens stores such as SSO client secrets, so rotating the JWT secret
 no longer makes them unreadable. Adding it to a running stack is safe: the app
 still falls back to the JWT-derived key for anything written before. Do not
 replace `random_bytes.secret_encryption_key` to rotate it; that strands what it
-encrypted. Follow section 11 of the GeoLens runbook instead.
+encrypted. Follow section 11 of the GeoLens
+[RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.25.1/RUNBOOK.md)
+instead, running its script as described in
+[Running one-off commands](#running-one-off-commands).
 
 Secrets are read when a task starts. After rotating a secret named in
 `extra_secrets`, bump `extra_secrets_revision` and apply: that changes every
@@ -306,7 +352,7 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
   from the load balancer. A NAT gateway costs about $32 a month and buys you
   private task IPs.
 - The RDS master user is both the migration and application login. The current
-  1.20.0 image/recipe combination does not run the canonical managed-Postgres
+  1.25.1 image/recipe combination does not run the canonical managed-Postgres
   role reconciler; keep each pilot on its own RDS instance as described above.
 - One task role is shared by every container, which lets titiler write to the
   bucket even though it only reads.
@@ -342,7 +388,7 @@ organization-specific stack:
 2. Restore a database recovery point to a new RDS endpoint and recover the
    corresponding S3 objects or versions. RDS recovery creates a new endpoint;
    keep the source stack available until verification is complete.
-3. Follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.20.0/RUNBOOK.md)
+3. Follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.25.1/RUNBOOK.md)
    for managed PostgreSQL restore steps. Verify `/api/health`, sign-in,
    collection items and raster rendering, and record the recovery point,
    endpoint change, object versions and elapsed time.
@@ -428,3 +474,21 @@ ingested through the load balancer and the raster rendered in the browser,
 and the bucket refused a plain-HTTP request while serving HTTPS. The stack
 was then destroyed. The pilot profile has only been statically validated; it
 has not been applied or restore-tested in AWS.
+
+On 2026-10-16 in us-east-1, with the cache on, a stack applied from the
+previous recipe at GeoLens 1.24.0 was upgraded in place to this one at
+1.25.1. The baseline reported the database, S3 and cache healthy and passed
+`ingest-smoke.sh`. The upgrade's migrate task ran 0082 and 0083, and both
+services completed their rollout with every container on a read-only root and
+no capabilities, titiler as 1001:1001. Health reported 1.25.1 with all three
+providers healthy. The 1.24.0 datasets still listed, served their collection
+items and drew their raster tile, and `ingest-smoke.sh` passed again. A
+Sentinel-2 COG registered by reference from Earth Search through
+`/api/services/stac/import` served 200 PNG tiles through the edge, and the api
+logged titiler's `/internal/raster-relay/` requests; nothing was copied into
+the bucket. The one-off command path ran `scripts.rotate_secrets --dry-run`
+(exit 0) and `scripts.trust_login_device` for an unknown user (exit 1, as it
+should), and a probe in the same task showed the root read-only, its
+scratch paths writable and no effective capabilities. The stack was then
+destroyed; a sweep found nothing left but deregistered task definitions and
+the secret in its seven-day recovery window.

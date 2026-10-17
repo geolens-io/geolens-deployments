@@ -33,6 +33,15 @@ assert_profile_rejected() {
 }
 
 assert_profile_valid
+
+# Token-protected service imports answer 503 without the cache.
+cache_enabled=$(terraform console -no-color -var-file=pilot.tfvars.example <<< 'var.cache_enabled' 2>&1)
+if [[ "$cache_enabled" != "true" ]]; then
+  printf 'FAIL: the pilot example turns the cache off:\n%s\n' "$cache_enabled" >&2
+  exit 1
+fi
+printf 'PASS: the pilot example keeps the cache on\n'
+
 assert_profile_rejected \
   'deletion protection is required' \
   'pilot_profile requires a geolens-<org-slug> name' \

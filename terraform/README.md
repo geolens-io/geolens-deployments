@@ -7,7 +7,7 @@ variables, apply.
 
 | Recipe | Status | Manual path |
 | --- | --- | --- |
-| [`aws-ecs-fargate`](aws-ecs-fargate/) | Validated on a real account (2026-09-23, GeoLens 1.20.0). ECS Fargate, RDS PostgreSQL 17, S3, ElastiCache Valkey, ALB. | [`clouds/aws.md`](../clouds/aws.md) |
+| [`aws-ecs-fargate`](aws-ecs-fargate/) | Validated on a real account (2026-10-16, GeoLens 1.24.0 upgraded in place to 1.25.1). ECS Fargate, RDS PostgreSQL 17, S3, ElastiCache Valkey, ALB. | [`clouds/aws.md`](../clouds/aws.md) |
 | [`azure-container-apps`](azure-container-apps/) | Validated on a real subscription (2026-09-23, GeoLens 1.20.0). Container Apps, PostgreSQL Flexible Server 17, Blob Storage with an Azure Files staging share, optional Azure Managed Redis. | [`clouds/azure.md`](../clouds/azure.md) |
 | Google Cloud | Planned, not started: [#42](https://github.com/geolens-io/geolens-deployments/issues/42). | [`clouds/google-cloud.md`](../clouds/google-cloud.md) |
 | DigitalOcean | Planned, not started: [#43](https://github.com/geolens-io/geolens-deployments/issues/43). | [`clouds/digitalocean.md`](../clouds/digitalocean.md) |
@@ -25,7 +25,10 @@ cloud:
    `S3_ENDPOINT`. Only `s3` hands an upload to the worker through the bucket;
    with any other provider the api stages it at `/app/staging` and the worker
    reads it from there, so the two need a shared directory.
-3. An optional Redis-compatible cache reachable as `REDIS_URL`.
+3. A Redis-compatible cache reachable as `REDIS_URL`. From GeoLens 1.23.0,
+   importing or refreshing a service that needs a token fails without one,
+   and more than one api instance needs it too; everything else runs on an
+   in-process cache.
 4. Four containers: the frontend edge, the api, the worker, and titiler. The
    frontend must be the only public target, and when the api and titiler share
    a network namespace titiler has to move off port 8000.

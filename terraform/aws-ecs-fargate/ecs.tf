@@ -78,6 +78,46 @@ locals {
     { name = "MALLOC_ARENA_MAX", value = "2" },
     { name = "AWS_DEFAULT_REGION", value = var.region },
   ]
+
+  # The chart's container hardening. Each container writes only to the task
+  # volumes it mounts, at the paths the chart gives it emptyDirs.
+  hardening = {
+    readonlyRootFilesystem = true
+    linuxParameters        = { capabilities = { drop = ["ALL"] } }
+  }
+
+  task_volumes = {
+    app     = ["frontend-tmp", "frontend-cache", "api-tmp", "api-home", "api-staging", "titiler-tmp"]
+    worker  = ["tmp", "home", "staging"]
+    migrate = ["tmp", "home", "staging"]
+  }
+
+  backend_mounts = { for prefix in ["", "api-"] : prefix => [
+    { sourceVolume = "${prefix}tmp", containerPath = "/tmp" },
+    { sourceVolume = "${prefix}home", containerPath = "/home/appuser" },
+    # The image entrypoint, which ECS keeps, refuses to start unless it can
+    # write here, even where S3 means nothing is staged.
+    { sourceVolume = "${prefix}staging", containerPath = "/app/staging" },
+  ] }
+
+  # Fargate mounts a task volume root-owned with mode 0755, which the non-root
+  # images cannot write. This container opens each one, as compose's
+  # mode=1777 tmpfs mounts are, and exits before the others start.
+  volume_init = { for task, volumes in local.task_volumes : task => merge(local.hardening, {
+    name        = "volume-init"
+    image       = local.api_image
+    essential   = false
+    user        = "0"
+    entryPoint  = ["chmod", "1777"]
+    command     = [for v in volumes : "/volumes/${v}"]
+    mountPoints = [for v in volumes : { sourceVolume = v, containerPath = "/volumes/${v}" }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options   = merge(local.log[task == "app" ? "api" : task].options, { awslogs-stream-prefix = "volume-init" })
+    }
+  }) }
+
+  after_volume_init = [{ containerName = "volume-init", condition = "SUCCESS" }]
 }
 
 resource "aws_ecs_cluster" "this" {
@@ -116,8 +156,16 @@ resource "aws_ecs_task_definition" "app" {
     cpu_architecture        = var.cpu_architecture
   }
 
+  dynamic "volume" {
+    for_each = local.task_volumes.app
+    content {
+      name = volume.value
+    }
+  }
+
   container_definitions = jsonencode([
-    {
+    local.volume_init.app,
+    merge(local.hardening, {
       name      = "frontend"
       image     = local.frontend_image
       essential = true
@@ -139,9 +187,17 @@ resource "aws_ecs_task_definition" "app" {
         { name = "TRUSTED_PROXY_CIDRS", value = var.vpc_cidr },
       ]
 
+      # The runtime SPA copy, config, pid and temp files, and the raster tile
+      # proxy cache.
+      mountPoints = [
+        { sourceVolume = "frontend-tmp", containerPath = "/tmp" },
+        { sourceVolume = "frontend-cache", containerPath = "/var/cache/nginx" },
+      ]
+      dependsOn = local.after_volume_init
+
       logConfiguration = local.log.frontend
-    },
-    {
+    }),
+    merge(local.hardening, {
       name      = "api"
       image     = local.api_image
       essential = true
@@ -178,12 +234,19 @@ resource "aws_ecs_task_definition" "app" {
         startPeriod = 60
       }
 
+      mountPoints = local.backend_mounts["api-"]
+      dependsOn   = local.after_volume_init
+
       logConfiguration = local.log.api
-    },
-    {
+    }),
+    merge(local.hardening, {
       name      = "titiler"
       image     = local.titiler_image
       essential = true
+
+      # The upstream image declares no user, so it would run as root. Same
+      # UID and GID the chart runs titiler with.
+      user = "1001:1001"
 
       # awsvpc gives the whole task one network namespace, so titiler cannot
       # keep its default 8000 next to the api.
@@ -201,8 +264,12 @@ resource "aws_ecs_task_definition" "app" {
         startPeriod = 30
       }
 
+      # GDAL scratch; everything else is /vsis3/ or relay reads.
+      mountPoints = [{ sourceVolume = "titiler-tmp", containerPath = "/tmp" }]
+      dependsOn   = local.after_volume_init
+
       logConfiguration = local.log.titiler
-    },
+    }),
   ])
 }
 
@@ -229,8 +296,16 @@ resource "aws_ecs_task_definition" "worker" {
     cpu_architecture        = var.cpu_architecture
   }
 
+  dynamic "volume" {
+    for_each = local.task_volumes.worker
+    content {
+      name = volume.value
+    }
+  }
+
   container_definitions = jsonencode([
-    {
+    local.volume_init.worker,
+    merge(local.hardening, {
       name      = "worker"
       image     = local.api_image
       essential = true
@@ -276,8 +351,11 @@ resource "aws_ecs_task_definition" "worker" {
         startPeriod = 120
       }
 
+      mountPoints = local.backend_mounts[""]
+      dependsOn   = local.after_volume_init
+
       logConfiguration = local.log.worker
-    },
+    }),
   ])
 }
 
@@ -295,8 +373,16 @@ resource "aws_ecs_task_definition" "migrate" {
     cpu_architecture        = var.cpu_architecture
   }
 
+  dynamic "volume" {
+    for_each = local.task_volumes.migrate
+    content {
+      name = volume.value
+    }
+  }
+
   container_definitions = jsonencode([
-    {
+    local.volume_init.migrate,
+    merge(local.hardening, {
       name      = "migrate"
       image     = local.api_image
       essential = true
@@ -314,8 +400,11 @@ resource "aws_ecs_task_definition" "migrate" {
 
       secrets = local.backend_secrets
 
+      mountPoints = local.backend_mounts[""]
+      dependsOn   = local.after_volume_init
+
       logConfiguration = local.log.migrate
-    },
+    }),
   ])
 }
 
@@ -363,7 +452,7 @@ resource "terraform_data" "migrate" {
         sleep 10
       done
       code=$(aws ecs describe-tasks --region "$REGION" --cluster "$CLUSTER" --tasks "$task" \
-        --query 'tasks[0].containers[0].exitCode' --output text)
+        --query "tasks[0].containers[?name=='migrate'] | [0].exitCode" --output text)
       if [ "$code" != "0" ]; then
         echo "migration failed with exit code $code" >&2
         echo "logs: aws logs tail $LOG_GROUP --since 15m --format short" >&2

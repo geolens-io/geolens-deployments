@@ -62,7 +62,7 @@ RDS requires TLS, so set `DATABASE_SSL_MODE=require`.
 ### ECS pilot database boundary
 
 The ECS recipe currently gives the RDS master login to the API, worker and
-migration task. GeoLens 1.20.0 supports canonical runtime-role settings, but
+migration task. GeoLens 1.25.1 supports canonical runtime-role settings, but
 the published API image does not include the repository-level managed-database
 bootstrap/reconciliation helper that the recipe would need to create and verify
 that role. Keep pilot organizations on separate RDS instances and keep the
@@ -170,11 +170,14 @@ own, and setting it is how people accidentally pin the wrong region.
 
 ## Cache: ElastiCache
 
-Optional, and only worth provisioning when more than one API instance runs.
-A single-node `cache.t3.micro` Redis or Valkey cluster in the application's
-VPC is enough. Open TCP 6379 from the application security group. With
-`REDIS_URL` unset the application caches in process memory, which is correct
-for a single instance and wrong for several. From 1.23.0, importing, re-uploading or refreshing a service that needs a token also needs the cache, even for a single instance.
+Provision one unless no service you import needs a token. From 1.23.0 the api
+hands a service token to the worker through the cache, so importing,
+re-uploading or refreshing such a service answers 503 without `REDIS_URL`,
+even on a single instance. A single-node `cache.t3.micro` Redis or Valkey
+cluster in the application's VPC is enough. Open TCP 6379 from the application
+security group. Everything else works with `REDIS_URL` unset: the application
+then caches in process memory, which is correct for a single instance and
+wrong for several.
 
 ## Containers
 
@@ -197,6 +200,21 @@ frontend edge, which refuses `/api/internal/`, never straight to the api.
 Titiler defaults to port 8000, which the api already holds. The recipe moves
 it to 8081 by overriding the container command; do the same wherever the two
 share a network namespace.
+
+Run every container with `readonlyRootFilesystem` and
+`linuxParameters.capabilities.drop = ["ALL"]`, and titiler as `1001:1001`,
+since its image declares no user. Each then needs task volumes at the paths it
+writes: `/tmp` and `/var/cache/nginx` on the frontend, `/tmp` on titiler, and
+`/tmp`, `/home/appuser` and `/app/staging` on the api, the worker and the
+migrate task, whose entrypoint refuses to start without a writable staging
+directory. Fargate creates task volumes owned by root with mode 0755, so a
+non-root container cannot write them; the recipe runs a non-essential root
+container that `chmod 1777`s them first, and the others depend on its
+success.
+
+For one-off commands such as `scripts.trust_login_device`, run the migrate
+task definition with `aws ecs run-task --overrides` and a replaced command, as
+the recipe README shows, or turn on ECS Exec.
 
 Upgrading to 1.22.0 from an earlier release: file replacements use a new
 worker task. A replacement submitted while a worker from the previous release

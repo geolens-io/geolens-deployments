@@ -880,7 +880,7 @@ jobs:
           token=$(curl -sSf -X POST http://127.0.0.1:8081/api/auth/login \
             --data-urlencode username=ci-admin --data-urlencode 'password=chart-ci-only-Passw0rd!' \
             | jq -r .access_token)
-          listed=$(curl -sSf -H "Authorization: Bearer $token" http://127.0.0.1:8081/api/datasets | jq -r '.datasets[].id')
+          listed=$(curl -sSf -H "Authorization: Bearer $token" http://127.0.0.1:8081/api/datasets/ | jq -r '.datasets[].id')
           kill "$pf"
           for kind in vector raster; do
             id=$(sed -n "s/^$kind dataset \(.*\) ingested$/\1/p" "$RUNNER_TEMP/before-upgrade.log")

@@ -109,6 +109,7 @@ Keys the chart reads from an `existingSecret`:
 | `POSTGRES_PASSWORD` | yes | required by backend settings even when `DATABASE_URL_OVERRIDE` carries the real credentials — any placeholder (e.g. `unused`) satisfies it; the chart-managed Secret sets one automatically |
 | `TILE_SIGNING_SECRET` | no | signed tile URLs |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | no | AI features |
+| `REDIS_URL` | no | the cache the api and worker share, which token-protected service imports need since 1.23.0. A URL with a password belongs here: with an `existingSecret`, `redis.url` renders into the ConfigMap, and this key wins over it |
 | `SECRET_ENCRYPTION_KEY` | no | dedicated key for the secrets GeoLens stores; empty derives it from `JWT_SECRET_KEY` (app images ≥ 1.18.2) |
 | `SECRET_ENCRYPTION_KEY_PREVIOUS` | no | the previous key during a rotation; never set it without `SECRET_ENCRYPTION_KEY`, the backend refuses to boot |
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | when `storage.backend=s3` and `storage.s3AmbientCredentials` is false | shared object-storage credentials; Titiler uses these only as the compatibility fallback described below. With `storage.s3AmbientCredentials=true` (app images ≥ 1.14.2) both are omitted and the SDKs resolve a role instead — see [Keyless object storage](#keyless-object-storage-irsa--pod-identity) |
@@ -189,6 +190,37 @@ S3-compatible endpoints (MinIO, R2): raster serving resolves assets as
 `AWS_VIRTUAL_HOSTING` settings from `storage.s3Endpoint`, `s3AllowHttp`, and
 `s3AddressingStyle`; an explicit `titiler.extraEnv` entry still overrides a
 derived value.
+
+### Azure Blob Storage
+
+With `storage.backend=azure` the api and worker need `AZURE_STORAGE_CONTAINER`
+and either `AZURE_STORAGE_CONNECTION_STRING` or `AZURE_STORAGE_ACCOUNT_URL`
+plus `AZURE_STORAGE_ACCOUNT_KEY`. The chart Secret has no Azure keys, so keep
+the key or connection string in your `secrets.existingSecret` (the api and
+worker load every key in it); the container and account URL can go there or
+in `api.extraEnv` and `worker.extraEnv`.
+
+Titiler needs credentials of its own, and the chart renders none for azure.
+It opens Azure rasters as `/vsiaz/` paths, so GDAL reads its own variables
+and ignores the application's. Without them every raster tile fails. GDAL
+names the key `AZURE_STORAGE_ACCESS_KEY`, so map the same Secret key onto
+that name:
+
+```yaml
+titiler:
+  extraEnv:
+    - name: AZURE_STORAGE_ACCOUNT
+      value: <storage-account-name>
+    - name: AZURE_STORAGE_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: geolens-secrets
+          key: AZURE_STORAGE_ACCOUNT_KEY
+```
+
+An account key can also write and delete. For a read-only Titiler, store a
+read-only SAS token and pass it as `AZURE_STORAGE_SAS_TOKEN` instead of the
+key, at the cost of rotating it before it expires.
 
 ### Keyless object storage (IRSA / Pod Identity)
 
@@ -461,6 +493,15 @@ immutable-Job rule. The api pods skip their own boot-time migration while the
 hook is enabled (`migrate.enabled=true`, the default). Extra env for the hook
 (e.g. `DATABASE_SSL_MODE`) follows `api.extraEnv` and `migrate.extraEnv`.
 
+Without `secrets.existingSecret`, the Job reads its credentials from a hook
+Secret, `<release>-migrate-secrets`, created just before it. Helm deletes
+both once every pre-install or pre-upgrade hook has succeeded, and Argo CD
+once the whole sync has. After a failed hook, Helm 3.19 or later and Helm 4
+delete the Secret and keep the Job for its logs; older Helm 3 and Argo CD
+keep both until the next upgrade or sync replaces them. `helm uninstall`
+never removes hook resources, so delete a leftover
+`<release>-migrate-secrets` or `<release>-migrate` by hand.
+
 To upgrade GeoLens: bump the three `ghcr.io/geolens-io/*` image tags (they
 track GeoLens releases; a weekly CI check flags drift) and `helm upgrade`.
 
@@ -473,6 +514,48 @@ Upgrading to 1.23.0: importing, re-uploading or refreshing a service that
 needs a token now requires `redis.url` to point at a Valkey or Redis instance
 that the api and worker share. Without one those requests answer 503
 `credential_store_unavailable`. Services without a token are unaffected.
+
+Upgrading to 1.25 (1.25.1 is the first release with api and worker images):
+
+- **Give the migration hook more time.** Migration 0083 builds its indexes
+  on `ingest_jobs` and `records` with `CREATE INDEX CONCURRENTLY`, which
+  waits for open transactions to finish before and during the build, and
+  the build itself takes longer on a large catalog. Helm gives each hook the
+  `--timeout` of the upgrade, 5 minutes by default, so run this upgrade with
+  something like `helm upgrade --timeout 30m`. On a timeout Helm marks the
+  upgrade failed and leaves the previous pods serving, while the Job keeps
+  running in the cluster. Upgrade again: `before-hook-creation` replaces the
+  old Job, and 0083 drops and rebuilds the invalid index an interrupted build
+  leaves behind.
+- **Cloudflare Web Analytics.** The frontend's default CSP no longer allows
+  Cloudflare's beacon script. On a Cloudflare-proxied install with Web
+  Analytics on, add it back through `frontend.extraEnv`:
+
+  ```yaml
+  frontend:
+    extraEnv:
+      - name: CSP_SCRIPT_SRC_EXTRA
+        value: https://static.cloudflareinsights.com
+  ```
+
+  Use the host, not the `beacon.min.js` path. Cloudflare loads
+  `beacon.min.js/v<hash>`, and a CSP source naming a file matches only that
+  exact path, so the browser would still block the script.
+- **Private certificate authorities.** Outbound TLS from the AI providers and
+  the OAuth client now checks the operating system trust store instead of
+  certifi. With the read-only root filesystem you cannot add a CA to the
+  image's store, so mount a bundle that holds the system CAs plus yours (a
+  ConfigMap in `extraVolumes`, mounted through `api.extraVolumeMounts` and
+  `worker.extraVolumeMounts`) and point `SSL_CERT_FILE` at it in
+  `api.extraEnv` and `worker.extraEnv`.
+- **Sign-in lockout.** After 10 failed password sign-ins within an hour, an
+  account answers 429 to browsers it doesn't know, even with the right
+  password. To let an admin back in from a new browser, run
+  `kubectl exec deploy/<release>-api -- /app/.venv/bin/python -m scripts.trust_login_device <username>`
+  (add `--tenant <tenant id>` on a multi-tenant install). It prints a link
+  that works once, within 10 minutes. Section 12 of the GeoLens
+  [RUNBOOK](https://github.com/geolens-io/geolens/blob/main/RUNBOOK.md) lists
+  the other ways back in.
 
 ## Render locally
 

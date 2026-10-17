@@ -37,8 +37,12 @@ data:
   {{- with (.Values.database | default dict).sslMode }}
   DATABASE_SSL_MODE: {{ . | quote }}
   {{- end }}
+  {{- /* The chart Secret carries it when it renders. With existingSecret it stays here so
+       upgrades keep working; a REDIS_URL key in that Secret wins over this one. */}}
+  {{- if .Values.secrets.existingSecret }}
   {{- with .Values.redis.url }}
   REDIS_URL: {{ . | quote }}
+  {{- end }}
   {{- end }}
   {{- if .Values.titiler.enabled }}
   TITILER_BASE_URL: http://{{ include "geolens.fullname" . }}-titiler:8000

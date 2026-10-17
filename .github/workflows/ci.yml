@@ -8,10 +8,17 @@ on:
 permissions:
   contents: read
 
+# GitHub's default `bash -e` leaves pipefail off, so a guard that pipes into
+# `grep -q` could pass or fail on SIGPIPE timing alone.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   lint-and-template:
     name: lint-and-template (helm ${{ matrix.major }})
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +31,8 @@ jobs:
           - {major: 4, helm: v4.3.0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
@@ -180,9 +189,10 @@ jobs:
           fi
           # ...while the ordinary workloads must still get it.
           for tpl in api-deployment worker-deployment titiler-deployment; do
-            if ! helm template geolens helm/geolens \
+            sa=$(helm template geolens helm/geolens \
               --set secrets.existingSecret=geolens-secrets \
-              --show-only "templates/$tpl.yaml" | grep -q 'serviceAccountName'; then
+              --show-only "templates/$tpl.yaml")
+            if ! grep -q 'serviceAccountName' <<<"$sa"; then
               echo "$tpl lost its serviceAccountName; IRSA / Pod Identity has nowhere to attach" >&2
               exit 1
             fi
@@ -263,10 +273,11 @@ jobs:
             }
           # A scalar the backend validates needs its default in the template too:
           # an empty S3_ADDRESSING_STYLE fails boot.
-          if helm template geolens helm/geolens \
-              --set secrets.existingSecret=geolens-secrets \
-              --set-json 'storage.s3AddressingStyle=null' \
-              --show-only templates/configmap.yaml | grep -q S3_ADDRESSING_STYLE; then
+          style=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set-json 'storage.s3AddressingStyle=null' \
+            --show-only templates/configmap.yaml)
+          if grep -q S3_ADDRESSING_STYLE <<<"$style"; then
             echo "an absent storage.s3AddressingStyle renders S3_ADDRESSING_STYLE, which the backend rejects unless it is auto, path or virtual" >&2
             exit 1
           fi
@@ -288,7 +299,8 @@ jobs:
           for want in titiler-deployment:1001 frontend-deployment:101; do
             tpl=${want%%:*}
             uid=${want##*:}
-            pod=$(render "$tpl" | awk '/^    spec:/{f=1} f && /^      securityContext:/{p=1; next} p && /^      [a-z]/{exit} p')
+            rendered=$(render "$tpl")
+            pod=$(awk '/^    spec:/{f=1} f && /^      securityContext:/{p=1; next} p && /^      [a-z]/{exit} p' <<<"$rendered")
             if ! grep -q 'runAsNonRoot: true' <<<"$pod" || ! grep -q "runAsUser: $uid\$" <<<"$pod"; then
               echo "$tpl lost its non-root pod securityContext under the published chart's values:" >&2
               echo "$pod" >&2
@@ -326,7 +338,8 @@ jobs:
             echo "the api policy admitted titiler pods with titiler disabled" >&2
             exit 1
           fi
-          render | grep -q 'REMOTE_RASTER_RELAY_BASE_URL: http://geolens-api:8000$' || {
+          relay=$(render)
+          grep -q 'REMOTE_RASTER_RELAY_BASE_URL: http://geolens-api:8000$' <<<"$relay" || {
             echo "the api and worker must find the relay at the api Service" >&2
             exit 1
           }
@@ -385,8 +398,10 @@ jobs:
             echo "the migrate hook took the api's pod affinity or spread; a pre-install hook runs before any api pod exists" >&2
             exit 1
           fi
-          doc geolens-worker <<<"$rendered" | grep -q 'pool: big' || { echo "worker nodeSelector did not render" >&2; exit 1; }
-          if doc geolens-frontend <<<"$rendered" | grep -qE 'tolerations:|nodeSelector:|affinity:'; then
+          worker=$(doc geolens-worker <<<"$rendered")
+          grep -q 'pool: big' <<<"$worker" || { echo "worker nodeSelector did not render" >&2; exit 1; }
+          frontend=$(doc geolens-frontend <<<"$rendered")
+          if grep -qE 'tolerations:|nodeSelector:|affinity:' <<<"$frontend"; then
             echo "another component's placement leaked into the frontend" >&2
             exit 1
           fi
@@ -438,10 +453,11 @@ jobs:
         # default while api and worker used the configured one.
         run: |
           for tpl in configmap migrate-job; do
-            if ! helm template geolens helm/geolens \
+            mode=$(helm template geolens helm/geolens \
               --set secrets.existingSecret=geolens-secrets \
               --set database.sslMode=verify-full \
-              --show-only "templates/$tpl.yaml" | grep -q 'DATABASE_SSL_MODE'; then
+              --show-only "templates/$tpl.yaml")
+            if ! grep -q 'DATABASE_SSL_MODE' <<<"$mode"; then
               echo "database.sslMode did not reach $tpl" >&2
               exit 1
             fi
@@ -455,9 +471,9 @@ jobs:
         # remote object URLs per hop and titiler's CPL_VSIL_CURL_ALLOWED_EXTENSIONS
         # clamp. The main repo pins the same in backend/tests/test_titiler_redirect_env.py.
         run: |
-          if helm template geolens helm/geolens \
-            --set secrets.existingSecret=geolens-secrets \
-            | grep -q 'name: GDAL_HTTP_FOLLOWLOCATION'; then
+          rendered=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets)
+          if grep -q 'name: GDAL_HTTP_FOLLOWLOCATION' <<<"$rendered"; then
             echo "GDAL_HTTP_FOLLOWLOCATION is not a GDAL option and provides no redirect protection (geolens#937); remove it" >&2
             exit 1
           fi
@@ -614,15 +630,15 @@ jobs:
           both="--set api.image.tag=1.18.2 --set worker.image.tag=1.18.2"
           rendered=$(helm template geolens helm/geolens $base $both \
             --set secrets.secretEncryptionKey=new-key --set secrets.secretEncryptionKeyPrevious=old-key)
-          secret=$(printf '%s\n' "$rendered" | awk '/^kind: Secret$/{f=1} f' | awk '/^---$/{exit} {print}')
+          secret=$(awk '/^kind: Secret$/{f=1} f && /^---$/{exit} f' <<<"$rendered")
           for k in SECRET_ENCRYPTION_KEY SECRET_ENCRYPTION_KEY_PREVIOUS; do
-            printf '%s\n' "$secret" | grep -q "^  $k:" || { echo "$k missing from the Secret" >&2; exit 1; }
+            grep -q "^  $k:" <<<"$secret" || { echo "$k missing from the Secret" >&2; exit 1; }
           done
           migrate=$(helm template geolens helm/geolens $base $both \
             --set secrets.secretEncryptionKey=new-key --set secrets.secretEncryptionKeyPrevious=old-key \
             --show-only templates/migrate-job.yaml)
           for k in SECRET_ENCRYPTION_KEY SECRET_ENCRYPTION_KEY_PREVIOUS; do
-            printf '%s\n' "$migrate" | grep -q "name: $k$" || { echo "$k missing from the migrate hook" >&2; exit 1; }
+            grep -q "name: $k$" <<<"$migrate" || { echo "$k missing from the migrate hook" >&2; exit 1; }
           done
           if helm template geolens helm/geolens $base $both \
                --set secrets.secretEncryptionKeyPrevious=old-key >/dev/null 2>&1; then
@@ -648,7 +664,7 @@ jobs:
             --set-json 'api.extraEnv=[{"name":"SECRET_ENCRYPTION_KEY","value":"from-extra-env"}]' \
             --show-only templates/migrate-job.yaml)
           n=$(printf '%s\n' "$overridden" | grep -c 'name: SECRET_ENCRYPTION_KEY$')
-          if [ "$n" -ne 1 ] || ! printf '%s\n' "$overridden" | grep -Eq 'value: "?from-extra-env"?'; then
+          if [ "$n" -ne 1 ] || ! grep -Eq 'value: "?from-extra-env"?' <<<"$overridden"; then
             echo "SECRET_ENCRYPTION_KEY rendered $n times in the migrate hook, or the extraEnv value did not win" >&2
             exit 1
           fi
@@ -663,6 +679,10 @@ jobs:
     name: kind install test (helm ${{ matrix.major }})
     runs-on: ubuntu-latest
     needs: lint-and-template
+    timeout-minutes: 45
+    env:
+      # curlimages/curl:8.10.1
+      CURL_IMAGE: curlimages/curl@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
     strategy:
       fail-fast: false
       matrix:
@@ -671,6 +691,8 @@ jobs:
           - {major: 4, helm: v4.3.0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
@@ -685,8 +707,10 @@ jobs:
 
       - name: Install Calico
         # See kind-calico.yaml for why not kindnet. Images come from quay.io.
+        # The manifest is fetched at the commit tag v3.32.2 points to, since a
+        # tag can move.
         run: |
-          kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.2/manifests/calico.yaml
+          kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/db255c554b929afd73552fd3ac81d691107a1607/manifests/calico.yaml
           kubectl -n kube-system rollout status ds/calico-node --timeout=300s
           kubectl -n kube-system rollout status deploy/coredns --timeout=300s
 
@@ -759,7 +783,7 @@ jobs:
         # Validates the whole chain the chart configures: frontend nginx ->
         # resolver -> api Service FQDN -> /api prefix strip -> backend /health.
         run: |
-          kubectl run smoke --image=curlimages/curl:8.10.1 --restart=Never \
+          kubectl run smoke --image="$CURL_IMAGE" --restart=Never \
             --attach --rm --command -- \
             curl -sf --retry 5 --retry-delay 3 http://geolens-frontend.geolens/api/health
 
@@ -775,7 +799,7 @@ jobs:
 
       - name: NetworkPolicy keeps other pods off the api, titiler and worker
         run: |
-          kubectl run np-probe --image=curlimages/curl:8.10.1 --restart=Never --command -- sleep 600
+          kubectl run np-probe --image="$CURL_IMAGE" --restart=Never --command -- sleep 600
           kubectl wait --for=condition=Ready pod/np-probe --timeout=120s
           reach() { kubectl exec np-probe -- curl -s -o /dev/null --max-time 5 "$1"; }
           reach http://geolens-frontend.geolens/api/health/live || {
@@ -798,23 +822,97 @@ jobs:
         run: |
           helm upgrade geolens helm/geolens --namespace geolens --reuse-values --wait --timeout 10m
 
+      - name: Retire the fresh install
+        # The upgrade scenario below gets the runner to itself.
+        run: |
+          pkill -f 'kubectl.*port-forward' || true
+          helm uninstall geolens --namespace geolens --wait
+          kubectl delete namespace geolens --wait
+
+      - name: Upgrade from the latest published chart
+        # A separate stack in its own namespace and database, so a chart whose
+        # appVersion is ahead of the published one never runs the older app
+        # against a newer schema. Installs what an operator runs today, ingests
+        # through the edge, upgrades to this tree's chart and checks the data
+        # survived. --reset-then-reuse-values takes this chart's defaults, image
+        # tags included, and keeps the install's values: the upgrade an operator
+        # who passes the same values file gets. The job's --reuse-values re-run
+        # above covers the other way of upgrading.
+        run: |
+          # 10-init.sql errors on the reader role the new database inherits
+          # from the cluster; psql carries on past it.
+          kubectl exec deploy/geolens-ci-db -- psql -U geolens -d postgres -c 'CREATE DATABASE geolens_upgrade OWNER geolens'
+          kubectl exec deploy/geolens-ci-db -- psql -U geolens -d geolens_upgrade -f /docker-entrypoint-initdb.d/10-init.sql
+          kubectl create namespace geolens-upgrade
+          kubectl label namespace geolens-upgrade pod-security.kubernetes.io/enforce=restricted
+          values=(
+            --set api.replicas=1
+            --set frontend.replicas=1
+            --set secrets.databaseUrlOverride='postgresql+asyncpg://geolens:chart-ci-db-password@geolens-ci-db.default.svc.cluster.local:5432/geolens_upgrade'
+            --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef'
+            --set secrets.adminUsername='ci-admin'
+            --set secrets.adminPassword='chart-ci-only-Passw0rd!'
+            --set networkPolicy.enabled=true
+            --set staging.persistence.enabled=true
+            --set-json 'staging.persistence.accessModes=["ReadWriteOnce"]'
+            --set staging.persistence.storageClass=standard
+          )
+          helm install geolens oci://ghcr.io/geolens-io/charts/geolens --namespace geolens-upgrade \
+            "${values[@]}" --wait --timeout 20m
+          helm list --namespace geolens-upgrade
+
+          smoke() {
+            kubectl -n geolens-upgrade port-forward svc/geolens-frontend 8081:80 > port-forward-upgrade.log 2>&1 &
+            pf=$!
+            for _ in $(seq 1 20); do grep -q Forwarding port-forward-upgrade.log && break; sleep 1; done
+            .github/ci/ingest-smoke.sh http://127.0.0.1:8081 ci-admin 'chart-ci-only-Passw0rd!' | tee "$1"
+            kill "$pf"
+          }
+          smoke "$RUNNER_TEMP/before-upgrade.log"
+
+          helm upgrade geolens helm/geolens --namespace geolens-upgrade --reset-then-reuse-values --wait --timeout 20m
+          helm list --namespace geolens-upgrade
+
+          smoke "$RUNNER_TEMP/after-upgrade.log"
+          kubectl -n geolens-upgrade port-forward svc/geolens-frontend 8081:80 > port-forward-upgrade.log 2>&1 &
+          pf=$!
+          for _ in $(seq 1 20); do grep -q Forwarding port-forward-upgrade.log && break; sleep 1; done
+          token=$(curl -sSf -X POST http://127.0.0.1:8081/api/auth/login \
+            --data-urlencode username=ci-admin --data-urlencode 'password=chart-ci-only-Passw0rd!' \
+            | jq -r .access_token)
+          listed=$(curl -sSf -H "Authorization: Bearer $token" http://127.0.0.1:8081/api/datasets | jq -r '.datasets[].id')
+          kill "$pf"
+          for kind in vector raster; do
+            id=$(sed -n "s/^$kind dataset \(.*\) ingested$/\1/p" "$RUNNER_TEMP/before-upgrade.log")
+            if [ -z "$id" ] || ! grep -qx "$id" <<<"$listed"; then
+              echo "the $kind dataset ingested before the upgrade (${id:-none recorded}) is gone after it" >&2
+              exit 1
+            fi
+          done
+          echo "datasets ingested before the upgrade still list after it"
+
       - name: Diagnostics
         if: failure()
         run: |
           kubectl get pods -A -o wide
           kubectl get events -A --sort-by=.lastTimestamp | tail -50
-          kubectl -n geolens describe pods -l app.kubernetes.io/instance=geolens
-          for c in $(kubectl -n geolens get pods -l app.kubernetes.io/instance=geolens -o name); do
-            echo "=== logs $c ==="
-            kubectl -n geolens logs "$c" --all-containers --tail=100 || true
+          for ns in geolens geolens-upgrade; do
+            kubectl -n "$ns" describe pods -l app.kubernetes.io/instance=geolens || true
+            for c in $(kubectl -n "$ns" get pods -l app.kubernetes.io/instance=geolens -o name); do
+              echo "=== logs $ns/$c ==="
+              kubectl -n "$ns" logs "$c" --all-containers --tail=100 || true
+            done
           done
           kubectl logs -l app=geolens-ci-db --tail=50 || true
 
   terraform-validate:
     name: terraform validate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:

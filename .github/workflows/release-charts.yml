@@ -10,7 +10,7 @@
 # republishing an existing chart version; the OCI leg still signs this
 # commit's version if an earlier run stopped before signing it.
 # workflow_dispatch allows publishing a version whose bump merged before this
-# workflow existed.
+# workflow existed, but only from a commit chart-ci has passed on.
 name: release-charts
 
 on:
@@ -23,12 +23,19 @@ on:
 permissions:
   contents: write
   packages: write
+  # Reads chart-ci's result for a manual run's commit.
+  actions: read
   # cosign keyless signing: Fulcio issues the certificate from the job's OIDC token.
   id-token: write
 
 concurrency:
   group: release-charts
   cancel-in-progress: false
+
+# Same reason as ci.yml: GitHub's default `bash -e` leaves pipefail off.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   release:
@@ -42,7 +49,22 @@ jobs:
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
+      - name: Require a green chart-ci on this commit
+        # A manual run publishes main's current HEAD, which a newer push may
+        # have moved past what chart-ci has finished. The workflow_run path
+        # already carries a green run for its commit.
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          green=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&status=success" --jq .total_count)
+          if [ "$green" -lt 1 ]; then
+            echo "::error::chart-ci has no successful push run for $GITHUB_SHA; not publishing it"
+            exit 1
+          fi
+
       # The commit chart-ci tested. The `if` above admits only pushes to this
       # repository's main, and the next step re-checks it; main's current HEAD
       # could be a newer commit whose CI has not passed.
@@ -51,6 +73,7 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
+          # chart-releaser pushes the gh-pages index with the checkout's token.
 
       - name: Refuse anything not on main
         run: |

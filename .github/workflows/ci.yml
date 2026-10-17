@@ -861,12 +861,19 @@ jobs:
             "${values[@]}" --wait --timeout 20m
           helm list --namespace geolens-upgrade
 
-          smoke() {
-            kubectl -n geolens-upgrade port-forward svc/geolens-frontend 8081:80 > port-forward-upgrade.log 2>&1 &
+          # A fresh log per session, and wait for the old forward to exit before
+          # the next one binds 8081.
+          forward() {
+            log=$(mktemp)
+            kubectl -n geolens-upgrade port-forward svc/geolens-frontend 8081:80 > "$log" 2>&1 &
             pf=$!
-            for _ in $(seq 1 20); do grep -q Forwarding port-forward-upgrade.log && break; sleep 1; done
+            for _ in $(seq 1 20); do grep -q Forwarding "$log" && break; sleep 1; done
+          }
+          unforward() { kill "$pf"; wait "$pf" 2>/dev/null || true; }
+          smoke() {
+            forward
             .github/ci/ingest-smoke.sh http://127.0.0.1:8081 ci-admin 'chart-ci-only-Passw0rd!' | tee "$1"
-            kill "$pf"
+            unforward
           }
           smoke "$RUNNER_TEMP/before-upgrade.log"
 
@@ -874,14 +881,12 @@ jobs:
           helm list --namespace geolens-upgrade
 
           smoke "$RUNNER_TEMP/after-upgrade.log"
-          kubectl -n geolens-upgrade port-forward svc/geolens-frontend 8081:80 > port-forward-upgrade.log 2>&1 &
-          pf=$!
-          for _ in $(seq 1 20); do grep -q Forwarding port-forward-upgrade.log && break; sleep 1; done
+          forward
           token=$(curl -sSf -X POST http://127.0.0.1:8081/api/auth/login \
             --data-urlencode username=ci-admin --data-urlencode 'password=chart-ci-only-Passw0rd!' \
             | jq -r .access_token)
           listed=$(curl -sSf -H "Authorization: Bearer $token" http://127.0.0.1:8081/api/datasets/ | jq -r '.datasets[].id')
-          kill "$pf"
+          unforward
           for kind in vector raster; do
             id=$(sed -n "s/^$kind dataset \(.*\) ingested$/\1/p" "$RUNNER_TEMP/before-upgrade.log")
             if [ -z "$id" ] || ! grep -qx "$id" <<<"$listed"; then

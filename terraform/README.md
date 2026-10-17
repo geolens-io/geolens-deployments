@@ -25,7 +25,10 @@ cloud:
    `S3_ENDPOINT`. Only `s3` hands an upload to the worker through the bucket;
    with any other provider the api stages it at `/app/staging` and the worker
    reads it from there, so the two need a shared directory.
-3. An optional Redis-compatible cache reachable as `REDIS_URL`.
+3. A Redis-compatible cache reachable as `REDIS_URL`. From GeoLens 1.23.0,
+   importing or refreshing a service that needs a token fails without one,
+   and more than one api instance needs it too; everything else runs on an
+   in-process cache.
 4. Four containers: the frontend edge, the api, the worker, and titiler. The
    frontend must be the only public target, and when the api and titiler share
    a network namespace titiler has to move off port 8000.

@@ -147,9 +147,11 @@ while uploads keep working, so the symptom looks unrelated to the endpoint.
 
 ## Cache: Memorystore
 
-Optional, and only worth provisioning for more than one API instance, except
-that from 1.23.0 importing, re-uploading or refreshing a service that needs a
-token also needs the cache.
+Provision one unless no service you import needs a token. From 1.23.0 the api
+hands a service token to the worker through the cache, so importing,
+re-uploading or refreshing such a service answers 503 without `REDIS_URL`,
+even on a single instance. Without it everything else still works, with an
+in-process cache that is wrong for more than one API instance.
 
 ```bash
 gcloud redis instances create geolens-cache --size=1 --region=us-central1

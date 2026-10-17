@@ -468,3 +468,21 @@ ingested through the load balancer and the raster rendered in the browser,
 and the bucket refused a plain-HTTP request while serving HTTPS. The stack
 was then destroyed. The pilot profile has only been statically validated; it
 has not been applied or restore-tested in AWS.
+
+On 2026-10-16 in us-east-1, with the cache on, a stack applied from the
+previous recipe at GeoLens 1.24.0 was upgraded in place to this one at
+1.25.1. The baseline reported the database, S3 and cache healthy and passed
+`ingest-smoke.sh`. The upgrade's migrate task ran 0082 and 0083, and both
+services completed their rollout with every container on a read-only root and
+no capabilities, titiler as 1001:1001. Health reported 1.25.1 with all three
+providers healthy. The 1.24.0 datasets still listed, served their collection
+items and drew their raster tile, and `ingest-smoke.sh` passed again. A
+Sentinel-2 COG registered by reference from Earth Search through
+`/api/services/stac/import` served 200 PNG tiles through the edge, and the api
+logged titiler's `/internal/raster-relay/` requests; nothing was copied into
+the bucket. The one-off command path ran `scripts.rotate_secrets --dry-run`
+(exit 0) and `scripts.trust_login_device` for an unknown user (exit 1, as it
+should), and a probe in the same task showed the root read-only, its
+scratch paths writable and no effective capabilities. The stack was then
+destroyed; a sweep found nothing left but deregistered task definitions and
+the secret in its seven-day recovery window.

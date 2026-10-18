@@ -72,10 +72,12 @@ database URL, so none of those commands work bare. The
 
 ## Versioning and releases
 
-`appVersion`, the three `ghcr.io/geolens-io/*` image tags in `values.yaml`,
-and each Terraform recipe's `geolens_version` default track GeoLens releases
-and move together. The `version-drift` workflow runs weekly and fails when any of
-them has fallen behind the latest GeoLens release.
+`appVersion` and the three `ghcr.io/geolens-io/*` image tags in `values.yaml`
+move to each GeoLens release with a chart version bump. Each Terraform recipe's
+`geolens_version` default moves later, in its own pull request, after that
+recipe has been upgraded to the release on a real account. The `version-drift`
+workflow runs weekly and fails while any of them differs from the latest GeoLens
+release.
 
 Chart releases are cut by landing a `Chart.yaml` `version` bump on `main`. Once
 `chart-ci` passes on a push to `main`, `release-charts` packages the commit CI

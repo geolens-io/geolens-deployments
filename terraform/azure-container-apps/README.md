@@ -145,6 +145,12 @@ needs a token now requires a cache the api and worker share. With
 `cache_enabled = false` those requests answer 503
 `credential_store_unavailable`. Services without a token are unaffected.
 
+Upgrading to 1.26.0: migrations 0084 to 0086 are additive. 0085 waits at most
+5 seconds for its lock on `catalog.datasets` instead of queueing behind other
+writes, so on a busy catalog the migrate job can fail with a lock timeout.
+The apply then stops before the apps roll, and the previous revision keeps
+serving. Apply again.
+
 ## Configuration
 
 The variables cover the infrastructure and the application settings a first
@@ -275,7 +281,7 @@ az postgres flexible-server restore --resource-group <name>-rg \
 
 The new server has a new name, and this module generates the DSN from its own
 server, so repointing the stack at a restored database is a manual step:
-follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.25.1/RUNBOOK.md)
+follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.26.0/RUNBOOK.md)
 for the managed-PostgreSQL restore, and rehearse it before you rely on it.
 Blob Storage has no versioning or soft delete here; turn them on if you want
 them.
@@ -353,3 +359,15 @@ served vector and raster tiles. A Sentinel-2 item from Earth Search,
 registered by reference through `/api/services/stac/import`, served a raster
 tile through the edge, and the api logged titiler's reads on
 `/internal/raster-relay/`. The destroy took the four runs Teardown describes.
+
+Upgraded in place on 2026-10-18 in westus3: this recipe applied GeoLens 1.25.1
+with the defaults, cache off, then 1.26.0 over it, and the stack was
+destroyed. Before and after the upgrade `/api/health` reported the database,
+storage and cache over HTTPS and `.github/ci/ingest-smoke.sh` ingested a
+vector and a raster through the edge and fetched a tile. The migrate job ran
+0084 to 0086. `/api/health` answered 200 throughout, from the 1.25.1 revision
+until the 1.26.0 one took the traffic. The datasets ingested on 1.25.1 still
+served their collection items and raster tile. An append-only key minted for
+the 1.25.1 vector dataset added a feature through the edge (201) and was
+refused a read (401). The destroy again took four runs, and neither resource
+group nor any soft-deleted workspace or vault remained.

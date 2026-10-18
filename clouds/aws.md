@@ -62,7 +62,7 @@ RDS requires TLS, so set `DATABASE_SSL_MODE=require`.
 ### ECS pilot database boundary
 
 The ECS recipe currently gives the RDS master login to the API, worker and
-migration task. GeoLens 1.25.1 supports canonical runtime-role settings, but
+migration task. GeoLens 1.26.0 supports canonical runtime-role settings, but
 the published API image does not include the repository-level managed-database
 bootstrap/reconciliation helper that the recipe would need to create and verify
 that role. Keep pilot organizations on separate RDS instances and keep the
@@ -225,6 +225,12 @@ Upgrading to 1.23.0: importing, re-uploading or refreshing a service that
 needs a token now requires a cache the api and worker share. With `REDIS_URL` unset
 those requests answer 503 `credential_store_unavailable`. Services without a
 token are unaffected.
+
+Upgrading to 1.26.0: migrations 0084 to 0086 are additive. 0085 waits at most
+5 seconds for its lock on `catalog.datasets` instead of queueing behind other
+writes, so on a busy catalog the migration can fail with a lock timeout.
+Leave the services on the previous release and run the migrate task again
+before rolling them onto 1.26.0.
 
 ## HTTPS
 

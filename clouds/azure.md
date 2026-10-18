@@ -196,6 +196,12 @@ needs a token now requires a cache the api and worker share. With `REDIS_URL` un
 those requests answer 503 `credential_store_unavailable`. Services without a
 token are unaffected.
 
+Upgrading to 1.26.0: migrations 0084 to 0086 are additive. 0085 waits at most
+5 seconds for its lock on `catalog.datasets` instead of queueing behind other
+writes, so on a busy catalog the migration can fail with a lock timeout.
+Leave the apps on the previous release and run the migrate job again before
+rolling them onto 1.26.0.
+
 ## HTTPS
 
 Container Apps terminates TLS on its own `*.azurecontainerapps.io` hostname

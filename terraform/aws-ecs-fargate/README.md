@@ -211,6 +211,12 @@ needs a token now requires a cache the api and worker share. With `cache_enabled
 those requests answer 503 `credential_store_unavailable`. Services without a
 token are unaffected.
 
+Upgrading to 1.26.0: migrations 0084 to 0086 are additive. 0085 waits at most
+5 seconds for its lock on `catalog.datasets` instead of queueing behind other
+writes, so on a busy catalog the migrate task can fail with a lock timeout.
+The apply then stops before the services roll, and the previous release keeps
+serving. Apply again.
+
 ## Running one-off commands
 
 The services have no ECS Exec. Run a GeoLens maintenance script as a one-off

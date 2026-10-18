@@ -145,6 +145,12 @@ needs a token now requires a cache the api and worker share. With
 `cache_enabled = false` those requests answer 503
 `credential_store_unavailable`. Services without a token are unaffected.
 
+Upgrading to 1.26.0: migrations 0084 to 0086 are additive. 0085 waits at most
+5 seconds for its lock on `catalog.datasets` instead of queueing behind other
+writes, so on a busy catalog the migrate job can fail with a lock timeout.
+The apply then stops before the apps roll, and the previous revision keeps
+serving. Apply again.
+
 ## Configuration
 
 The variables cover the infrastructure and the application settings a first

@@ -61,13 +61,15 @@ A change to what an apply creates, or to the settings a container ends up
 with, is tried on a real account before it merges. The run upgrades a stack in
 place, since that is what an operator does, and leaves nothing behind.
 
-1. Copy the released recipe and `.github/ci` from `origin/main` to a scratch
-   directory outside the repository, so no state or tfvars land in a
-   checkout. The baseline is what operators run today.
+1. From a checkout of this repository, copy the released recipe and
+   `.github/ci` from `origin/main` to a scratch directory outside it, so no
+   state or tfvars land in a checkout. The baseline is what operators run
+   today.
 
    ```sh
+   checkout=$(git rev-parse --show-toplevel)
    scratch=$(mktemp -d)
-   git archive origin/main terraform/<recipe> .github/ci | tar -x -C "$scratch"
+   git -C "$checkout" archive origin/main terraform/<recipe> .github/ci | tar -x -C "$scratch"
    ```
 
 2. Work in `$scratch/terraform/<recipe>`. Write `terraform.tfvars` there with
@@ -93,7 +95,7 @@ place, since that is what an operator does, and leaves nothing behind.
    again in case the branch moved a provider pin.
 
    ```sh
-   git archive <branch> terraform/<recipe> .github/ci | tar -x -C "$scratch"
+   git -C "$checkout" archive <branch> terraform/<recipe> .github/ci | tar -x -C "$scratch"
    ```
 
    Apply while polling `/api/health` every 10 seconds. Every poll should

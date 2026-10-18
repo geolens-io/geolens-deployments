@@ -477,7 +477,7 @@ resource "aws_ecs_service" "app" {
   launch_type     = "FARGATE"
 
   # Tasks carry the stack's tags, so Fargate, the largest line item,
-  # shows up under the pilot's Deployment cost-allocation tag.
+  # shows up under the stack's Deployment cost-allocation tag.
   propagate_tags = "SERVICE"
 
   network_configuration {

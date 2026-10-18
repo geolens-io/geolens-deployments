@@ -61,7 +61,7 @@ resource "aws_db_instance" "this" {
   vpc_security_group_ids = [aws_security_group.data.id]
   publicly_accessible    = false
   multi_az               = false
-  copy_tags_to_snapshot  = var.pilot_profile
+  copy_tags_to_snapshot  = var.production_profile
 
   backup_retention_period = var.backup_retention_days
   apply_immediately       = true
@@ -89,7 +89,7 @@ resource "aws_s3_bucket_public_access_block" "this" {
   restrict_public_buckets = true
 }
 
-# The same TLS-only rule the pilot README asks of the state bucket. The
+# The same TLS-only rule the production profile README asks of the state bucket. The
 # app, titiler and the presigned URLs browsers upload to all use HTTPS.
 resource "aws_s3_bucket_policy" "this" {
   bucket = aws_s3_bucket.this.id

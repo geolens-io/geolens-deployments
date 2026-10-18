@@ -4,13 +4,13 @@ variable "name" {
   default     = "geolens"
 }
 
-variable "pilot_profile" {
-  description = "Require the safeguards used by the single-organization hosted pilot profile. Each organization still needs a separate module state and stack."
+variable "production_profile" {
+  description = "Require the safeguards used by the single-organization production profile. Each organization still needs a separate module state and stack."
   type        = bool
   default     = false
 
   validation {
-    condition = !var.pilot_profile || (
+    condition = !var.production_profile || (
       can(regex("^geolens-[a-z0-9]([a-z0-9-]*[a-z0-9])?$", var.name)) &&
       var.deletion_protection &&
       !var.skip_final_snapshot &&
@@ -21,7 +21,7 @@ variable "pilot_profile" {
       var.app_desired_count == 1 &&
       var.worker_concurrency == 1
     )
-    error_message = "pilot_profile requires a geolens-<org-slug> name, deletion protection, a final snapshot, at least 7 backup days, versioned S3 with at least 30-day noncurrent retention, and one app task and worker slot."
+    error_message = "production_profile requires a geolens-<org-slug> name, deletion protection, a final snapshot, at least 7 backup days, versioned S3 with at least 30-day noncurrent retention, and one app task and worker slot."
   }
 }
 
@@ -73,20 +73,20 @@ variable "cache_enabled" {
 }
 
 variable "public_app_url" {
-  description = "Public URL of the deployment. Empty means http://<alb dns name>. Set this when you put a domain or CDN in front of the load balancer; with a certificate it must be the https:// origin, since it drives the S3 CORS rule and every URL the api hands out. The pilot profile requires a hostname without a path."
+  description = "Public URL of the deployment. Empty means http://<alb dns name>. Set this when you put a domain or CDN in front of the load balancer; with a certificate it must be the https:// origin, since it drives the S3 CORS rule and every URL the api hands out. The production profile requires a hostname without a path."
   type        = string
   default     = ""
 
   validation {
     condition = (var.acm_certificate_arn == "" || startswith(var.public_app_url, "https://")) && (
-      !var.pilot_profile || (
+      !var.production_profile || (
         var.acm_certificate_arn != "" &&
         startswith(var.public_app_url, "https://") &&
         can(regex("^https://[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$", trimsuffix(var.public_app_url, "/"))) &&
         strcontains(var.public_app_url, ".")
       )
     )
-    error_message = "With acm_certificate_arn set, public_app_url must be HTTPS; pilot_profile also requires a public hostname without a path and a certificate ARN."
+    error_message = "With acm_certificate_arn set, public_app_url must be HTTPS; production_profile also requires a public hostname without a path and a certificate ARN."
   }
 }
 
@@ -96,8 +96,8 @@ variable "acm_certificate_arn" {
   default     = ""
 
   validation {
-    condition     = !var.pilot_profile || can(regex("^arn:[a-z0-9-]+:acm:${var.region}:[0-9]{12}:certificate/[A-Za-z0-9-]+$", var.acm_certificate_arn))
-    error_message = "pilot_profile requires an ACM certificate ARN in the configured AWS region. Confirm in ACM that it is ISSUED and covers public_app_url."
+    condition     = !var.production_profile || can(regex("^arn:[a-z0-9-]+:acm:${var.region}:[0-9]{12}:certificate/[A-Za-z0-9-]+$", var.acm_certificate_arn))
+    error_message = "production_profile requires an ACM certificate ARN in the configured AWS region. Confirm in ACM that it is ISSUED and covers public_app_url."
   }
 }
 
@@ -139,19 +139,19 @@ variable "skip_final_snapshot" {
 }
 
 variable "deletion_protection" {
-  description = "Block terraform destroy from deleting the database. Required by pilot_profile."
+  description = "Block terraform destroy from deleting the database. Required by production_profile."
   type        = bool
   default     = false
 }
 
 variable "s3_force_destroy" {
-  description = "Let terraform destroy delete the bucket while it still holds objects. Keep false for pilot data."
+  description = "Let terraform destroy delete the bucket while it still holds objects. Keep false for production data."
   type        = bool
   default     = false
 }
 
 variable "backup_retention_days" {
-  description = "RDS automated backup retention in days (0 disables automated backups; pilot_profile requires at least 7)."
+  description = "RDS automated backup retention in days (0 disables automated backups; production_profile requires at least 7)."
   type        = number
   default     = 7
 
@@ -162,9 +162,9 @@ variable "backup_retention_days" {
 }
 
 # ponytail: off by default, so an overwrite or delete in the bucket is final.
-# pilot_profile turns it on with noncurrent-version expiry.
+# production_profile turns it on with noncurrent-version expiry.
 variable "s3_versioning_enabled" {
-  description = "Enable S3 object versioning and the configured noncurrent-version lifecycle. Required by pilot_profile."
+  description = "Enable S3 object versioning and the configured noncurrent-version lifecycle. Required by production_profile."
   type        = bool
   default     = false
 }
@@ -290,10 +290,10 @@ variable "extra_secrets" {
   }
 
   validation {
-    condition = !var.pilot_profile || alltrue([
+    condition = !var.production_profile || alltrue([
       for value in values(var.extra_secrets) : can(regex("^arn:[^:]+:secretsmanager:${var.region}:[0-9]{12}:secret:${var.name}/", value))
     ])
-    error_message = "In pilot_profile, each extra secret must be an ARN in this region under the stack-specific Secrets Manager path <name>/."
+    error_message = "In production_profile, each extra secret must be an ARN in this region under the stack-specific Secrets Manager path <name>/."
   }
 }
 

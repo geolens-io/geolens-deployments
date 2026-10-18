@@ -25,7 +25,7 @@ provider "aws" {
         Project   = "geolens"
         ManagedBy = "terraform"
       },
-      var.pilot_profile ? { Deployment = var.name } : {}
+      var.production_profile ? { Deployment = var.name } : {}
     )
   }
 }

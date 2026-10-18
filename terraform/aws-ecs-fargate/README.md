@@ -211,6 +211,21 @@ needs a token now requires a cache the api and worker share. With `cache_enabled
 those requests answer 503 `credential_store_unavailable`. Services without a
 token are unaffected.
 
+Upgrading to 1.25 from an earlier release (1.25.1 is the first with api and
+worker images): migration 0083 builds its indexes on `ingest_jobs` and
+`records` with `CREATE INDEX CONCURRENTLY`, which waits for open
+transactions to finish and takes longer on a large catalog. The apply
+waits up to an hour for the migrate task while the previous release keeps
+serving. If the task fails, apply again; 0083 drops and rebuilds the invalid
+index an interrupted build leaves behind. If the apply gives up after the
+hour, wait for the task to stop before applying again, so two migrations
+never overlap. After 10 failed password sign-ins within an hour, an account
+answers 429 to browsers it doesn't know; the example under
+[Running one-off commands](#running-one-off-commands) lets an admin back in.
+The [chart's notes](../../helm/geolens/README.md#migrations-and-upgrades)
+on private certificate authorities and Cloudflare Web Analytics need a mounted CA bundle or frontend env, which this recipe does
+not expose.
+
 Upgrading to 1.26.0: migrations 0084 to 0086 are additive. 0085 waits at most
 5 seconds for its lock on `catalog.datasets` instead of queueing behind other
 writes, so on a busy catalog the migrate task can fail with a lock timeout.

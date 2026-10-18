@@ -1004,6 +1004,9 @@ jobs:
         with:
           terraform_wrapper: false
 
+      - name: Guard - every chart upgrade note reaches the recipes and cloud guides
+        run: bash .github/ci/upgrade-note-parity.sh
+
       - name: terraform fmt
         run: terraform fmt -check -recursive terraform
 

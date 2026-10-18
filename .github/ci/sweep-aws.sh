@@ -24,8 +24,10 @@ note() { echo "NOTE  $1: $2"; }
 # a list query gets one item per line.
 rows() { aws "$@" --output text | sed '/^None$/d; /^$/d'; }
 list() { rows "$@" | tr '\t' '\n'; }
-# Names Terraform generates from "<name>-" plus a numeric unique suffix.
-generated() { grep -E "^${name}-[0-9]+$" || true; }
+# Every match is on a name the recipe generates, never a bare prefix, so a
+# sweep never reports another stack whose name starts with this one.
+# name_prefix adds a timestamp and hex counter.
+generated() { grep -E "^${name}-${1:-}[0-9a-f]+$" || true; }
 
 echo "Sweeping stack $name in $region"
 
@@ -53,14 +55,14 @@ for db in $out; do found "RDS instance" "$db"; done
 out=$(rows rds describe-db-snapshots \
   --query 'DBSnapshots[].[DBSnapshotIdentifier,DBInstanceIdentifier,SnapshotType]')
 while read -r snap db type; do
-  if [[ $snap == "$name-final-"* || $db =~ ^${name}-[0-9]+$ ]]; then
+  if [[ $snap =~ ^${name}-final-[0-9]{14}$ || $db =~ ^${name}-[0-9a-f]+$ ]]; then
     found "RDS snapshot ($type)" "$snap"
   fi
 done <<<"$out"
 out=$(rows rds describe-db-instance-automated-backups \
   --query 'DBInstanceAutomatedBackups[].[DBInstanceIdentifier,Status]')
 while read -r db st; do
-  [[ ! $db =~ ^${name}-[0-9]+$ ]] || found "RDS automated backup" "$db ($st)"
+  [[ ! $db =~ ^${name}-[0-9a-f]+$ ]] || found "RDS automated backup" "$db ($st)"
 done <<<"$out"
 out=$(list rds describe-db-subnet-groups --query 'DBSubnetGroups[].DBSubnetGroupName' | generated)
 for group in $out; do found "RDS subnet group" "$group"; done
@@ -69,10 +71,10 @@ out=$(list elasticache describe-replication-groups \
   --query "ReplicationGroups[?ReplicationGroupId=='$name-cache'].ReplicationGroupId")
 for rg in $out; do found "ElastiCache replication group" "$rg"; done
 out=$(list elasticache describe-cache-clusters \
-  --query "CacheClusters[?starts_with(CacheClusterId, '$name-cache')].CacheClusterId")
+  --query "CacheClusters[?ReplicationGroupId=='$name-cache'].CacheClusterId")
 for cc in $out; do found "ElastiCache cluster" "$cc"; done
 out=$(list elasticache describe-serverless-caches \
-  --query "ServerlessCaches[?starts_with(ServerlessCacheName, '$name')].ServerlessCacheName")
+  --query "ServerlessCaches[?ServerlessCacheName=='$name-cache'].ServerlessCacheName")
 for sc in $out; do found "ElastiCache serverless cache" "$sc"; done
 out=$(list elasticache describe-cache-subnet-groups \
   --query "CacheSubnetGroups[?CacheSubnetGroupName=='$name-cache'].CacheSubnetGroupName")
@@ -89,8 +91,10 @@ for igw in $out; do found "internet gateway" "$igw"; done
 out=$(list ec2 describe-security-groups \
   --filters "Name=group-name,Values=$name-alb-*,$name-app-*,$name-data-*" \
   --query 'SecurityGroups[].GroupName')
-for sg in $out; do found "security group" "$sg"; done
-out=$(list ec2 describe-addresses --filters "Name=tag:Name,Values=$name*" --query 'Addresses[].PublicIp')
+for kind in alb app data; do
+  for sg in $(generated "$kind-" <<<"$out"); do found "security group" "$sg"; done
+done
+out=$(list ec2 describe-addresses --filters "Name=tag:Name,Values=$name" --query 'Addresses[].PublicIp')
 for eip in $out; do found "Elastic IP" "$eip"; done
 if [ -n "$vpcs" ]; then
   vpc_list=$(paste -sd, - <<<"$vpcs")
@@ -136,7 +140,7 @@ done
 out=$(aws secretsmanager list-secrets --include-planned-deletion --filters "Key=name,Values=$name/app-" \
   --query 'SecretList[].[Name,DeletedDate]' --output text)
 while read -r secret deleted; do
-  [ -n "$secret" ] || continue
+  [[ $secret =~ ^${name}/app-[0-9a-f]+$ ]] || continue
   if [ "$deleted" = None ]; then
     found "secret" "$secret"
   else
@@ -146,7 +150,9 @@ done <<<"$out"
 
 out=$(list iam list-roles \
   --query "Roles[?starts_with(RoleName, '$name-exec-') || starts_with(RoleName, '$name-task-')].RoleName")
-for role in $out; do found "IAM role" "$role"; done
+for kind in exec task; do
+  for role in $(generated "$kind-" <<<"$out"); do found "IAM role" "$role"; done
+done
 
 [ "$left" = 1 ] || echo "Nothing left for $name in $region beyond the notes above"
 exit "$left"

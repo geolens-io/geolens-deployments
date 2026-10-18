@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Lists what an azure-container-apps stack left behind after
 # `terraform destroy`. Read-only. Exits 1 when anything the destroy should have
-# removed remains, soft-deleted workspaces and vaults included, since they hold
-# the name for the next apply.
+# removed remains, a soft-deleted workspace included, since it holds the name
+# for the next apply. The recipe creates no Key Vault, so none is checked.
 #
 #   sweep-azure.sh <name> <subscription-id>
 #
@@ -21,11 +21,28 @@ found() { echo "LEFT  $1: $2"; left=1; }
 # reading as nothing left.
 rows() { az "$@" --subscription "$subscription" --output tsv; }
 
-# The storage account drops hyphens and keeps 18 characters before its
-# six-character suffix.
+# Only the names the recipe generates, so a sweep never reports another stack
+# whose name merely starts with this one. The database server and cache add
+# a six-character suffix; the storage account drops hyphens and keeps 18
+# characters before it.
 storage=${name//-/}
 storage=${storage:0:18}
-storage_query="type == 'Microsoft.Storage/storageAccounts' && starts_with(name, '$storage') && length(name) == \`$((${#storage} + 6))\`"
+ours() {
+  local group=$1 type=$2 item=$3
+  case $group in "$name-rg" | "$name-rg-infra") return 0 ;; esac
+  case $type in
+    Microsoft.DBforPostgreSQL/flexibleServers | Microsoft.Cache/redisEnterprise)
+      [[ $item =~ ^${name}-[a-z0-9]{6}$ ]] ;;
+    Microsoft.Storage/storageAccounts) [[ $item =~ ^${storage}[a-z0-9]{6}$ ]] ;;
+    Microsoft.Network/privateDnsZones) [ "$item" = "$name.private.postgres.database.azure.com" ] ;;
+    *)
+      case $item in
+        "$name-vnet" | "$name-logs" | "$name-env" | "$name-app" | "$name-worker" | "$name-migrate") return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
+  esac
+}
 
 echo "Sweeping stack $name"
 
@@ -34,19 +51,22 @@ for group in "$name-rg" "$name-rg-infra"; do
   [ "$exists" != true ] || found "resource group" "$group"
 done
 
-# Every resource the recipe names, wherever it sits, Managed Redis included.
-out=$(rows resource list \
-  --query "[?starts_with(name, '$name-') || starts_with(name, '$name.') || ($storage_query)].[type, name]")
-while IFS=$'\t' read -r type item; do
-  [ -z "$item" ] || found "$type" "$item"
+# Resource group names compare case-insensitively in Azure; the CLI may
+# report either case.
+out=$(rows resource list --query "[].[resourceGroup, type, name]")
+while IFS=$'\t' read -r group type item; do
+  [ -n "$item" ] || continue
+  lower=$(tr '[:upper:]' '[:lower:]' <<<"$group")
+  if ours "$lower" "$type" "$item"; then
+    found "$type" "$item (resource group $group)"
+  fi
 done <<<"$out"
 
 out=$(rows monitor log-analytics workspace list-deleted-workspaces \
-  --query "[?starts_with(name, '$name-')].name")
-for ws in $out; do found "soft-deleted Log Analytics workspace" "$ws"; done
-
-out=$(rows keyvault list-deleted --resource-type vault --query "[?starts_with(name, '$name')].name")
-for kv in $out; do found "soft-deleted key vault" "$kv"; done
+  --query "[?name == '$name-logs'].[resourceGroup, name]")
+while IFS=$'\t' read -r group ws; do
+  [ -z "$ws" ] || found "soft-deleted Log Analytics workspace" "$ws (resource group $group)"
+done <<<"$out"
 
 [ "$left" = 1 ] || echo "Nothing left for $name"
 exit "$left"

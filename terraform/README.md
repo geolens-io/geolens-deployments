@@ -71,15 +71,14 @@ place, since that is what an operator does, and leaves nothing behind.
    git archive origin/main terraform/<recipe> .github/ci | tar -x -C "$scratch"
    ```
 
-2. Work in `$scratch/terraform/<recipe>`; the scripts below are under
-   `$scratch/.github/ci/`. Write `terraform.tfvars` there with a short unused
-   `name`, the previous release as `geolens_version`, and for AWS
-   `skip_final_snapshot = true` and `s3_force_destroy = true`, so the stack
-   can be destroyed outright.
+2. Work in `$scratch/terraform/<recipe>`. Write `terraform.tfvars` there with
+   a short unused `name`, the previous release as `geolens_version`, and for
+   AWS `skip_final_snapshot = true` and `s3_force_destroy = true`, so the
+   stack can be destroyed outright.
 3. `terraform init && terraform apply`, then take a baseline:
    `curl -sf "$url/api/health"` and
-   `.github/ci/ingest-smoke.sh "$url" admin "$password"`, with `url` from
-   `terraform output -raw app_url` and the password from
+   `"$scratch/.github/ci/ingest-smoke.sh" "$url" admin "$password"`, with
+   `url` from `terraform output -raw app_url` and the password from
    `eval "$(terraform output -raw admin_password_command)"`.
 4. Change only `geolens_version` (or copy in the branch's recipe) and apply on
    the same state while polling `/api/health` every 10 seconds. Every poll
@@ -95,8 +94,8 @@ place, since that is what an operator does, and leaves nothing behind.
 8. Sweep for leftovers. Every `LEFT` line is something to delete by hand:
 
    ```sh
-   .github/ci/sweep-aws.sh <name> <region>
-   .github/ci/sweep-azure.sh <name> <subscription-id>
+   "$scratch/.github/ci/sweep-aws.sh" <name> <region>
+   "$scratch/.github/ci/sweep-azure.sh" <name> <subscription-id>
    ```
 
    On AWS, force-delete the secret the sweep notes in its recovery window.

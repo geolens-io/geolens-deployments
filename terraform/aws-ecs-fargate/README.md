@@ -127,9 +127,9 @@ cost-allocation tag, agree S3, database, egress and AI limits with the
 organization, and configure AWS Budgets and provider-side alerts before
 accepting data.
 
-### Database identity limit as of release 1.25.1
+### Database identity limit as of release 1.26.0
 
-GeoLens 1.25.1 supports its canonical runtime-role environment settings and
+GeoLens 1.26.0 supports its canonical runtime-role environment settings and
 requires migrations to run separately when that mode is enabled. The published
 API image does not include the repository-level `scripts/init-db.sh` or
 `scripts/lib/configure-runtime-db-role.sh` helper, and this Terraform recipe's
@@ -239,7 +239,7 @@ a failed run never reads as done; it uses `false` rather than `exit` so a
 pasted copy doesn't close your shell.
 
 That example is the lockout recovery from section 12 of the GeoLens
-[RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.25.1/RUNBOOK.md). Its
+[RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.26.0/RUNBOOK.md). Its
 single-use link lands in the migrate log group, which keeps it for 14 days;
 the link expires 10 minutes after it is printed. For the section 11 key
 rotation, the command is
@@ -303,7 +303,7 @@ no longer makes them unreadable. Adding it to a running stack is safe: the app
 still falls back to the JWT-derived key for anything written before. Do not
 replace `random_bytes.secret_encryption_key` to rotate it; that strands what it
 encrypted. Follow section 11 of the GeoLens
-[RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.25.1/RUNBOOK.md)
+[RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.26.0/RUNBOOK.md)
 instead, running its script as described in
 [Running one-off commands](#running-one-off-commands).
 
@@ -352,7 +352,7 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
   from the load balancer. A NAT gateway costs about $32 a month and buys you
   private task IPs.
 - The RDS master user is both the migration and application login. The current
-  1.25.1 image/recipe combination does not run the canonical managed-Postgres
+  1.26.0 image/recipe combination does not run the canonical managed-Postgres
   role reconciler; keep each pilot on its own RDS instance as described above.
 - One task role is shared by every container, which lets titiler write to the
   bucket even though it only reads.
@@ -388,7 +388,7 @@ organization-specific stack:
 2. Restore a database recovery point to a new RDS endpoint and recover the
    corresponding S3 objects or versions. RDS recovery creates a new endpoint;
    keep the source stack available until verification is complete.
-3. Follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.25.1/RUNBOOK.md)
+3. Follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.26.0/RUNBOOK.md)
    for managed PostgreSQL restore steps. Verify `/api/health`, sign-in,
    collection items and raster rendering, and record the recovery point,
    endpoint change, object versions and elapsed time.
@@ -492,3 +492,14 @@ should), and a probe in the same task showed the root read-only, its
 scratch paths writable and no effective capabilities. The stack was then
 destroyed; a sweep found nothing left but deregistered task definitions and
 the secret in its seven-day recovery window.
+
+On 2026-10-18 in us-east-1, with the cache on, this recipe applied GeoLens
+1.25.1 and was then upgraded in place to 1.26.0. The baseline reported the
+database, S3 and cache healthy and passed `ingest-smoke.sh`. The upgrade's
+migrate task ran 0084 to 0086. `/api/health` answered 200 at every check
+during the rollout, ten seconds apart, and then reported 1.26.0 with all three
+providers healthy. The 1.25.1 datasets still served their collection items and
+raster tile, and `ingest-smoke.sh` passed again. An append-only key minted for
+the 1.25.1 vector dataset added a feature through the edge (201) and was
+refused a read (401). The stack was then destroyed in one run; a sweep found
+nothing left but the secret in its recovery window.

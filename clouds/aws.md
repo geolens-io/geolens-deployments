@@ -62,7 +62,7 @@ RDS requires TLS, so set `DATABASE_SSL_MODE=require`.
 ### ECS pilot database boundary
 
 The ECS recipe currently gives the RDS master login to the API, worker and
-migration task. GeoLens 1.25.1 supports canonical runtime-role settings, but
+migration task. GeoLens 1.26.0 supports canonical runtime-role settings, but
 the published API image does not include the repository-level managed-database
 bootstrap/reconciliation helper that the recipe would need to create and verify
 that role. Keep pilot organizations on separate RDS instances and keep the

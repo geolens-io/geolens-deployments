@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # Lists what an aws-ecs-fargate stack left behind after `terraform destroy`.
-# Read-only. Exits 1 when anything the destroy should have removed remains,
-# 0 when only the expected remnants are left: a secret in its recovery window
-# and deregistered task definitions.
+# Read-only.
 #
 #   AWS_PROFILE=<profile> sweep-aws.sh <name> [region]
+#
+# LEFT: an exact name the recipe generates, in the swept region or in the
+# stack's own VPC. It belongs to this stack; delete it.
+# NOTE: a possible match the name alone cannot prove, such as a global IAM
+# role a same-named stack in another region would also create, or a secret in
+# its recovery window. Check it against the stack's own IDs before touching it.
+# Exits 1 on any LEFT; NOTE lines alone exit 0.
 #
 # The Resource Groups Tagging API keeps listing deleted ECS tasks and services
 # for a while, so every check asks the owning service instead.
@@ -111,31 +116,30 @@ if [ -n "$vpcs" ]; then
   for nat in $out; do found "NAT gateway" "$nat"; done
 fi
 
-# Load balancer and target group names keep only the first six characters of
-# the stack name, so a match counts when it sits in this stack's VPC or its
-# VPC is gone, not in another stack's.
+# The load balancer and target group take name_prefix = the first six
+# characters of the stack name, which other stacks can share. One counts as
+# LEFT inside this stack's VPC, as NOTE when its VPC is gone, and not at all in
+# another VPC. Only the kinds the recipe creates are considered: an
+# application load balancer and an ip target group.
 prefix=${name:0:6}
 elb() {
-  local kind=$1 rows_=$2 item vpc others
-  while read -r item vpc; do
-    [ -n "$item" ] || continue
-    others=""
-    if ! grep -qx "$vpc" <<<"$vpcs"; then
-      others=$(list ec2 describe-vpcs --filters "Name=vpc-id,Values=$vpc" --query 'Vpcs[].VpcId')
+  local kind=$1 want=$2 rows_=$3 item vpc type exists
+  while read -r item vpc type; do
+    [[ $item =~ ^${prefix}[0-9a-f]+$ && $type == "$want" ]] || continue
+    if grep -qx "$vpc" <<<"$vpcs"; then
+      found "$kind" "$item (in this stack's VPC $vpc)"
+      continue
     fi
-    if [ -z "$others" ]; then
-      found "$kind" "$item"
-    else
-      note "$kind" "$item shares the name prefix but sits in another VPC"
-    fi
+    exists=$(list ec2 describe-vpcs --filters "Name=vpc-id,Values=$vpc" --query 'Vpcs[].VpcId')
+    [ -n "$exists" ] || note "$kind" "$item shares the name prefix and its VPC $vpc is gone"
   done <<<"$rows_"
 }
 out=$(rows elbv2 describe-load-balancers \
-  --query "LoadBalancers[?starts_with(LoadBalancerName, '$prefix')].[LoadBalancerName,VpcId]")
-elb "load balancer" "$out"
+  --query "LoadBalancers[?starts_with(LoadBalancerName, '$prefix')].[LoadBalancerName,VpcId,Type]")
+elb "load balancer" application "$out"
 out=$(rows elbv2 describe-target-groups \
-  --query "TargetGroups[?starts_with(TargetGroupName, '$prefix')].[TargetGroupName,VpcId]")
-elb "target group" "$out"
+  --query "TargetGroups[?starts_with(TargetGroupName, '$prefix')].[TargetGroupName,VpcId,TargetType]")
+elb "target group" ip "$out"
 
 out=$(list logs describe-log-groups --log-group-name-prefix "/ecs/$name-" --query 'logGroups[].logGroupName')
 for group in $out; do
@@ -153,11 +157,14 @@ while read -r secret deleted; do
   fi
 done <<<"$out"
 
-out=$(list iam list-roles \
-  --query "Roles[?starts_with(RoleName, '$name-exec-') || starts_with(RoleName, '$name-task-')].RoleName")
-for kind in exec task; do
-  for role in $(generated "$kind-" <<<"$out"); do found "IAM role" "$role"; done
-done
+# IAM is global: a stack with the same name in another region creates roles
+# of the same form.
+out=$(rows iam list-roles \
+  --query "Roles[?starts_with(RoleName, '$name-exec-') || starts_with(RoleName, '$name-task-')].[RoleName,CreateDate]")
+while read -r role created; do
+  [[ $role =~ ^${name}-(exec|task)-[0-9a-f]+$ ]] || continue
+  note "IAM role" "$role, created $created; IAM is global, so confirm it was this stack's"
+done <<<"$out"
 
 [ "$left" = 1 ] || echo "Nothing left for $name in $region beyond the notes above"
 exit "$left"

@@ -90,12 +90,19 @@ place, since that is what an operator does, and leaves nothing behind.
 
 4. Move to what is under test, on the same state. A version bump changes
    only `geolens_version` in `terraform.tfvars`. A branch that changes the
-   recipe or `.github/ci` is copied over the scratch copy first; the
-   archive holds no tfvars or state, so both survive. Run `terraform init`
-   again in case the branch moved a provider pin.
+   recipe or `.github/ci` replaces both directories, so files it deletes or
+   renames don't linger. Keep the tfvars, the state and `.terraform/`, and
+   take the branch's `.terraform.lock.hcl`, which carries any provider pin
+   it moves:
 
    ```sh
+   r=$scratch/terraform/<recipe>
+   keep=$(mktemp -d "$scratch/keep.XXXXXX")
+   mv "$r/terraform.tfvars" "$r"/terraform.tfstate* "$r/.terraform" "$keep/"
+   rm -rf "$r" "$scratch/.github/ci"
    git -C "$checkout" archive <branch> terraform/<recipe> .github/ci | tar -x -C "$scratch"
+   mv "$keep/terraform.tfvars" "$keep"/terraform.tfstate* "$keep/.terraform" "$r/"
+   cd "$r" && terraform init
    ```
 
    Apply while polling `/api/health` every 10 seconds. Every poll should
@@ -106,16 +113,28 @@ place, since that is what an operator does, and leaves nothing behind.
    with the execution from `az containerapp job execution list`.
 6. Check that the baseline's datasets still serve their collection items and
    raster tile, then run `ingest-smoke.sh` again with the same arguments.
-7. `terraform destroy`. On Azure, run it until it completes; Teardown in the
-   recipe README explains the four runs.
-8. Sweep for leftovers. Every `LEFT` line is something to delete by hand:
+7. Save what the stack owns, then `terraform destroy`. On Azure, run the
+   destroy until it completes; Teardown in the recipe README explains the
+   four runs.
+
+   ```sh
+   terraform state list > "$scratch/owned.txt"
+   terraform show -no-color > "$scratch/owned-detail.txt"
+   ```
+
+8. Sweep for leftovers:
 
    ```sh
    "$scratch/.github/ci/sweep-aws.sh" <name> <region>
    "$scratch/.github/ci/sweep-azure.sh" <name> <subscription-id>
    ```
 
-   On AWS, force-delete the secret the sweep notes in its recovery window.
+   A `LEFT` line is this stack's by exact name, region or resource group;
+   delete it. A `NOTE` line is only a possible match, such as an IAM role,
+   which is global, or a load balancer whose VPC is gone. Find its ID or name
+   in `owned-detail.txt` before touching it, and leave it alone if it isn't
+   there. The sweep exits 1 on any `LEFT` and ignores `NOTE` lines. On AWS,
+   force-delete the secret the sweep notes in its recovery window.
 9. Delete the scratch directory. Its state holds the generated secrets.
 10. Record the run in the recipe README's "Validated" section and in the PR:
     date, region, the versions, and what was checked.

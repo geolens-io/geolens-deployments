@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Lists what an azure-container-apps stack left behind after
-# `terraform destroy`. Read-only. Exits 1 when anything the destroy should have
-# removed remains, a soft-deleted workspace included, since it holds the name
-# for the next apply. The recipe creates no Key Vault, so none is checked.
+# `terraform destroy`. Read-only. Every LEFT line is in the stack's own
+# resource groups, a soft-deleted workspace included, since it holds the name
+# for the next apply; delete it. Exits 1 on any LEFT. The recipe creates no
+# Key Vault, so none is checked.
 #
 #   sweep-azure.sh <name> <subscription-id>
 #
@@ -20,6 +21,9 @@ found() { echo "LEFT  $1: $2"; left=1; }
 # Captured before it is read, so a failed call stops the sweep instead of
 # reading as nothing left.
 rows() { az "$@" --subscription "$subscription" --output tsv; }
+# A configured default resource group would silently narrow the
+# subscription-wide queries.
+export AZURE_DEFAULTS_GROUP=""
 
 echo "Sweeping stack $name"
 
@@ -37,9 +41,14 @@ for group in "$name-rg" "$name-rg-infra"; do
   done <<<"$out"
 done
 
+# The deleted-workspace list spans the subscription; only one whose ID names
+# this stack's group is ours. Azure IDs vary in case.
 out=$(rows monitor log-analytics workspace list-deleted-workspaces \
-  --query "[?name == '$name-logs'].name")
-for ws in $out; do found "soft-deleted Log Analytics workspace" "$ws"; done
+  --query "[?name == '$name-logs'].id")
+for id in $out; do
+  lower=$(tr '[:upper:]' '[:lower:]' <<<"$id")
+  [[ $lower != */resourcegroups/"$name"-rg/* ]] || found "soft-deleted Log Analytics workspace" "$id"
+done
 
 [ "$left" = 1 ] || echo "Nothing left for $name"
 exit "$left"

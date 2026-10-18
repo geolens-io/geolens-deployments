@@ -1007,6 +1007,9 @@ jobs:
       - name: Guard - every chart upgrade note reaches the recipes and cloud guides
         run: bash .github/ci/upgrade-note-parity.sh
 
+      - name: Guard - the leftover sweeps flag only what the stack owns, and stop on a failed call
+        run: bash .github/ci/test-sweeps.sh
+
       - name: terraform fmt
         run: terraform fmt -check -recursive terraform
 

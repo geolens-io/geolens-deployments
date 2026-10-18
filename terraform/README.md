@@ -61,10 +61,9 @@ A change to what an apply creates, or to the settings a container ends up
 with, is tried on a real account before it merges. The run upgrades a stack in
 place, since that is what an operator does, and leaves nothing behind.
 
-1. Copy the recipe and the smoke script to a scratch directory outside the
-   repository, so no state or tfvars land in a checkout. For a version bump
-   that is `origin/main`; for a recipe change, start from `origin/main` and
-   copy the branch's recipe over it at step 4.
+1. Copy the released recipe and `.github/ci` from `origin/main` to a scratch
+   directory outside the repository, so no state or tfvars land in a
+   checkout. The baseline is what operators run today.
 
    ```sh
    scratch=$(mktemp -d)
@@ -75,20 +74,36 @@ place, since that is what an operator does, and leaves nothing behind.
    a short unused `name`, the previous release as `geolens_version`, and for
    AWS `skip_final_snapshot = true` and `s3_force_destroy = true`, so the
    stack can be destroyed outright.
-3. `terraform init && terraform apply`, then take a baseline:
-   `curl -sf "$url/api/health"` and
-   `"$scratch/.github/ci/ingest-smoke.sh" "$url" admin "$password"`, with
-   `url` from `terraform output -raw app_url` and the password from
-   `eval "$(terraform output -raw admin_password_command)"`.
-4. Change only `geolens_version` (or copy in the branch's recipe) and apply on
-   the same state while polling `/api/health` every 10 seconds. Every poll
-   should answer 200.
+3. Apply and take a baseline. The password stays in a variable; don't
+   print it.
+
+   ```sh
+   terraform init && terraform apply
+   url=$(terraform output -raw app_url)
+   user=$(terraform output -raw admin_username)
+   password=$(eval "$(terraform output -raw admin_password_command)")
+   curl -sf "$url/api/health"
+   "$scratch/.github/ci/ingest-smoke.sh" "$url" "$user" "$password"
+   ```
+
+4. Move to what is under test, on the same state. A version bump changes
+   only `geolens_version` in `terraform.tfvars`. A branch that changes the
+   recipe or `.github/ci` is copied over the scratch copy first; the
+   archive holds no tfvars or state, so both survive. Run `terraform init`
+   again in case the branch moved a provider pin.
+
+   ```sh
+   git archive <branch> terraform/<recipe> .github/ci | tar -x -C "$scratch"
+   ```
+
+   Apply while polling `/api/health` every 10 seconds. Every poll should
+   answer 200.
 5. Confirm the migrate step ran the new revisions: on AWS,
    `aws logs tail /ecs/<name>-migrate --since 1h`; on Azure,
    `az containerapp job logs show --resource-group <name>-rg --name <name>-migrate --execution <execution> --container migrate`,
    with the execution from `az containerapp job execution list`.
 6. Check that the baseline's datasets still serve their collection items and
-   raster tile, then run `ingest-smoke.sh` again.
+   raster tile, then run `ingest-smoke.sh` again with the same arguments.
 7. `terraform destroy`. On Azure, run it until it completes; Teardown in the
    recipe README explains the four runs.
 8. Sweep for leftovers. Every `LEFT` line is something to delete by hand:

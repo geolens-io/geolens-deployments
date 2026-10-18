@@ -81,7 +81,12 @@ out=$(list elasticache describe-cache-subnet-groups \
 for group in $out; do found "ElastiCache subnet group" "$group"; done
 
 out=$(list s3api list-buckets --query "Buckets[?starts_with(Name, '$name-')].Name" | generated)
-for bucket in $out; do found "S3 bucket" "$bucket"; done
+# list-buckets is global; a bucket counts only in the region being swept.
+for bucket in $out; do
+  where=$(rows s3api get-bucket-location --bucket "$bucket" --query LocationConstraint)
+  case ${where:-us-east-1} in EU) where=eu-west-1 ;; esac
+  [ "${where:-us-east-1}" != "$region" ] || found "S3 bucket" "$bucket"
+done
 
 vpcs=$(list ec2 describe-vpcs --filters "Name=tag:Name,Values=$name" --query 'Vpcs[].VpcId')
 for vpc in $vpcs; do found "VPC" "$vpc"; done

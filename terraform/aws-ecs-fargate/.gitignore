@@ -7,4 +7,4 @@ crash.log
 *.tfvars
 !terraform.tfvars.example
 backend.tf
-production.backend.hcl
+*.backend.hcl

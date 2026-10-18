@@ -54,3 +54,52 @@ pointed at the titiler component.
 
 A recipe landing is the moment to correct the cloud page beside it, since the
 recipe is what proves the prose.
+
+## Validating a recipe change
+
+A change to what an apply creates, or to the settings a container ends up
+with, is tried on a real account before it merges. The run upgrades a stack in
+place, since that is what an operator does, and leaves nothing behind.
+
+1. Copy the recipe and the smoke script to a scratch directory outside the
+   repository, so no state or tfvars land in a checkout. For a version bump
+   that is `origin/main`; for a recipe change, start from `origin/main` and
+   copy the branch's recipe over it at step 4.
+
+   ```sh
+   scratch=$(mktemp -d)
+   git archive origin/main terraform/<recipe> .github/ci | tar -x -C "$scratch"
+   ```
+
+2. Work in `$scratch/terraform/<recipe>`; the scripts below are under
+   `$scratch/.github/ci/`. Write `terraform.tfvars` there with a short unused
+   `name`, the previous release as `geolens_version`, and for AWS
+   `skip_final_snapshot = true` and `s3_force_destroy = true`, so the stack
+   can be destroyed outright.
+3. `terraform init && terraform apply`, then take a baseline:
+   `curl -sf "$url/api/health"` and
+   `.github/ci/ingest-smoke.sh "$url" admin "$password"`, with `url` from
+   `terraform output -raw app_url` and the password from
+   `eval "$(terraform output -raw admin_password_command)"`.
+4. Change only `geolens_version` (or copy in the branch's recipe) and apply on
+   the same state while polling `/api/health` every 10 seconds. Every poll
+   should answer 200.
+5. Confirm the migrate step ran the new revisions: on AWS,
+   `aws logs tail /ecs/<name>-migrate --since 1h`; on Azure,
+   `az containerapp job logs show --resource-group <name>-rg --name <name>-migrate --execution <execution> --container migrate`,
+   with the execution from `az containerapp job execution list`.
+6. Check that the baseline's datasets still serve their collection items and
+   raster tile, then run `ingest-smoke.sh` again.
+7. `terraform destroy`. On Azure, run it until it completes; Teardown in the
+   recipe README explains the four runs.
+8. Sweep for leftovers. Every `LEFT` line is something to delete by hand:
+
+   ```sh
+   .github/ci/sweep-aws.sh <name> <region>
+   .github/ci/sweep-azure.sh <name> <subscription-id>
+   ```
+
+   On AWS, force-delete the secret the sweep notes in its recovery window.
+9. Delete the scratch directory. Its state holds the generated secrets.
+10. Record the run in the recipe README's "Validated" section and in the PR:
+    date, region, the versions, and what was checked.

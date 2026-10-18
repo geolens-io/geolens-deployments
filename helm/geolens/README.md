@@ -558,6 +558,12 @@ Upgrading to 1.25 (1.25.1 is the first release with api and worker images):
   [RUNBOOK](https://github.com/geolens-io/geolens/blob/main/RUNBOOK.md) lists
   the other ways back in.
 
+Upgrading to 1.26.0: migrations 0084 to 0086 are additive. 0085 waits at most
+5 seconds for its lock on `catalog.datasets` instead of queueing behind other
+writes, so on a busy catalog the migrate hook can fail with a lock timeout.
+Helm then marks the upgrade failed and keeps the previous pods serving. Run
+the upgrade again.
+
 ## Render locally
 
 The values below are placeholders for a template render, not credentials.

@@ -11,7 +11,7 @@ file to actionable conventions and traps, linking to the source for detail.
 - `helm/geolens/`: the chart. `values.yaml` gives the reason for every default that is not obvious.
 - `terraform/aws-ecs-fargate/`, `terraform/azure-container-apps/`: one root-module recipe per cloud. Each README covers what it deploys, upgrades, cost, teardown and a "Validated" record. `terraform/README.md` holds the real-account validation procedure.
 - `clouds/`: one provisioning guide per cloud, and for AWS and Azure the manual counterpart of the recipe. Change a recipe and its page together; provider-neutral material belongs on the docs site.
-- `.github/ci/`: CI fixtures and scripts. `postgres.yaml` is not a production manifest. `ingest-smoke.sh <url> <user> <password>` pushes a vector and a raster through any running install's edge and fetches a tile. `sweep-aws.sh` and `sweep-azure.sh` list what a destroyed recipe stack left behind.
+- `.github/ci/`: CI fixtures and scripts. `postgres.yaml` is not a production manifest. `ingest-smoke.sh <url> <user> <password>` pushes a vector and a raster through any running install's edge and fetches a tile. `sweep-aws.sh` and `sweep-azure.sh` list what a destroyed recipe stack left behind: `LEFT` lines are that stack's by exact evidence, `NOTE` lines are possible matches to confirm before deleting. `test-sweeps.sh` runs both against stub CLIs.
 
 ## Commands and verification
 
@@ -27,6 +27,7 @@ helm template geolens helm/geolens \
   --set secrets.adminUsername=admin --set secrets.adminPassword='a-strong-unique-password'
 
 bash .github/ci/upgrade-note-parity.sh
+bash .github/ci/test-sweeps.sh
 terraform fmt -check -recursive terraform
 for dir in terraform/*/; do
   terraform -chdir="$dir" init -backend=false && terraform -chdir="$dir" validate
@@ -46,7 +47,7 @@ bash terraform/azure-container-apps/test-validations.sh
 - `main` requires five checks by name: `lint-and-template (helm 3)`, `lint-and-template (helm 4)`, `kind install test (helm 3)`, `kind install test (helm 4)` and `terraform validate`. Bumping a pinned Helm version keeps the names. Renaming a job or adding a Helm major changes them, so update the branch protection rule in the same change. A new check goes into one of these jobs, or it never gates a merge.
 - `lint-and-template` renders three configurations and runs guards that each pin a bug rendering alone would not catch. Add a guard for anything a render can pass while a real cluster fails.
 - `kind install test` installs at the chart's default tags into a namespace enforcing Pod Security `restricted`, with NetworkPolicies on and a shared staging claim. It ingests through the edge, checks that only the frontend answers pods outside the release, re-runs the migrate hook with `--reuse-values`, and upgrades a separate install from the latest published chart with `--reset-then-reuse-values`. It runs Calico because kindnet's policy engine breaks DNS for policy-selected pods.
-- `terraform validate` checks that every chart upgrade note reaches the recipes and cloud guides, then runs `fmt`, `init -backend=false` and `validate` in every recipe and both test scripts. It never touches a cloud account.
+- `terraform validate` checks that every chart upgrade note reaches the recipes and cloud guides, tests the sweep scripts against stub CLIs, then runs `fmt`, `init -backend=false` and `validate` in every recipe and both recipe test scripts. It never touches a cloud account.
 - `release-charts.yml` publishes after `chart-ci` passes on a push to `main`: a GitHub Release, the `gh-pages` index, and a cosign-signed OCI package in GHCR. It never republishes an existing version, and a rerun or the next green push finishes a release that stopped before signing, so never package or push a chart by hand.
 - `version-drift.yml` runs Mondays at 06:17 UTC and fails while `appVersion`, a `ghcr.io/geolens-io/*` tag in `values.yaml` or a recipe's `geolens_version` default differs from the latest GeoLens release.
 

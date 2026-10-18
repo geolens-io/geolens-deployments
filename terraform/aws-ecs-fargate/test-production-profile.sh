@@ -4,11 +4,11 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 assert_profile_valid() {
-  local name=${1:-valid pilot profile}
+  local name=${1:-valid production profile}
   shift || true
 
   local output normalized_output
-  output=$(terraform console -no-color -var-file=pilot.tfvars.example "$@" <<< 'var.pilot_profile' 2>&1)
+  output=$(terraform console -no-color -var-file=production.tfvars.example "$@" <<< 'var.production_profile' 2>&1)
   normalized_output=$(printf '%s' "$output" | tr '\n' ' ' | awk '{$1=$1; print}')
   if [[ "$normalized_output" != "true" ]]; then
     printf 'FAIL: %s was rejected:\n%s\n' "$name" "$output" >&2
@@ -23,7 +23,7 @@ assert_profile_rejected() {
   shift 2
 
   local output normalized_output
-  output=$(terraform console -no-color -var-file=pilot.tfvars.example "$@" <<< 'var.pilot_profile' 2>&1 || true)
+  output=$(terraform console -no-color -var-file=production.tfvars.example "$@" <<< 'var.production_profile' 2>&1 || true)
   normalized_output=$(printf '%s' "$output" | tr '\n' ' ' | awk '{$1=$1; print}')
   if [[ "$normalized_output" != *"$expected"* ]]; then
     printf 'FAIL: %s did not produce the expected validation error:\n%s\n' "$name" "$output" >&2
@@ -35,24 +35,24 @@ assert_profile_rejected() {
 assert_profile_valid
 
 # Token-protected service imports answer 503 without the cache.
-cache_enabled=$(terraform console -no-color -var-file=pilot.tfvars.example <<< 'var.cache_enabled' 2>&1)
+cache_enabled=$(terraform console -no-color -var-file=production.tfvars.example <<< 'var.cache_enabled' 2>&1)
 if [[ "$cache_enabled" != "true" ]]; then
-  printf 'FAIL: the pilot example turns the cache off:\n%s\n' "$cache_enabled" >&2
+  printf 'FAIL: the production example turns the cache off:\n%s\n' "$cache_enabled" >&2
   exit 1
 fi
-printf 'PASS: the pilot example keeps the cache on\n'
+printf 'PASS: the production example keeps the cache on\n'
 
 assert_profile_rejected \
   'deletion protection is required' \
-  'pilot_profile requires a geolens-<org-slug> name' \
+  'production_profile requires a geolens-<org-slug> name' \
   -var=deletion_protection=false
 assert_profile_rejected \
-  'pilot profile requires HTTPS' \
+  'production profile requires HTTPS' \
   'With acm_certificate_arn set, public_app_url must be HTTPS' \
   -var=public_app_url=http://maps.example.org
 assert_profile_rejected \
   'S3 versioning is required' \
-  'pilot_profile requires a geolens-<org-slug> name' \
+  'production_profile requires a geolens-<org-slug> name' \
   -var=s3_versioning_enabled=false
 assert_profile_rejected \
   'reserved storage environment variables cannot be overridden' \
@@ -87,7 +87,7 @@ assert_profile_rejected \
   'extra secrets must use the deployment-specific path' \
   'under the stack-specific Secrets Manager path <name>/' \
   '-var=extra_secrets={OPENAI_API_KEY="arn:aws:secretsmanager:us-east-1:111111111111:secret:other/ai-AbCdEf"}'
-# Outside the pilot profile too: the recipe's own wiring and an admin
+# Outside the production profile too: the recipe's own wiring and an admin
 # credential GeoLens would refuse at boot.
 assert_profile_rejected \
   'migrations cannot move back into the api' \

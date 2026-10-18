@@ -32,7 +32,7 @@ terraform fmt -check -recursive terraform
 for dir in terraform/*/; do
   terraform -chdir="$dir" init -backend=false && terraform -chdir="$dir" validate
 done
-bash terraform/aws-ecs-fargate/test-pilot-profile.sh
+bash terraform/aws-ecs-fargate/test-production-profile.sh
 bash terraform/azure-container-apps/test-validations.sh
 ```
 

@@ -1,5 +1,5 @@
 bucket       = "<state-bucket>"
-key          = "geolens/pilots/<org-slug>/terraform.tfstate"
+key          = "geolens/<org-slug>/terraform.tfstate"
 region       = "us-east-1"
 encrypt      = true
 kms_key_id   = "arn:aws:kms:us-east-1:111111111111:key/11111111-1111-1111-1111-111111111111"

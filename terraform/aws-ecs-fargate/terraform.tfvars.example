@@ -8,8 +8,8 @@ region = "us-east-1"
 geolens_version = "1.26.0"
 
 # Leave empty to use the load balancer's DNS name over plain HTTP.
-# Set both of these to serve a domain over HTTPS. Hosted pilot data requires
-# the stricter profile in pilot.tfvars.example instead of these trial defaults.
+# Set both of these to serve a domain over HTTPS. Production data requires
+# the stricter profile in production.tfvars.example instead of these trial defaults.
 # public_app_url      = "https://geolens.example.com"
 # acm_certificate_arn = "arn:aws:acm:us-east-1:111122223333:certificate/..."
 

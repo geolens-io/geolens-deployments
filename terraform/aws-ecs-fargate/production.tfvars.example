@@ -1,6 +1,6 @@
 # One file and one remote-state key per organization. Replace every example
 # domain/account value; never share this stack's state or credentials.
-pilot_profile = true
+production_profile = true
 name          = "geolens-org-slug"
 region        = "us-east-1"
 geolens_version = "1.26.0"
@@ -9,7 +9,7 @@ geolens_version = "1.26.0"
 public_app_url      = "https://maps.example.org"
 acm_certificate_arn = "arn:aws:acm:us-east-1:111111111111:certificate/11111111-1111-1111-1111-111111111111"
 
-# Per-organization resource and workload limits for the first pilot profile.
+# Per-organization resource and workload limits for the production profile.
 # Without the cache, token-protected service imports answer 503.
 cache_enabled                 = true
 app_desired_count             = 1
@@ -19,7 +19,7 @@ worker_ephemeral_storage_gb   = 50
 db_instance_class             = "db.t4g.micro"
 db_allocated_storage_gb       = 50
 
-# Recovery and teardown controls. Keep these enabled through the pilot.
+# Recovery and teardown controls. Keep these enabled in production.
 backup_retention_days                   = 14
 skip_final_snapshot                     = false
 deletion_protection                     = true

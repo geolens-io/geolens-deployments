@@ -9,8 +9,8 @@ console path, and read this page for what it is doing.
 [`examples/values-aws.yaml`](../examples/values-aws.yaml) is the EKS
 equivalent for the Helm chart.
 
-For the first hosted pilot cohort, use the recipe's
-[single-organization pilot profile](../terraform/aws-ecs-fargate/README.md#hosted-pilot-profile).
+For a production deployment, use the recipe's
+[single-organization production profile](../terraform/aws-ecs-fargate/README.md#production-profile).
 Each organization gets a separate stack and RDS instance. Shared RDS is not a
 supported configuration for this recipe.
 
@@ -59,15 +59,15 @@ SELECT extname, extversion FROM pg_extension
 
 RDS requires TLS, so set `DATABASE_SSL_MODE=require`.
 
-### ECS pilot database boundary
+### ECS database boundary
 
 The ECS recipe currently gives the RDS master login to the API, worker and
 migration task. GeoLens 1.26.0 supports canonical runtime-role settings, but
 the published API image does not include the repository-level managed-database
 bootstrap/reconciliation helper that the recipe would need to create and verify
-that role. Keep pilot organizations on separate RDS instances and keep the
+that role. Keep organizations on separate RDS instances and keep the
 master credential inside that stack's Secrets Manager secret. Do not reuse one
-RDS cluster or hand participants the master credential, Terraform state or AWS
+RDS cluster or hand end users the master credential, Terraform state or AWS
 account credentials. The recipe's README records the follow-up needed before
 runtime-role or shared-RDS support can be claimed.
 
@@ -135,7 +135,7 @@ sweep can see. Add a bucket policy that denies any request where
 and the presigned URLs all use HTTPS already.
 
 The recipe aborts incomplete multipart uploads after seven days on every
-bucket. The hosted pilot profile also enables bucket versioning and expires
+bucket. The production profile also enables bucket versioning and expires
 noncurrent versions after 30 days by default. In a versioned bucket, an
 application delete hides an object by adding a delete marker; prior versions
 remain until lifecycle removes them. Current objects do not expire
@@ -153,7 +153,7 @@ IRSA-annotated ServiceAccount and leave `S3_ACCESS_KEY_ID` and
 `S3_SECRET_ACCESS_KEY` unset. The backend detects the ambient credential and
 lets boot proceed.
 
-The ECS pilot profile creates a different bucket and task policy per
+The ECS production profile creates a different bucket and task policy per
 organization. Its `Deployment` tag supports per-stack cost reporting after
 the tag is activated in AWS Billing. S3 has no hard bucket-size quota in this
 recipe; agree a storage limit and configure a cost alert for each organization.

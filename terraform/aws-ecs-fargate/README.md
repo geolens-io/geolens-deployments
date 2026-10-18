@@ -53,13 +53,13 @@ them before the others start.
 - `jq`, which the `admin_password_command` output pipes the secret through
 - An AWS account and credentials with permission to create VPC, ECS, RDS,
   ElastiCache, S3, IAM and Secrets Manager resources
-- A remote state backend before storing participant data. The module declares
+- A remote state backend before storing real data. The module declares
   none by default; its state holds the database password, JWT secret,
   stored-secret encryption key and admin password, generated or supplied.
 
-## Hosted pilot profile
+## Production profile
 
-Use [pilot.tfvars.example](pilot.tfvars.example) for one organization at a time.
+Use [production.tfvars.example](production.tfvars.example) for one organization at a time.
 Each invocation creates its own VPC, ECS services, RDS instance, S3 bucket,
 Secrets Manager entry, IAM roles and optional cache. Give each organization a
 unique `name` such as `geolens-city-gis` and a distinct remote-state key. This
@@ -67,7 +67,7 @@ recipe does not accept a shared/external RDS endpoint. Do not point multiple
 organizations at one database; PostgreSQL roles are cluster-wide and the
 recipe does not configure the database boundaries needed to share a cluster.
 
-The opt-in `pilot_profile` validation requires a `geolens-<org-slug>` name, a
+The opt-in `production_profile` validation requires a `geolens-<org-slug>` name, a
 public HTTPS hostname and an ACM certificate ARN in the configured region,
 RDS deletion protection, a final snapshot, at least seven days of automated
 backups, versioned S3 with at least 30-day noncurrent-version retention, and
@@ -81,7 +81,7 @@ values; it cannot prove the DNS record or certificate coverage.
 Provision the state bucket separately from the application bucket. Before the
 first `terraform init`, require S3 versioning, SSE-KMS encryption, Block Public
 Access, a TLS-only bucket policy, state locking and access limited to the
-pilot operators or deployment role. Use a distinct object key for each
+operators or deployment role. Use a distinct object key for each
 organization. The state contains the RDS master password, JWT key,
 stored-secret encryption key and admin password, so state versions need the
 same access and retention review as application data. Terraform 1.10 or newer is required for S3 `use_lockfile`.
@@ -89,9 +89,9 @@ same access and retention review as application data. Terraform 1.10 or newer is
 From a clean copy of this module, copy and edit the example files:
 
 ```sh
-cp pilot.tfvars.example terraform.tfvars
-cp pilot.backend.tf.example backend.tf
-cp pilot.backend.hcl.example pilot.backend.hcl
+cp production.tfvars.example terraform.tfvars
+cp production.backend.tf.example backend.tf
+cp production.backend.hcl.example production.backend.hcl
 ```
 
 Replace the example hostname, certificate ARN, account ID, state bucket, KMS
@@ -99,16 +99,16 @@ key and organization slug. Give each organization's backend file a different
 `key`, then initialize and review the plan:
 
 ```sh
-terraform init -backend-config=pilot.backend.hcl
-terraform plan -out=pilot.plan
-terraform show -no-color pilot.plan
+terraform init -backend-config=production.backend.hcl
+terraform plan -out=production.plan
+terraform show -no-color production.plan
 ```
 
-Keep `backend.tf`, `pilot.backend.hcl`, plan files and state out of source
+Keep `backend.tf`, `production.backend.hcl`, plan files and state out of source
 control. Apply only after a reviewer confirms the target account, region,
 hostname, per-organization state key and deletion controls. After apply, point
 the hostname to `load_balancer_dns_name`, then verify the HTTPS URL and
-`/api/health` before onboarding.
+`/api/health` before sending users to it.
 
 The profile gives each stack its own S3 bucket and task IAM policy, and each
 stack's generated application secret is named under its `name/` path. Extra
@@ -123,7 +123,7 @@ upload limit, 50 GiB of fixed RDS storage, and 50 GiB of worker scratch. The
 cache stays on because token-protected service imports need it (see Upgrading
 GeoLens). S3 has no total bucket quota in this recipe, and a per-resource AWS
 Budget is an alert rather than a hard stop. Activate the `Deployment`
-cost-allocation tag, agree S3, database, egress and AI limits with the
+cost-allocation tag, set S3, database, egress and AI limits for the
 organization, and configure AWS Budgets and provider-side alerts before
 accepting data.
 
@@ -141,13 +141,12 @@ for another organization. A follow-up must run the canonical helper inside a
 private managed-database preflight and verify the deployed release before this
 can claim least-privilege runtime credentials or shared-RDS support.
 
-The current pilot is operator-managed: do not give participants the RDS
-master credential, Terraform state, AWS account credentials or shared
-infrastructure credentials. Record explicit operator acceptance of the
-master-runtime limitation in each pilot plan before onboarding. If a
-participant requires a least-privilege runtime identity, their own database
-administrator identity or a shared database, wait for a deployment path that
-has verified that boundary.
+The profile is operator-managed: do not give end users the RDS master
+credential, Terraform state, AWS account credentials or shared infrastructure
+credentials. Record the operator's acceptance of the master-runtime limitation
+in each stack's plan review. If an organization requires a least-privilege
+runtime identity, its own database administrator identity or a shared
+database, wait for a deployment path that has verified that boundary.
 
 ## Quick start for a trial
 
@@ -169,7 +168,7 @@ terraform output app_url
 Log in as the user in `admin_username`, default `admin`.
 
 The default path uses local Terraform state and can serve plain HTTP. Use it
-only with disposable trial data. Hosted participant data uses the profile
+only with disposable trial data. Real data uses the profile
 above, including remote state and HTTPS.
 
 Plain HTTP is enough for an API or CLI smoke test, not for trying the web UI.
@@ -374,11 +373,11 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
   private task IPs.
 - The RDS master user is both the migration and application login. The current
   1.26.0 image/recipe combination does not run the canonical managed-Postgres
-  role reconciler; keep each pilot on its own RDS instance as described above.
+  role reconciler; keep each organization on its own RDS instance as described above.
 - One task role is shared by every container, which lets titiler write to the
   bucket even though it only reads.
 - The database is single-AZ and the cache is one node. Bucket versioning stays
-  off on the generic path; the hosted pilot profile enables it and expires
+  off on the generic path; the production profile enables it and expires
   noncurrent versions after the configured number of days.
 - One worker task runs every background job, `worker_concurrency` at a time.
 
@@ -394,14 +393,14 @@ A NAT gateway would add about $32 a month and save the two task addresses.
 ## Backups and restore
 
 The generic path keeps seven days of RDS automated backups and has no S3
-versioning. The pilot profile sets 14 days of RDS automated backups and enables
+versioning. The production profile sets 14 days of RDS automated backups and enables
 S3 versions, with noncurrent versions eligible for lifecycle expiration after
 30 days by default. S3 lifecycle runs asynchronously; a 30-day rule is not an
 exact-time erasure promise. A delete in a versioned bucket creates a delete
 marker and leaves prior data versions until lifecycle removes them. The
 current S3 objects do not expire automatically.
 
-Before participant data is stored, rehearse a restore in a temporary,
+Before real data is stored, rehearse a restore in a temporary,
 organization-specific stack:
 
 1. Upload a synthetic dataset, wait for worker ingestion, and verify its
@@ -413,20 +412,20 @@ organization-specific stack:
    for managed PostgreSQL restore steps. Verify `/api/health`, sign-in,
    collection items and raster rendering, and record the recovery point,
    endpoint change, object versions and elapsed time.
-4. Test an organization-approved data export into a clean GeoLens instance.
+4. Test a data export into a clean GeoLens instance.
    Confirm the exact data and application state it carries; an object bucket
-   and database snapshot alone are not a complete participant handoff.
+   and database snapshot alone are not a complete export.
 
-Do not onboard until an operator has recorded a successful restore and export
-rehearsal for this profile. The pilot profile itself has not been applied to
-AWS yet.
+Do not put real data on a stack until an operator has recorded a successful
+restore and export rehearsal for this profile. The production profile itself
+has not been applied to AWS yet.
 
 ### Retention and deletion
 
 - Automated RDS backups retain 14 days while the instance exists. Destroying
   the instance creates a final snapshot because `skip_final_snapshot` is false;
   that snapshot has no automatic expiration and must be reviewed and deleted
-  separately when the agreed retention permits. RDS retained automated backups
+  separately when your retention policy permits. RDS retained automated backups
   are a separate setting to inspect at deletion.
 - S3 noncurrent versions become eligible for lifecycle deletion after 30 days;
   lifecycle processing is asynchronous. Current objects remain until an
@@ -439,10 +438,10 @@ AWS yet.
   can contain old copies of generated credentials even after a stack is gone.
 
 The recipe provides no automatic whole-account backup erasure guarantee.
-Before stating a deletion date to a participant, account for RDS snapshots and
+Before stating a deletion date to a user, account for RDS snapshots and
 retained automated backups, S3 versions and delete markers, state-bucket
 versions, support exports and any copies held outside this stack. Record each
-deletion in the organization's exit record.
+deletion.
 
 ## Teardown
 
@@ -458,13 +457,13 @@ Nothing stops the database from going. On an install you care about, set
 `deletion_protection = true` so destroy refuses the database until you turn
 it off.
 
-For the pilot profile, teardown is a reviewed exit operation: export the agreed
+For the production profile, teardown is a reviewed operation: export the
 data, verify the export, stop app and worker access, and wait for the retention
 window before deleting stored copies. The profile's RDS deletion protection
 blocks destroy until it is deliberately disabled. Empty the versioned
 application bucket, including noncurrent versions and delete markers, before
-destroy; `s3_force_destroy` stays false. Preserve the final RDS snapshot for the
-agreed period, then remove it and any retained automated backups separately.
+destroy; `s3_force_destroy` stays false. Preserve the final RDS snapshot for as long
+as you need it, then remove it and any retained automated backups separately.
 Apply the state bucket's retention policy to every state version as well.
 
 ## Validated
@@ -493,7 +492,7 @@ next (#53). The tasks moved to ARM64 and came back healthy, the api accepted
 the generated `SECRET_ENCRYPTION_KEY` at boot, a vector and a raster dataset
 ingested through the load balancer and the raster rendered in the browser,
 and the bucket refused a plain-HTTP request while serving HTTPS. The stack
-was then destroyed. The pilot profile has only been statically validated; it
+was then destroyed. The production profile has only been statically validated; it
 has not been applied or restore-tested in AWS.
 
 On 2026-10-16 in us-east-1, with the cache on, a stack applied from the

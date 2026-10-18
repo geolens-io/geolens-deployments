@@ -38,7 +38,7 @@ bash terraform/azure-container-apps/test-validations.sh
 
 - `helm lint` does not enforce `required`, so lint with the same values the template command uses.
 - Each guard in `ci.yml` is plain shell, named for the invariant it pins. Run the ones that cover what you change.
-- A NOTES change needs the kind job: Helm 3 renders NOTES only in a dry run, and that needs a cluster.
+- A NOTES change needs the kind job: `helm template` skips `NOTES.txt`, so that job renders it with `helm install --dry-run` and checks the output.
 - Documentation-only edits need link and command checks, `upgrade-note-parity.sh` when they touch an upgrade note, and `git diff --check`, not the whole matrix.
 - Never loosen a guard, pattern or CI job to get a pass. Report failed or unrun checks accurately.
 

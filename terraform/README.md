@@ -54,3 +54,87 @@ pointed at the titiler component.
 
 A recipe landing is the moment to correct the cloud page beside it, since the
 recipe is what proves the prose.
+
+## Validating a recipe change
+
+A change to what an apply creates, or to the settings a container ends up
+with, is tried on a real account before it merges. The run upgrades a stack in
+place, since that is what an operator does, and leaves nothing behind.
+
+1. From a checkout of this repository, copy the released recipe and
+   `.github/ci` from `origin/main` to a scratch directory outside it, so no
+   state or tfvars land in a checkout. The baseline is what operators run
+   today.
+
+   ```sh
+   checkout=$(git rev-parse --show-toplevel)
+   scratch=$(mktemp -d)
+   git -C "$checkout" archive origin/main terraform/<recipe> .github/ci | tar -x -C "$scratch"
+   ```
+
+2. Work in `$scratch/terraform/<recipe>`. Write `terraform.tfvars` there with
+   a short unused `name`, the previous release as `geolens_version`, and for
+   AWS `skip_final_snapshot = true` and `s3_force_destroy = true`, so the
+   stack can be destroyed outright.
+3. Apply and take a baseline. The password stays in a variable; don't
+   print it.
+
+   ```sh
+   terraform init && terraform apply
+   url=$(terraform output -raw app_url)
+   user=$(terraform output -raw admin_username)
+   password=$(eval "$(terraform output -raw admin_password_command)")
+   curl -sf "$url/api/health"
+   "$scratch/.github/ci/ingest-smoke.sh" "$url" "$user" "$password"
+   ```
+
+4. Move to what is under test, on the same state. A version bump changes
+   only `geolens_version` in `terraform.tfvars`. A branch that changes the
+   recipe or `.github/ci` replaces both directories, so files it deletes or
+   renames don't linger. Keep the tfvars, the state and `.terraform/`, and
+   take the branch's `.terraform.lock.hcl`, which carries any provider pin
+   it moves:
+
+   ```sh
+   r=$scratch/terraform/<recipe>
+   keep=$(mktemp -d "$scratch/keep.XXXXXX")
+   mv "$r/terraform.tfvars" "$r"/terraform.tfstate* "$r/.terraform" "$keep/"
+   rm -rf "$r" "$scratch/.github/ci"
+   git -C "$checkout" archive <branch> terraform/<recipe> .github/ci | tar -x -C "$scratch"
+   mv "$keep/terraform.tfvars" "$keep"/terraform.tfstate* "$keep/.terraform" "$r/"
+   cd "$r" && terraform init
+   ```
+
+   Apply while polling `/api/health` every 10 seconds. Every poll should
+   answer 200.
+5. Confirm the migrate step ran the new revisions: on AWS,
+   `aws logs tail /ecs/<name>-migrate --since 1h`; on Azure,
+   `az containerapp job logs show --resource-group <name>-rg --name <name>-migrate --execution <execution> --container migrate`,
+   with the execution from `az containerapp job execution list`.
+6. Check that the baseline's datasets still serve their collection items and
+   raster tile, then run `ingest-smoke.sh` again with the same arguments.
+7. Save what the stack owns, then `terraform destroy`. On Azure, run the
+   destroy until it completes; Teardown in the recipe README explains the
+   four runs.
+
+   ```sh
+   terraform state list > "$scratch/owned.txt"
+   terraform show -no-color > "$scratch/owned-detail.txt"
+   ```
+
+8. Sweep for leftovers:
+
+   ```sh
+   "$scratch/.github/ci/sweep-aws.sh" <name> <region>
+   "$scratch/.github/ci/sweep-azure.sh" <name> <subscription-id>
+   ```
+
+   A `LEFT` line is this stack's by exact name, region or resource group;
+   delete it. A `NOTE` line is only a possible match, such as an IAM role,
+   which is global, or a load balancer whose VPC is gone. Find its ID or name
+   in `owned-detail.txt` before touching it, and leave it alone if it isn't
+   there. The sweep exits 1 on any `LEFT` and ignores `NOTE` lines. On AWS,
+   force-delete the secret the sweep notes in its recovery window.
+9. Delete the scratch directory. Its state holds the generated secrets.
+10. Record the run in the recipe README's "Validated" section and in the PR:
+    date, region, the versions, and what was checked.

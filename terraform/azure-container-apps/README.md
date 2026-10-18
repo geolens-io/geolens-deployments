@@ -145,6 +145,26 @@ needs a token now requires a cache the api and worker share. With
 `cache_enabled = false` those requests answer 503
 `credential_store_unavailable`. Services without a token are unaffected.
 
+Upgrading to 1.25 from an earlier release (1.25.1 is the first with api and
+worker images): migration 0083 builds its indexes on `ingest_jobs` and
+`records` with `CREATE INDEX CONCURRENTLY`, which waits for open
+transactions to finish and takes longer on a large catalog. The apply
+waits up to an hour for the migrate job, the job's own replica timeout, while
+the previous revision keeps serving. If the job fails, apply again; 0083
+drops and rebuilds the invalid index an interrupted build leaves behind. If
+the apply stops for another reason, such as its deadline or a failed `az`
+call, the execution may still be running: check it with
+`az containerapp job execution list --resource-group <name>-rg --name <name>-migrate`
+and wait until it reports Succeeded, Failed or Stopped before applying again,
+so two migrations never overlap. After 10 failed password sign-ins within an hour, an account answers
+429 to browsers it doesn't know. To let an admin back in, open a shell in the
+api container with
+`az containerapp exec --resource-group <name>-rg --name <name>-app --container api`
+and run `/app/.venv/bin/python -m scripts.trust_login_device <username>`,
+which prints a link that works once, within 10 minutes. The [chart's notes](../../helm/geolens/README.md#migrations-and-upgrades)
+on private certificate authorities and Cloudflare Web Analytics need a mounted CA
+bundle or frontend env, which this recipe does not expose.
+
 Upgrading to 1.26.0: migrations 0084 to 0086 are additive. 0085 waits at most
 5 seconds for its lock on `catalog.datasets` instead of queueing behind other
 writes, so on a busy catalog the migrate job can fail with a lock timeout.

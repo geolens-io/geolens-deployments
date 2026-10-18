@@ -226,6 +226,24 @@ needs a token now requires a cache the api and worker share. With `REDIS_URL` un
 those requests answer 503 `credential_store_unavailable`. Services without a
 token are unaffected.
 
+Upgrading to 1.25 from an earlier release (1.25.1 is the first with api and
+worker images): migration 0083 builds its indexes on `ingest_jobs` and
+`records` with `CREATE INDEX CONCURRENTLY`, which waits for open
+transactions to finish and takes longer on a large catalog. Give the
+migration time, and leave the services on the previous release until it
+succeeds. If it stops partway, run it again; 0083 drops and rebuilds the
+invalid index an interrupted build leaves behind. Outbound TLS from the AI
+providers and the OAuth client now checks the operating system trust store
+instead of certifi: behind a private certificate authority, mount a bundle
+holding the system CAs plus yours on the api and worker and point
+`SSL_CERT_FILE` at it. The frontend's default CSP no longer allows
+Cloudflare's Web Analytics beacon; on a Cloudflare-proxied install with Web
+Analytics on, set `CSP_SCRIPT_SRC_EXTRA=https://static.cloudflareinsights.com`
+on the frontend, the host rather than the `beacon.min.js` path. After 10
+failed password sign-ins within an hour, an account answers 429 to browsers
+it doesn't know; `scripts.trust_login_device <username>`, run as
+above, prints a link that lets an admin back in once, within 10 minutes.
+
 Upgrading to 1.26.0: migrations 0084 to 0086 are additive. 0085 waits at most
 5 seconds for its lock on `catalog.datasets` instead of queueing behind other
 writes, so on a busy catalog the migration can fail with a lock timeout.

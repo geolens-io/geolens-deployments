@@ -54,6 +54,43 @@ Two other paths exist and are usually less work:
   recipe provisions the same services the page describes, so read the page for
   what the recipe is doing and skip the console steps.
 
+## High availability
+
+The application tier scales out; the database does not, so high availability
+means several API and frontend replicas against a managed PostgreSQL with
+automatic failover, shared object storage and one cache. Every path needs the
+same four things:
+
+- **Shared object storage.** Not pod-local disk. With the Helm chart,
+  `storage.backend: local` without `staging.persistence` gives each pod its own
+  copy of every file (see the comments above `storage.backend` in
+  [`values.yaml`](../helm/geolens/values.yaml)). Use S3 or a compatible
+  bucket, or Azure Blob with a ReadWriteMany staging claim.
+- **One shared cache.** Point every api and worker at the same Valkey or Redis
+  with `REDIS_URL`. Without it, rate limits count per replica, caches are
+  per process, and importing, re-uploading or refreshing a service that needs
+  a token answers 503 `credential_store_unavailable`.
+- **One writable database endpoint.** GeoLens connects to a single primary and
+  has no read-replica support. A standby is for failover only.
+- **A worker that can scale.** The worker can run more than one replica.
+  Keep at least one running at all times.
+
+A database failover is not seamless. Connections drop and requests in flight
+fail until the standby takes over, typically within a minute or two.
+
+| Path | App tier | Database failover |
+| --- | --- | --- |
+| Helm | `api.replicas` and `frontend.replicas` (both default to 2), `worker.replicas` | Your database. Use a managed service with failover and set `secrets.databaseUrlOverride` |
+| AWS | `app_desired_count` in the recipe, or the ECS service's desired count | RDS Multi-AZ (`--multi-az` when creating by hand) |
+| Azure | `app_replicas` in the recipe (needs `cache_enabled`), or the Container App's min and max replicas, with the worker pinned to at least 1 | Flexible Server zone-redundant high availability. It needs a General Purpose or Memory Optimized SKU, not Burstable |
+| Google Cloud | Cloud Run minimum and maximum instances | Cloud SQL high availability, `--availability-type=REGIONAL` |
+| DigitalOcean | `instance_count` on the App Platform components | One or two standby nodes on the managed cluster, on plans with at least 2 GB of RAM |
+
+The Terraform recipes run no database standby: the AWS recipe hardcodes
+`multi_az = false` and the Azure recipe creates no `high_availability` block.
+Both default to one app replica, and the AWS production profile requires
+exactly one app task. A standby roughly doubles the database cost.
+
 ## Status
 
 AWS and Azure have recipes applied against a real account, and their pages

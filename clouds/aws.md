@@ -16,9 +16,10 @@ supported configuration for this recipe.
 
 ## Database: RDS for PostgreSQL
 
-Create an instance on PostgreSQL 15 or newer. 13 is the application floor, but
-pgvector arrives on RDS at 15.2 and 14.7, and semantic search needs pgvector
-0.5+.
+Create an instance on PostgreSQL 15 or newer. 15 is the application floor: the
+baseline migration aborts below it with `GeoLens requires PostgreSQL 15+ (NULLS
+NOT DISTINCT unique indexes)`. Semantic search also needs pgvector 0.5+, which
+RDS ships from 15.2.
 
 Set the initial database name and the master username when you create the
 instance, because RDS creates no database at all unless you ask for one and the

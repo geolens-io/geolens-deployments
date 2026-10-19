@@ -350,6 +350,21 @@ CI ingests a vector and a raster dataset under these settings. If
 something you add writes elsewhere, `readOnlyRootFilesystem: false` turns it
 off for everything but TiTiler.
 
+## Running more than one replica
+
+`api.replicas` and `frontend.replicas` default to 2. Beyond one api replica:
+
+- **Storage must be shared.** Use `storage.backend=s3`, or `local`/`azure` with
+  a ReadWriteMany `staging.persistence` claim (see the Storage section).
+  Otherwise each pod keeps its own private copy.
+- **Share one cache.** Set `redis.url` (or a `REDIS_URL` key in
+  `secrets.existingSecret`). Without it, rate limits count per replica,
+  caches are per process, and importing a token-protected service answers 503.
+- **The worker may scale too.** Raise `worker.replicas`; the same storage
+  rule applies to it.
+
+The chart prints a warning in NOTES when it sees the cache missing.
+
 ## Placement and disruption
 
 Each of `api`, `worker`, `frontend` and `titiler` takes `nodeSelector`,
@@ -398,9 +413,9 @@ for that reason.
 
 The externally managed PostgreSQL instance must satisfy:
 
-- **PostgreSQL 13+** — `gen_random_uuid()` is used as a column default (core in PG13).
-  The migration job fails fast with `GeoLens requires PostgreSQL 13+ (gen_random_uuid)`
-  on older servers.
+- **PostgreSQL 15+** — the schema uses `NULLS NOT DISTINCT` unique indexes. The
+  baseline migration aborts below 15 with `GeoLens requires PostgreSQL 15+
+  (NULLS NOT DISTINCT unique indexes)`.
 - **pgvector 0.5+** — semantic search uses an HNSW index (migration 0011); older
   pgvector fails with `access method "hnsw" does not exist`.
 - **Extensions present**: `postgis`, `pg_trgm`, `vector` (pgvector), `unaccent`.

@@ -52,11 +52,13 @@ read it and every import fails at "validating" with BlobNotFound. Enable
 staging.persistence (ReadWriteMany: Azure Files on AKS). See the README's
 Storage section.
 {{- end }}
-{{- if and (gt (int .Values.api.replicas) 1) (not .Values.redis.url) (not .Values.secrets.existingSecret) }}
+{{- if and (gt (int .Values.api.replicas) 1) (not .Values.redis.url) }}
 
-WARNING: api.replicas is {{ .Values.api.replicas }} with no redis.url. Each api pod keeps its own
-rate-limit counters and caches, and importing, re-uploading or refreshing a
-token-protected service answers 503 (credential_store_unavailable). Set
-redis.url to one shared Valkey or Redis. See the README's Running more than
-one replica section.
+WARNING: api.replicas is {{ .Values.api.replicas }} with no redis.url{{ if .Values.secrets.existingSecret }}, so
+secrets.existingSecret must hold a REDIS_URL key{{ end }}. Without a shared cache each
+api pod keeps its own rate-limit counters and caches, and importing,
+re-uploading or refreshing a token-protected service answers 503
+(credential_store_unavailable). Point redis.url, or a REDIS_URL key in the Secret,
+at one shared Valkey or Redis.
+See the README's Running more than one replica section.
 {{- end }}

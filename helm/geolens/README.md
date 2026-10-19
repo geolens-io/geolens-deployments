@@ -363,8 +363,13 @@ off for everything but TiTiler.
 - **The worker and TiTiler may scale too.** Raise `worker.replicas`, to which
   the same storage rule applies, and `titiler.replicas`, which defaults to 1
   and so stops raster tiles while its only pod is evicted or restarting.
+- **Spread the replicas.** `affinity` and `topologySpreadConstraints` are empty
+  by default, so the scheduler may put every copy on one node. Add a spread
+  constraint per component across nodes or zones (the comment above
+  `api.nodeSelector` in `values.yaml` has one); see Placement and disruption.
 
-The chart prints a warning in NOTES when it sees the cache missing.
+The chart prints a warning in NOTES when `redis.url` is empty, and with
+`secrets.existingSecret` it reminds you that the Secret must hold `REDIS_URL`.
 
 ## Placement and disruption
 

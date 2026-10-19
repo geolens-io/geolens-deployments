@@ -82,7 +82,7 @@ fail until the standby takes over, typically within a minute or two.
 
 | Path | App tier | Database failover |
 | --- | --- | --- |
-| Helm | `api.replicas` and `frontend.replicas` (both default to 2), `worker.replicas`, `titiler.replicas` (defaults to 1) | Your database. Use a managed service with failover and set `secrets.databaseUrlOverride` |
+| Helm | `api.replicas` and `frontend.replicas` (both default to 2), `worker.replicas`, `titiler.replicas` (defaults to 1), plus a `topologySpreadConstraints` entry per component so copies land on different nodes or zones | Your database. Use a managed service with failover and set `secrets.databaseUrlOverride` |
 | AWS | `app_desired_count` in the recipe, or the ECS service's desired count | RDS Multi-AZ (`--multi-az` when creating by hand) |
 | Azure | `app_replicas` in the recipe (needs `cache_enabled`), or the Container App's min and max replicas, with the worker pinned to at least 1 | Flexible Server zone-redundant high availability. It needs a General Purpose or Memory Optimized SKU, not Burstable |
 | Google Cloud | Cloud Run minimum and maximum instances | Cloud SQL high availability, `--availability-type=REGIONAL` |

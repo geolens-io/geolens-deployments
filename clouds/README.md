@@ -74,8 +74,10 @@ same four things:
   paths while the app and database stay up.
 - **One writable database endpoint.** GeoLens connects to a single primary and
   has no read-replica support. A standby is for failover only.
-- **A worker that can scale.** The worker can run more than one replica.
-  Keep at least one running at all times.
+- **At least one worker, ideally two.** The worker can run more than one
+  replica (`worker.replicas` in Helm). Keep at least one running at all times;
+  with one, a worker failure pauses imports and other background jobs until it
+  is replaced.
 
 A database failover is not seamless. Connections drop and requests in flight
 fail until the standby takes over, typically within a minute or two.
@@ -91,8 +93,9 @@ fail until the standby takes over, typically within a minute or two.
 The Terraform recipes run no database standby: the AWS recipe hardcodes
 `multi_az = false` and the Azure recipe creates no `high_availability` block.
 Their cache is one node without failover (`automatic_failover_enabled = false`
-on AWS, `high_availability_enabled = false` on Azure). Both default to one app
-replica, and the AWS production profile requires exactly one app task. A
+on AWS, `high_availability_enabled = false` on Azure), and each runs exactly one
+worker task. Both default to one app replica, and the AWS production profile
+requires exactly one app task. A
 standby roughly doubles the database cost.
 
 ## Status

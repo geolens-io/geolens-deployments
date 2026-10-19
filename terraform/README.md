@@ -17,7 +17,7 @@ variables, apply.
 The application is the same everywhere. Each recipe maps five pieces onto a
 cloud:
 
-1. A PostgreSQL 13+ instance with PostGIS, pgvector 0.5+, pg_trgm and
+1. A PostgreSQL 15+ instance with PostGIS, pgvector 0.5+, pg_trgm and
    unaccent, plus a one-shot job that creates the `catalog` and `data` schemas
    and the `geolens_reader` role before the first `alembic upgrade heads`.
 2. Object storage. The backend speaks S3 natively and Azure Blob through

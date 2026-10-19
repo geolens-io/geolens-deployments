@@ -54,6 +54,50 @@ Two other paths exist and are usually less work:
   recipe provisions the same services the page describes, so read the page for
   what the recipe is doing and skip the console steps.
 
+## High availability
+
+The application tier scales out; the database does not, so high availability
+means several API and frontend replicas against a managed PostgreSQL with
+automatic failover, shared object storage and one cache. Every path needs the
+same four things:
+
+- **Shared object storage.** Not pod-local disk. With the Helm chart,
+  `storage.backend: local` without `staging.persistence` gives each pod its own
+  copy of every file (see the comments above `storage.backend` in
+  [`values.yaml`](../helm/geolens/values.yaml)). Use S3 or a compatible
+  bucket, or Azure Blob with a ReadWriteMany staging claim.
+- **One shared cache, with failover.** Point every api and worker at the same
+  Valkey or Redis with `REDIS_URL`. Without it, rate limits count per replica,
+  caches are per process, and importing, re-uploading or refreshing a service
+  that needs a token answers 503 `credential_store_unavailable`. Run the cache
+  with a replica and automatic failover too, or a cache outage stops those
+  paths while the app and database stay up.
+- **One writable database endpoint.** GeoLens connects to a single primary and
+  has no read-replica support. A standby is for failover only.
+- **At least one worker, ideally two.** The worker can run more than one
+  replica (`worker.replicas` in Helm). Keep at least one running at all times;
+  with one, a worker failure pauses imports and other background jobs until it
+  is replaced.
+
+A database failover is not seamless. Connections drop and requests in flight
+fail until the standby takes over, typically within a minute or two.
+
+| Path | App tier | Database failover |
+| --- | --- | --- |
+| Helm | `api.replicas` and `frontend.replicas` (both default to 2), `worker.replicas`, `titiler.replicas` (defaults to 1), plus a `topologySpreadConstraints` entry per component with `whenUnsatisfiable: DoNotSchedule`, so copies land on different nodes or zones | Your database. Use a managed service with failover and set `secrets.databaseUrlOverride` |
+| AWS | `app_desired_count` in the recipe, or the ECS service's desired count | RDS Multi-AZ (`--multi-az` when creating by hand) |
+| Azure | `app_replicas` in the recipe (needs `cache_enabled`), or the Container App's min and max replicas, with the worker pinned to at least 1 | Flexible Server zone-redundant high availability. It needs a General Purpose or Memory Optimized SKU, not Burstable |
+| Google Cloud | Cloud Run minimum and maximum instances | Cloud SQL high availability, `--availability-type=REGIONAL` |
+| DigitalOcean | `instance_count` on the App Platform components | One or two standby nodes on a Standard Edition cluster, except on some 1 vCPU shared plans. New Standard Edition clusters can't add standby nodes from 15 October 2026 on an account that has never created a PostgreSQL or MySQL cluster, and from 30 November 2026 on every account; a cluster created before then keeps them. Advanced Edition has standby nodes but no PostGIS, so GeoLens can't run on it |
+
+The Terraform recipes run no database standby: the AWS recipe hardcodes
+`multi_az = false` and the Azure recipe creates no `high_availability` block.
+Their cache is one node without failover (`automatic_failover_enabled = false`
+on AWS, `high_availability_enabled = false` on Azure), and each runs exactly one
+worker task. Both default to one app replica, and the AWS production profile
+requires exactly one app task. A
+standby roughly doubles the database cost.
+
 ## Status
 
 AWS and Azure have recipes applied against a real account, and their pages

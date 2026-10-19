@@ -16,9 +16,10 @@ supported configuration for this recipe.
 
 ## Database: RDS for PostgreSQL
 
-Create an instance on PostgreSQL 15 or newer. 13 is the application floor, but
-pgvector arrives on RDS at 15.2 and 14.7, and semantic search needs pgvector
-0.5+.
+Create an instance on PostgreSQL 15 or newer. 15 is the application floor: the
+baseline migration aborts below it with `GeoLens requires PostgreSQL 15+ (NULLS
+NOT DISTINCT unique indexes)`. Semantic search also needs pgvector 0.5+, which
+RDS ships from 15.4-R2, so upgrade an older 15 minor before installing.
 
 Set the initial database name and the master username when you create the
 instance, because RDS creates no database at all unless you ask for one and the
@@ -295,8 +296,12 @@ run, or it ran against a different database on the same instance. PostGIS
 being present in the parameter group is not the same as the extension
 existing in your database.
 
-**pgvector is not available at all.** The engine version predates 15.2 or
-14.7. Upgrade the instance; there is no parameter that adds it.
+**The migration fails with `access method "hnsw" does not exist`.** pgvector
+is missing or older than 0.5. Check with `SELECT extversion FROM pg_extension
+WHERE extname = 'vector'`. No row means the bootstrap SQL didn't run. An older
+version needs `ALTER EXTENSION vector UPDATE`, and if it stays below 0.5 the
+engine predates 15.4-R2: upgrade the instance's minor version first, since no
+parameter adds a newer pgvector.
 
 **Uploads fail with a missing `Access-Control-Allow-Origin` header.** The
 bucket CORS policy does not list the origin the browser is on. It has to be

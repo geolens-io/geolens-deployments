@@ -416,7 +416,7 @@ The externally managed PostgreSQL instance must satisfy:
 - **PostgreSQL 15+** — the schema uses `NULLS NOT DISTINCT` unique indexes. The
   baseline migration aborts below 15 with `GeoLens requires PostgreSQL 15+
   (NULLS NOT DISTINCT unique indexes)`.
-- **pgvector 0.5+** — semantic search uses an HNSW index (migration 0011); older
+- **pgvector 0.5+** — semantic search uses an HNSW index (baseline migration); older
   pgvector fails with `access method "hnsw" does not exist`.
 - **Extensions present**: `postgis`, `pg_trgm`, `vector` (pgvector), `unaccent`.
   On managed services (RDS, Cloud SQL) create them once with a privileged role,

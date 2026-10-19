@@ -296,10 +296,10 @@ run, or it ran against a different database on the same instance. PostGIS
 being present in the parameter group is not the same as the extension
 existing in your database.
 
-**pgvector is missing or older than 0.5.** The engine version predates 15.4-R2,
-and migration 0011 fails with `access method "hnsw" does not exist`. Upgrade
-the instance's minor version, then run `ALTER EXTENSION vector UPDATE` if the
-extension already exists; no parameter adds it.
+**pgvector is missing or older than 0.5.** The engine version predates
+15.4-R2, and the baseline migration fails with `access method "hnsw" does not
+exist`. Upgrade the instance's minor version, then run `ALTER EXTENSION vector
+UPDATE` if the extension already exists; no parameter adds it.
 
 **Uploads fail with a missing `Access-Control-Allow-Origin` header.** The
 bucket CORS policy does not list the origin the browser is on. It has to be

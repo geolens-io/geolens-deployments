@@ -80,11 +80,11 @@ fail until the standby takes over, typically within a minute or two.
 
 | Path | App tier | Database failover |
 | --- | --- | --- |
-| Helm | `api.replicas` and `frontend.replicas` (both default to 2), `worker.replicas` | Your database. Use a managed service with failover and set `secrets.databaseUrlOverride` |
+| Helm | `api.replicas` and `frontend.replicas` (both default to 2), `worker.replicas`, `titiler.replicas` (defaults to 1) | Your database. Use a managed service with failover and set `secrets.databaseUrlOverride` |
 | AWS | `app_desired_count` in the recipe, or the ECS service's desired count | RDS Multi-AZ (`--multi-az` when creating by hand) |
 | Azure | `app_replicas` in the recipe (needs `cache_enabled`), or the Container App's min and max replicas, with the worker pinned to at least 1 | Flexible Server zone-redundant high availability. It needs a General Purpose or Memory Optimized SKU, not Burstable |
 | Google Cloud | Cloud Run minimum and maximum instances | Cloud SQL high availability, `--availability-type=REGIONAL` |
-| DigitalOcean | `instance_count` on the App Platform components | One or two standby nodes on the managed cluster, on plans with at least 2 GB of RAM |
+| DigitalOcean | `instance_count` on the App Platform components | One or two standby nodes on the managed cluster, except on some 1 vCPU shared plans. New Standard Edition clusters can't add standby nodes for accounts created from 15 October 2026, or for any account from 30 November 2026; check the edition before you create the cluster |
 
 The Terraform recipes run no database standby: the AWS recipe hardcodes
 `multi_az = false` and the Azure recipe creates no `high_availability` block.

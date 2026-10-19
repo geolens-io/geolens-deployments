@@ -360,8 +360,9 @@ off for everything but TiTiler.
 - **Share one cache.** Set `redis.url` (or a `REDIS_URL` key in
   `secrets.existingSecret`). Without it, rate limits count per replica,
   caches are per process, and importing a token-protected service answers 503.
-- **The worker may scale too.** Raise `worker.replicas`; the same storage
-  rule applies to it.
+- **The worker and TiTiler may scale too.** Raise `worker.replicas`, to which
+  the same storage rule applies, and `titiler.replicas`, which defaults to 1
+  and so stops raster tiles while its only pod is evicted or restarting.
 
 The chart prints a warning in NOTES when it sees the cache missing.
 

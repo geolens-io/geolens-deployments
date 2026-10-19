@@ -860,26 +860,28 @@ jobs:
           fi
           echo "NOTES warn exactly when a backend other than s3 has no shared staging volume"
 
-      - name: NOTES warn when api replicas share no cache
+      - name: NOTES warn when no cache is configured
         run: |
           notes() {
             helm install notes-check helm/geolens --namespace default --dry-run=client \
               --set secrets.existingSecret=geolens-secrets "$@" | sed -n '/^NOTES:/,$p'
           }
           out=$(notes)
-          if ! grep -q 'WARNING: api.replicas is 2 with no redis.url, so' <<<"$out" \
-            || ! grep -q 'secrets.existingSecret must hold a REDIS_URL key' <<<"$out"; then
+          if ! grep -q 'secrets.existingSecret must hold a' <<<"$out" \
+            || ! grep -q 'Each of the 2 api replicas also keeps' <<<"$out"; then
             echo "no cache warning for two api replicas without redis.url" >&2
             exit 1
           fi
-          for args in "--set redis.url=redis://cache:6379/0" "--set api.replicas=1"; do
-            out=$(notes $args)
-            if grep -q 'WARNING: api.replicas' <<<"$out"; then
-              echo "cache warning shown with $args" >&2
-              exit 1
-            fi
-          done
-          echo "NOTES warn exactly when more than one api replica has no redis.url"
+          out=$(notes --set api.replicas=1)
+          if ! grep -q 'WARNING: redis.url is empty' <<<"$out" || grep -q 'api replicas also keeps' <<<"$out"; then
+            echo "single-replica cache warning missing or mentions replicas" >&2
+            exit 1
+          fi
+          if grep -q 'WARNING: redis.url' <<<"$(notes --set redis.url=redis://cache:6379/0)"; then
+            echo "cache warning shown with redis.url set" >&2
+            exit 1
+          fi
+          echo "NOTES warn exactly when redis.url is empty"
 
       - name: Smoke through the frontend edge
         # Validates the whole chain the chart configures: frontend nginx ->

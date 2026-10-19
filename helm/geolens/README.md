@@ -371,7 +371,7 @@ off for everything but TiTiler.
   constraint leaves a pod Pending when there are fewer nodes or zones than
   replicas; see Placement and disruption.
 
-The chart prints a warning in NOTES when `redis.url` is empty, and with
+The chart prints a warning in NOTES whenever `redis.url` is empty, and with
 `secrets.existingSecret` it reminds you that the Secret must hold `REDIS_URL`.
 
 ## Placement and disruption

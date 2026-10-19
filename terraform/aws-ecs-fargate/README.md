@@ -345,6 +345,9 @@ the two limits cannot drift apart.
   `worker_task.cpu` with it.
 - `app_task` and `worker_task` set Fargate CPU units and memory. The worker
   default is 4 GB because GDAL ingestion of large rasters needs it.
+- `db_high_availability` runs RDS Multi-AZ: a synchronous standby in a second
+  zone and automatic failover, for about twice the instance cost. Connections
+  drop during a failover, so requests in flight fail. It is off by default.
 - `db_instance_class` sizes the database. The cache is `cache.t4g.micro` in
   `data.tf`. A `db.t4g.micro` allows roughly 100 connections and each api
   task is tuned for a budget of about 70, so raising `app_desired_count` past
@@ -376,7 +379,8 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
   role reconciler; keep each organization on its own RDS instance as described above.
 - One task role is shared by every container, which lets titiler write to the
   bucket even though it only reads.
-- The database is single-AZ and the cache is one node. Bucket versioning stays
+- The database is single-AZ unless `db_high_availability` is set, and the cache
+  is one node. Bucket versioning stays
   off on the generic path; the production profile enables it and expires
   noncurrent versions after the configured number of days.
 - One worker task runs every background job, `worker_concurrency` at a time.

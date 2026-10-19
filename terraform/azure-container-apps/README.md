@@ -247,6 +247,11 @@ api: presigned uploads are an S3-only path.
 - `api_cpu` and `worker_cpu` set vCPU, and each container gets twice that in
   GiB of memory, the ratio Consumption allows. The worker default of 2 GiB
   handles modest rasters; GDAL ingestion of large ones wants more.
+- `db_high_availability` adds a zone-redundant standby with automatic
+  failover. It needs a General Purpose or Memory Optimized `db_sku_name` (the
+  plan refuses a Burstable one) and a region with availability zones, and
+  roughly doubles the compute cost. Connections drop during a failover, so
+  requests in flight fail.
 - `db_sku_name` and `db_storage_mb` size the database. Azure grows a disk but
   never shrinks one.
 
@@ -258,8 +263,8 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
   and talk over loopback, so there is no service discovery to run, but they
   cannot scale independently.
 - The database administrator is both the migration and the application login.
-- The database has no standby. High availability needs a General Purpose SKU
-  and roughly doubles its compute cost.
+- The database has no standby unless `db_high_availability` is set, which needs
+  a General Purpose SKU and roughly doubles its compute cost.
 - Blob storage is LRS: three copies in one datacenter. ZRS or GZRS guards
   against losing a zone or a region.
 - titiler reads blobs with the storage account key, which can also write and

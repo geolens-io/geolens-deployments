@@ -85,18 +85,17 @@ fail until the standby takes over, typically within a minute or two.
 | Path | App tier | Database failover |
 | --- | --- | --- |
 | Helm | `api.replicas` and `frontend.replicas` (both default to 2), `worker.replicas`, `titiler.replicas` (defaults to 1), plus a `topologySpreadConstraints` entry per component with `whenUnsatisfiable: DoNotSchedule`, so copies land on different nodes or zones | Your database. Use a managed service with failover and set `secrets.databaseUrlOverride` |
-| AWS | `app_desired_count` in the recipe, or the ECS service's desired count | RDS Multi-AZ (`--multi-az` when creating by hand) |
-| Azure | `app_replicas` in the recipe (needs `cache_enabled`), or the Container App's min and max replicas, with the worker pinned to at least 1 | Flexible Server zone-redundant high availability. It needs a General Purpose or Memory Optimized SKU, not Burstable |
+| AWS | `app_desired_count` in the recipe, or the ECS service's desired count | RDS Multi-AZ: `db_high_availability = true` in the recipe, or `--multi-az` when creating by hand |
+| Azure | `app_replicas` in the recipe (needs `cache_enabled`), or the Container App's min and max replicas, with the worker pinned to at least 1 | Flexible Server zone-redundant high availability: `db_high_availability = true` in the recipe. It needs a General Purpose or Memory Optimized `db_sku_name`, not Burstable |
 | Google Cloud | Cloud Run minimum and maximum instances | Cloud SQL high availability, `--availability-type=REGIONAL` |
 | DigitalOcean | `instance_count` on the App Platform components | One or two standby nodes on a Standard Edition cluster, except on some 1 vCPU shared plans. New Standard Edition clusters can't add standby nodes from 15 October 2026 on an account that has never created a PostgreSQL or MySQL cluster, and from 30 November 2026 on every account; a cluster created before then keeps them. Advanced Edition has standby nodes but no PostGIS, so GeoLens can't run on it |
 
-The Terraform recipes run no database standby: the AWS recipe hardcodes
-`multi_az = false` and the Azure recipe creates no `high_availability` block.
-Their cache is one node without failover (`automatic_failover_enabled = false`
-on AWS, `high_availability_enabled = false` on Azure), and each runs exactly one
+The Terraform recipes run no database standby unless you set
+`db_high_availability = true`, which roughly doubles the database cost. Their
+cache is one node without failover (`automatic_failover_enabled = false` on
+AWS, `high_availability_enabled = false` on Azure), and each runs exactly one
 worker task. Both default to one app replica, and the AWS production profile
-requires exactly one app task. A
-standby roughly doubles the database cost.
+requires exactly one app task.
 
 ## Status
 

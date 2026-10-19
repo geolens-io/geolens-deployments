@@ -296,10 +296,12 @@ run, or it ran against a different database on the same instance. PostGIS
 being present in the parameter group is not the same as the extension
 existing in your database.
 
-**pgvector is missing or older than 0.5.** The engine version predates
-15.4-R2, and the baseline migration fails with `access method "hnsw" does not
-exist`. Upgrade the instance's minor version, then run `ALTER EXTENSION vector
-UPDATE` if the extension already exists; no parameter adds it.
+**The migration fails with `access method "hnsw" does not exist`.** pgvector
+is missing or older than 0.5. Check with `SELECT extversion FROM pg_extension
+WHERE extname = 'vector'`. No row means the bootstrap SQL didn't run. An older
+version needs `ALTER EXTENSION vector UPDATE`, and if it stays below 0.5 the
+engine predates 15.4-R2: upgrade the instance's minor version first, since no
+parameter adds a newer pgvector.
 
 **Uploads fail with a missing `Access-Control-Allow-Origin` header.** The
 bucket CORS policy does not list the origin the browser is on. It has to be

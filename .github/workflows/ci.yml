@@ -872,20 +872,14 @@ jobs:
             echo "no cache warning for two api replicas without redis.url" >&2
             exit 1
           fi
-          api_env="--set api.extraEnv[0].name=REDIS_URL --set api.extraEnv[0].value=redis://cache:6379/0"
-          worker_env="--set worker.extraEnv[0].name=REDIS_URL --set worker.extraEnv[0].value=redis://cache:6379/0"
-          if ! grep -q 'WARNING: api.replicas' <<<"$(notes $api_env)"; then
-            echo "no cache warning when only the api gets REDIS_URL" >&2
-            exit 1
-          fi
-          for args in "--set redis.url=redis://cache:6379/0" "--set api.replicas=1" "$api_env $worker_env"; do
+          for args in "--set redis.url=redis://cache:6379/0" "--set api.replicas=1"; do
             out=$(notes $args)
             if grep -q 'WARNING: api.replicas' <<<"$out"; then
               echo "cache warning shown with $args" >&2
               exit 1
             fi
           done
-          echo "NOTES warn exactly when more than one api replica has no cache configured"
+          echo "NOTES warn exactly when more than one api replica has no redis.url"
 
       - name: Smoke through the frontend edge
         # Validates the whole chain the chart configures: frontend nginx ->

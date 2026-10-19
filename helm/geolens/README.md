@@ -365,8 +365,11 @@ off for everything but TiTiler.
   and so stops raster tiles while its only pod is evicted or restarting.
 - **Spread the replicas.** `affinity` and `topologySpreadConstraints` are empty
   by default, so the scheduler may put every copy on one node. Add a spread
-  constraint per component across nodes or zones (the comment above
-  `api.nodeSelector` in `values.yaml` has one); see Placement and disruption.
+  constraint per component across nodes or zones with
+  `whenUnsatisfiable: DoNotSchedule`. The example above `api.nodeSelector` in
+  `values.yaml` uses `ScheduleAnyway`, which only prefers spreading. A hard
+  constraint leaves a pod Pending when there are fewer nodes or zones than
+  replicas; see Placement and disruption.
 
 The chart prints a warning in NOTES when `redis.url` is empty, and with
 `secrets.existingSecret` it reminds you that the Secret must hold `REDIS_URL`.

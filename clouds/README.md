@@ -66,10 +66,12 @@ same four things:
   copy of every file (see the comments above `storage.backend` in
   [`values.yaml`](../helm/geolens/values.yaml)). Use S3 or a compatible
   bucket, or Azure Blob with a ReadWriteMany staging claim.
-- **One shared cache.** Point every api and worker at the same Valkey or Redis
-  with `REDIS_URL`. Without it, rate limits count per replica, caches are
-  per process, and importing, re-uploading or refreshing a service that needs
-  a token answers 503 `credential_store_unavailable`.
+- **One shared cache, with failover.** Point every api and worker at the same
+  Valkey or Redis with `REDIS_URL`. Without it, rate limits count per replica,
+  caches are per process, and importing, re-uploading or refreshing a service
+  that needs a token answers 503 `credential_store_unavailable`. Run the cache
+  with a replica and automatic failover too, or a cache outage stops those
+  paths while the app and database stay up.
 - **One writable database endpoint.** GeoLens connects to a single primary and
   has no read-replica support. A standby is for failover only.
 - **A worker that can scale.** The worker can run more than one replica.
@@ -88,8 +90,10 @@ fail until the standby takes over, typically within a minute or two.
 
 The Terraform recipes run no database standby: the AWS recipe hardcodes
 `multi_az = false` and the Azure recipe creates no `high_availability` block.
-Both default to one app replica, and the AWS production profile requires
-exactly one app task. A standby roughly doubles the database cost.
+Their cache is one node without failover (`automatic_failover_enabled = false`
+on AWS, `high_availability_enabled = false` on Azure). Both default to one app
+replica, and the AWS production profile requires exactly one app task. A
+standby roughly doubles the database cost.
 
 ## Status
 

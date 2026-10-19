@@ -86,7 +86,7 @@ fail until the standby takes over, typically within a minute or two.
 | AWS | `app_desired_count` in the recipe, or the ECS service's desired count | RDS Multi-AZ (`--multi-az` when creating by hand) |
 | Azure | `app_replicas` in the recipe (needs `cache_enabled`), or the Container App's min and max replicas, with the worker pinned to at least 1 | Flexible Server zone-redundant high availability. It needs a General Purpose or Memory Optimized SKU, not Burstable |
 | Google Cloud | Cloud Run minimum and maximum instances | Cloud SQL high availability, `--availability-type=REGIONAL` |
-| DigitalOcean | `instance_count` on the App Platform components | One or two standby nodes on the managed cluster, except on some 1 vCPU shared plans. New Standard Edition clusters can't add standby nodes for accounts created from 15 October 2026, or for any account from 30 November 2026; check the edition before you create the cluster |
+| DigitalOcean | `instance_count` on the App Platform components | One or two standby nodes on a Standard Edition cluster, except on some 1 vCPU shared plans. New Standard Edition clusters can't add standby nodes from 15 October 2026 on an account that has never created a PostgreSQL or MySQL cluster, and from 30 November 2026 on every account; a cluster created before then keeps them. Advanced Edition has standby nodes but no PostGIS, so GeoLens can't run on it |
 
 The Terraform recipes run no database standby: the AWS recipe hardcodes
 `multi_az = false` and the Azure recipe creates no `high_availability` block.

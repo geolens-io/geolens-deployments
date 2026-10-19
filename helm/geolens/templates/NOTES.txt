@@ -52,7 +52,11 @@ read it and every import fails at "validating" with BlobNotFound. Enable
 staging.persistence (ReadWriteMany: Azure Files on AKS). See the README's
 Storage section.
 {{- end }}
-{{- if and (gt (int .Values.api.replicas) 1) (not .Values.redis.url) }}
+{{- $extraEnvRedis := false }}
+{{- range (.Values.api.extraEnv | default list) }}
+{{- if eq (.name | toString) "REDIS_URL" }}{{- $extraEnvRedis = true }}{{- end }}
+{{- end }}
+{{- if and (gt (int .Values.api.replicas) 1) (not .Values.redis.url) (not $extraEnvRedis) }}
 
 WARNING: api.replicas is {{ .Values.api.replicas }} with no redis.url{{ if .Values.secrets.existingSecret }}, so
 secrets.existingSecret must hold a REDIS_URL key{{ end }}. Without a shared cache each

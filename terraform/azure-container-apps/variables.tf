@@ -173,7 +173,7 @@ variable "db_high_availability" {
   default     = false
 
   validation {
-    condition     = !var.db_high_availability || !startswith(var.db_sku_name, "B_")
+    condition     = !var.db_high_availability || startswith(var.db_sku_name, "GP_") || startswith(var.db_sku_name, "MO_")
     error_message = "db_high_availability needs a General Purpose (GP_) or Memory Optimized (MO_) db_sku_name; Burstable SKUs cannot run a standby."
   }
 }

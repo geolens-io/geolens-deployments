@@ -239,11 +239,19 @@ api: presigned uploads are an S3-only path.
   1.23.0 any import, re-upload or refresh of a service that needs a token
   answers 503 without it, whatever the replica count. It stays off by default
   because it bills from the moment it exists.
-- `app_replicas` runs more copies of the app. More than one needs
+- `app_replicas` is the minimum number of app replicas. More than one needs
   `cache_enabled = true`; the plan refuses otherwise, since each api would
   keep its own in-memory cache.
-- `worker_concurrency` adds parallel job slots in the one worker. Raise
-  `worker_cpu` with it.
+- `app_max_replicas` turns on autoscaling. It defaults to `app_replicas`, so
+  the app stays fixed. Set it higher and Container Apps adds a replica for each
+  50 concurrent HTTP requests, up to that maximum. It needs
+  `cache_enabled = true` too. Every replica opens its own database
+  connections, so read "Database connections" first.
+- `worker_replicas` runs more copies of the worker, and `worker_concurrency`
+  adds parallel job slots in each. The app tolerates several workers. Raise
+  `worker_cpu` with concurrency. Replicas are fixed, since CPU is a poor
+  signal for the queue; see "Scaling the worker on queue depth". On B1ms both
+  stay at 1.
 - `api_cpu` and `worker_cpu` set vCPU, and each container gets twice that in
   GiB of memory, the ratio Consumption allows. The worker default of 2 GiB
   handles modest rasters; GDAL ingestion of large ones wants more.
@@ -257,8 +265,84 @@ api: presigned uploads are an S3-only path.
   now, so making both changes in one apply fails with
   `HANotSupportedForBurstableSku`. The SKU change restarts the server and took
   GeoLens offline for about seven minutes in testing, so schedule it.
-- `db_sku_name` and `db_storage_mb` size the database. Azure grows a disk but
-  never shrinks one.
+- `db_sku_name` and `db_storage_mb` size the database. `db_storage_mb` is the
+  initial size only: auto-grow is on, so the server grows its own disk before
+  it fills, and Terraform ignores the size afterwards. Azure never shrinks a
+  disk. To grow it yourself, use the portal or
+  `az postgres flexible-server update`.
+- `zone_redundancy_enabled` spreads the Container Apps environment across
+  availability zones. It is off by default and Azure fixes it when the
+  environment is created: turning it on for an existing stack makes Terraform
+  replace the environment, and with it both apps and the migrate job, which
+  means downtime and a new app hostname. Microsoft also asks for at least two
+  replicas to get any spread, so pair it with `app_replicas = 2` and
+  `cache_enabled = true`. The environment subnet only has to be a `/27` or
+  larger, and this recipe gives it a `/24`. It costs nothing extra. The
+  database is separate: use `db_high_availability`.
+
+### Database connections
+
+`B_Standard_B1ms`, the default, allows 50 connections and Azure reserves 15,
+leaving 35. On B1ms the recipe sets, for the api, `DB_POOL_SIZE=2`,
+`DB_MAX_OVERFLOW=0` and `TILE_POOL_MIN_SIZE` and `TILE_POOL_MAX_SIZE` of 1,
+and for the worker `DB_POOL_SIZE=worker_concurrency` and `DB_MAX_OVERFLOW=0`.
+`extra_env` overrides any of them. Per process the worst case is
+`DB_POOL_SIZE + DB_MAX_OVERFLOW + 3` for the job queue connector, plus
+`TILE_POOL_MAX_SIZE` in the api and one connection that listens for jobs in
+the worker:
+
+```
+api     2 processes x (2 + 0 + 1 + 3)             = 12
+worker  1 replica    x (1 + 0 + 3 + 1)            =  5
+one revision                                      = 17
+a rolling revision runs old and new together      = 34   (limit 35)
+```
+
+The cost is one tile render at a time in each api process. B1ms has room for
+one app replica and one worker with one job slot, so the plan refuses
+`app_replicas`, `app_max_replicas`, `worker_replicas` or `worker_concurrency`
+above 1 on it. Larger SKUs get the app defaults, which fit their much higher
+limits; the [connection budget](../../clouds/README.md#database-connections)
+has the formula.
+
+To scale out, move to a larger `db_sku_name`. Flexible Server's built-in
+PgBouncer can't be used with GeoLens yet, because the job queue sets its
+`search_path` through the `options` startup parameter, which PgBouncer rejects.
+This is a GeoLens limitation, tracked in
+[geolens#3213](https://github.com/geolens-io/geolens/issues/3213).
+
+### Uploads and the ingress timeout
+
+Container Apps ingress closes a request that takes longer than 240 seconds
+(Microsoft's documented limit), and on Azure every upload streams through the
+api because presigned uploads are S3-only. An upload that cannot finish in 240
+seconds fails. At 10 MB/s that is about 2.4 GB, at 2 MB/s about 480 MB, and
+the default `upload_max_size_mb` of 500 assumes a client faster than that.
+Size it to the slowest uplink you support, times 240 seconds, with margin. For
+larger files, register them by reference from a service or bucket, or upload
+from a network inside Azure.
+
+### Staging share and replica size
+
+The staging file share is created with a 100 GiB quota and holds every
+upload and conversion in flight. Concurrent large ingests count against that
+quota, and a standard SMB share has its own IOPS and throughput limits, which
+bound how fast several workers can write. The premium NFS share the Simplified
+list mentions is the upgrade.
+
+Everything runs on the Consumption profile, which caps a replica at 4 vCPU and
+8 GiB. That limits `api_cpu` (the app's three containers share 4 vCPU) and
+`worker_cpu` (4 at most). A single raster larger than the worker's memory
+needs a Dedicated workload profile with larger instances. The recipe does not
+create one; add a `workload_profile` to the environment and point the worker's
+`workload_profile_name` at it.
+
+### Scaling the worker on queue depth
+
+The worker has no ingress, so only a KEDA scaler can move it, and the recipe
+does not add one. [`clouds/azure.md`](../../clouds/azure.md#containers) has the
+PostgreSQL scaler query to put in a custom scale rule. Keep the worker count
+within the connection budget above.
 
 ## What is deliberately simplified
 
@@ -281,6 +365,8 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
   to happen outside Terraform.
 - Staging is an SMB share, so the worker's raster conversions write over the
   network. A premium NFS share is the upgrade when ingest throughput matters.
+- The app autoscales only on HTTP concurrency and the worker not at all; see
+  "Scaling the worker on queue depth".
 - Neither app scales to zero. The api takes the better part of a minute to
   start, which is a long wait for a first request.
 
@@ -417,3 +503,22 @@ on the baseline still served their collection items and raster tile, and
 with about a minute of failed health checks, and a plan afterwards proposed
 no changes. The destroy took the four runs Teardown describes, and the sweep
 found nothing left.
+
+On 2026-10-20 in westus3, the previous recipe applied GeoLens 1.26.0 with the
+defaults (`B_Standard_B1ms`), and this one was applied over it. Both apps and
+the database server changed in place: the api and worker took the B1ms pool
+settings, the app its 35-second grace period and the server auto-grow.
+`/api/health` answered 200 at every check, ten seconds apart, and the next plan
+proposed no changes. The baseline datasets still served their collection items
+and raster tile, and `.github/ci/ingest-smoke.sh` passed again. Turning on the
+cache with three api replicas and two workers, a combination the recipe now
+refuses on B1ms because it can exceed the connection limit under load, created
+the Managed Redis instance and an HTTP scale rule at 50 concurrent requests,
+with health at 200 throughout. Moving to `GP_Standard_D2ds_v5` restarted the
+server, and GeoLens was unavailable for about five minutes. Turning on
+`zone_redundancy_enabled` replaced the environment, both apps, the migrate job
+and the staging mount, and the deletes took the four runs Teardown describes.
+The new environment reported zone redundancy, the datasets ingested before the
+upgrade still served, and the smoke test passed. A plan of this recipe against
+the stack afterwards proposed no changes. The destroy took the four runs
+Teardown describes, and the sweep found nothing left.

@@ -88,6 +88,49 @@ variable "app_replicas" {
   }
 }
 
+variable "app_max_replicas" {
+  description = "Most replicas the app scales out to, on concurrent HTTP requests (50 per replica). Empty means app_replicas, so the app does not autoscale."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.app_max_replicas == null || (try(var.app_max_replicas >= var.app_replicas && floor(var.app_max_replicas) == var.app_max_replicas, false))
+    error_message = "app_max_replicas must be empty or a whole number of at least app_replicas."
+  }
+
+  validation {
+    condition     = try(var.app_max_replicas <= 1, true) || var.cache_enabled
+    error_message = "app_max_replicas above 1 needs cache_enabled = true; without a shared cache every api replica keeps its own."
+  }
+
+  validation {
+    condition     = var.db_sku_name != "B_Standard_B1ms" || coalesce(var.app_max_replicas, var.app_replicas) == 1
+    error_message = "B_Standard_B1ms has connections for one app replica only. Use a larger db_sku_name to scale out; see Database connections in the recipe README."
+  }
+}
+
+variable "worker_replicas" {
+  description = "Replicas of the worker."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.worker_replicas >= 1 && floor(var.worker_replicas) == var.worker_replicas
+    error_message = "worker_replicas must be a positive whole number."
+  }
+
+  validation {
+    condition     = var.db_sku_name != "B_Standard_B1ms" || var.worker_replicas == 1
+    error_message = "B_Standard_B1ms has connections for one worker only. Use a larger db_sku_name to scale out; see Database connections in the recipe README."
+  }
+}
+
+variable "zone_redundancy_enabled" {
+  description = "Spread the Container Apps environment across availability zones. Azure fixes it at creation, so changing it replaces the environment, both apps and the migrate job."
+  type        = bool
+  default     = false
+}
+
 variable "cache_enabled" {
   description = "Create an Azure Managed Redis instance, about $12 a month, and point the api and worker at it. Since GeoLens 1.23.0, importing, re-uploading or refreshing a service that needs a token answers 503 without it. More than one api replica needs it too; otherwise the api caches in process memory."
   type        = bool
@@ -179,7 +222,7 @@ variable "db_high_availability" {
 }
 
 variable "db_storage_mb" {
-  description = "PostgreSQL storage in MB. Azure accepts only its fixed sizes (32768, 65536, 131072 and up) and can grow a disk but never shrink one."
+  description = "PostgreSQL storage in MB. Azure accepts only its fixed sizes (32768, 65536, 131072 and up) and can grow a disk but never shrink one. Initial size only; auto-grow owns it afterwards."
   type        = number
   default     = 32768
 }
@@ -214,6 +257,11 @@ variable "worker_concurrency" {
   validation {
     condition     = var.worker_concurrency >= 1 && floor(var.worker_concurrency) == var.worker_concurrency
     error_message = "worker_concurrency must be a positive whole number."
+  }
+
+  validation {
+    condition     = var.db_sku_name != "B_Standard_B1ms" || var.worker_concurrency == 1
+    error_message = "B_Standard_B1ms has connections for one job slot only. Use a larger db_sku_name for more; see Database connections in the recipe README."
   }
 }
 

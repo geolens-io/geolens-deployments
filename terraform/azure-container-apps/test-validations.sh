@@ -70,3 +70,18 @@ rejected 'a hostname with an empty label' 'public_app_url must be empty' '-var=p
 rejected 'a hostname past the DNS length limit' 'public_app_url must be empty' "-var=public_app_url=https://$(printf '%060d.' 1 2 3 4 5)com"
 rejected 'a label that starts with a hyphen' 'public_app_url must be empty' '-var=public_app_url=https://geo.-example.com'
 rejected 'more than one app replica needs the cache' 'app_replicas above 1 needs cache_enabled' '-var=app_replicas=2'
+accepted 'autoscaling with a shared cache on a larger SKU' '-var=app_max_replicas=3' '-var=cache_enabled=true' '-var=db_sku_name=GP_Standard_D2ds_v5'
+accepted 'a maximum equal to the minimum' '-var=app_replicas=2' '-var=app_max_replicas=2' '-var=cache_enabled=true' '-var=db_sku_name=GP_Standard_D2ds_v5'
+rejected 'a maximum below the minimum' 'app_max_replicas must be empty or a whole number of at least app_replicas' \
+  '-var=app_replicas=2' '-var=app_max_replicas=1' '-var=cache_enabled=true'
+rejected 'a fractional maximum' 'app_max_replicas must be empty or a whole number' '-var=app_max_replicas=2.5' '-var=cache_enabled=true'
+rejected 'autoscaling past one replica needs the cache' 'app_max_replicas above 1 needs cache_enabled' '-var=app_max_replicas=3'
+accepted 'two workers on a larger SKU' '-var=worker_replicas=2' '-var=db_sku_name=GP_Standard_D2ds_v5'
+rejected 'no workers' 'worker_replicas must be a positive whole number' '-var=worker_replicas=0'
+rejected 'a fractional worker count' 'worker_replicas must be a positive whole number' '-var=worker_replicas=1.5'
+rejected 'autoscaling on B1ms' 'B_Standard_B1ms has connections for one app replica only' '-var=app_max_replicas=3' '-var=cache_enabled=true'
+rejected 'two fixed app replicas on B1ms' 'B_Standard_B1ms has connections for one app replica only' '-var=app_replicas=2' '-var=cache_enabled=true'
+rejected 'two workers on B1ms' 'B_Standard_B1ms has connections for one worker only' '-var=worker_replicas=2'
+accepted 'two workers on a Burstable SKU with more connections' '-var=worker_replicas=2' '-var=db_sku_name=B_Standard_B2s'
+rejected 'two job slots on B1ms' 'B_Standard_B1ms has connections for one job slot only' '-var=worker_concurrency=2'
+accepted 'two job slots on a larger SKU' '-var=worker_concurrency=2' '-var=db_sku_name=GP_Standard_D2ds_v5'

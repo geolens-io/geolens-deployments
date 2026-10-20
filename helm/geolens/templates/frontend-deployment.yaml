@@ -6,7 +6,7 @@ metadata:
     {{- include "geolens.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
 spec:
-  {{- with include "geolens.replicas" .Values.frontend | trim }}
+  {{- with include "geolens.replicas" (list $ "frontend" .Values.frontend) | trim }}
   {{- . | nindent 2 }}
   {{- end }}
   {{- include "geolens.rollout" . | nindent 2 }}

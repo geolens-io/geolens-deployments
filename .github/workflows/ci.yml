@@ -394,6 +394,12 @@ jobs:
             ! grep -q 'replicas:' <<<"$(doc "geolens-$c" <<<"$opt")" || die "$c keeps spec.replicas while its HPA is enabled"
           done
           grep -q 'replicas: 2' <<<"$(doc geolens-frontend <<<"$opt")" || die "frontend lost replicas without an HPA"
+          [ "$(grep -c 'apiVersion: autoscaling/v2$' <<<"$opt")" -eq 2 ] || die "the HPAs are not autoscaling/v2"
+          old=$(render --kube-version 1.22.0 --set api.autoscaling.enabled=true)
+          grep -q 'apiVersion: autoscaling/v2beta2$' <<<"$old" || die "Kubernetes 1.22 did not get autoscaling/v2beta2"
+          keda=$(render --set worker.autoscaling.enabled=true)
+          ! grep -q 'replicas:' <<<"$(doc geolens-worker <<<"$keda")" || die "the worker keeps spec.replicas under an external autoscaler"
+          ! grep -q 'kind: HorizontalPodAutoscaler' <<<"$keda" || die "worker.autoscaling rendered an HPA"
           grep -q 'kind: ServiceMonitor' <<<"$opt" && grep -q 'kind: PodMonitor' <<<"$opt" || die "serviceMonitor.enabled did not render both monitors"
           ! grep -q preStop <<<"$(doc geolens-api <<<"$opt")" || die "api.preStopSleepSeconds=0 kept the preStop"
           d=$(doc geolens-frontend <<<"$opt")
@@ -907,26 +913,23 @@ jobs:
           fi
           echo "NOTES warn exactly when a backend other than s3 has no shared staging volume"
 
-      - name: NOTES warn when a ReadWriteOnce staging claim serves several replicas
+      - name: NOTES warn when the staging claim is ReadWriteOnce
         run: |
           notes() {
             helm install notes-check helm/geolens --namespace default --dry-run=client \
               --set secrets.existingSecret=geolens-secrets --set storage.backend=s3 --set storage.s3Bucket=geolens \
               --set staging.persistence.enabled=true --set-json 'staging.persistence.accessModes=["ReadWriteOnce"]' "$@" | sed -n '/^NOTES:/,$p'
           }
-          grep -q 'WARNING: staging.persistence.accessModes is ReadWriteOnce' <<<"$(notes)" || {
-            echo "no ReadWriteOnce warning with two api replicas" >&2
+          # The api, worker and titiler all mount the claim, so one replica each still spans nodes.
+          grep -q 'WARNING: staging.persistence.accessModes is ReadWriteOnce' <<<"$(notes --set api.replicas=1)" || {
+            echo "no ReadWriteOnce warning with one api and one worker replica" >&2
             exit 1
           }
-          if grep -q 'accessModes is ReadWriteOnce' <<<"$(notes --set api.replicas=1)"; then
-            echo "ReadWriteOnce warning shown with one api and one worker replica" >&2
-            exit 1
-          fi
           if grep -q 'accessModes is ReadWriteOnce' <<<"$(notes --set-json 'staging.persistence.accessModes=["ReadWriteMany"]')"; then
             echo "ReadWriteOnce warning shown for ReadWriteMany" >&2
             exit 1
           fi
-          echo "NOTES warn exactly when a ReadWriteOnce staging claim serves more than one replica"
+          echo "NOTES warn exactly when the chart's staging claim is ReadWriteOnce"
 
       - name: NOTES warn when no cache is configured
         run: |
@@ -993,6 +996,18 @@ jobs:
       - name: helm upgrade idempotence (migrate hook re-run)
         run: |
           helm upgrade geolens helm/geolens --namespace geolens --reuse-values --wait --timeout 10m
+
+      - name: Turning on an HPA keeps the live replica count
+        # Kubernetes resets a replicas field the applied manifest drops to 1.
+        run: |
+          helm upgrade geolens helm/geolens --namespace geolens --reuse-values \
+            --set api.autoscaling.enabled=true --wait --timeout 20m
+          manifest=$(helm get manifest geolens --namespace geolens \
+            | awk 'BEGIN{RS="---"} index($0, "name: geolens-api\n") && /kind: Deployment/')
+          grep -q 'replicas: 2' <<<"$manifest" || { echo "the api manifest dropped replicas when its HPA turned on" >&2; exit 1; }
+          live=$(kubectl -n geolens get deploy geolens-api -o jsonpath='{.spec.replicas}')
+          [ "$live" = 2 ] || { echo "the api Deployment went to $live replicas when its HPA turned on" >&2; exit 1; }
+          echo "turning on the api HPA kept two replicas"
 
       - name: Retire the fresh install
         # The upgrade scenario below gets the runner to itself.

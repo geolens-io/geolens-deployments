@@ -407,12 +407,15 @@ The chart prints a warning in NOTES whenever `redis.url` is empty, and with
 ### Autoscaling
 
 `api.autoscaling`, `frontend.autoscaling` and `titiler.autoscaling` each render
-an `autoscaling/v2` HorizontalPodAutoscaler on CPU when `enabled` is true
-(`minReplicas`, `maxReplicas`, `targetCPUUtilizationPercentage`). The cluster
-needs a metrics server, and the component needs a CPU request, which the
-default `resources` provide. While an HPA is enabled the Deployment omits
-`replicas`, so `helm upgrade` does not reset the count; `minReplicas` takes
-over as the floor. Turn it off again and `replicas` returns.
+an `autoscaling/v2` HorizontalPodAutoscaler (`v2beta2` before Kubernetes 1.23)
+on CPU when `enabled` is true (`minReplicas`, `maxReplicas`,
+`targetCPUUtilizationPercentage`). The cluster needs a metrics server, and the
+component needs a CPU request, which the default `resources` provide. While an
+HPA is enabled the chart writes back the Deployment's live replica count
+instead of `replicas`, so neither `helm upgrade` nor turning the HPA on resets
+the count; `minReplicas` takes over as the floor. Turn it off again and
+`replicas` returns. `helm template`, which has no cluster to ask, leaves the
+field out, so GitOps tools should ignore `spec.replicas` on these Deployments.
 
 ### The worker
 
@@ -428,13 +431,15 @@ with this trigger:
 triggers:
   - type: postgresql
     metadata:
-      query: "SELECT count(*) FROM procrastinate_jobs WHERE status = 'todo'"
+      query: "SELECT count(*) FROM catalog.procrastinate_jobs WHERE status = 'todo'"
       targetQueryValue: "5"
     authenticationRef:
       name: geolens-keda-postgres   # a TriggerAuthentication holding the connection string
 ```
 
-Set `worker.replicas` aside while KEDA owns the count, as with an HPA.
+Set `worker.autoscaling.enabled=true` while KEDA owns the count. The chart
+renders no HPA for the worker; it only stops writing `replicas`, so a
+`helm upgrade` leaves KEDA's count alone.
 The worker has no PodDisruptionBudget: at one replica `maxUnavailable: 1`
 permits the eviction anyway, and a worker finishes or releases its jobs inside
 `worker.terminationGracePeriodSeconds`.

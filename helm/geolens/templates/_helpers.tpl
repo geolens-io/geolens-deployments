@@ -160,11 +160,19 @@ strategy:
     maxUnavailable: 0
 {{- end -}}
 
-{{/* The component's replicas, left out while an HPA owns the count so a
-     `helm upgrade` does not reset it. */}}
+{{/* (list root component values): the replicas line. While an autoscaler owns
+     the count, the live count is rendered back, since Kubernetes resets a
+     dropped field to 1; helm template has no cluster and leaves it out. */}}
 {{- define "geolens.replicas" -}}
-{{- if not (.autoscaling | default dict).enabled -}}
-replicas: {{ .replicas }}
+{{- $root := index . 0 -}}
+{{- $v := index . 2 -}}
+{{- if not ($v.autoscaling | default dict).enabled -}}
+replicas: {{ $v.replicas }}
+{{- else -}}
+{{- $live := lookup "apps/v1" "Deployment" $root.Release.Namespace (printf "%s-%s" (include "geolens.fullname" $root) (index . 1)) -}}
+{{- with dig "spec" "replicas" nil $live }}
+replicas: {{ . }}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 

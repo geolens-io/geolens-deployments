@@ -1,12 +1,13 @@
-{{- /* Opt-in HorizontalPodAutoscalers. While one is enabled its Deployment omits
-     spec.replicas, so a `helm upgrade` leaves the autoscaled count alone. CPU
-     utilization is measured against the component's CPU request. */}}
+{{- /* Opt-in HorizontalPodAutoscalers; geolens.replicas keeps a `helm upgrade`
+     off the count they own. CPU utilization is measured against the
+     component's CPU request. Kubernetes before 1.23 has only
+     autoscaling/v2beta2, with the same fields. */}}
 {{- range $component := list "api" "frontend" "titiler" }}
 {{- $values := get $.Values $component }}
 {{- $as := $values.autoscaling | default dict }}
 {{- if and $as.enabled (or (ne $component "titiler") $.Values.titiler.enabled) }}
 ---
-apiVersion: autoscaling/v2
+apiVersion: {{ ternary "autoscaling/v2beta2" "autoscaling/v2" (semverCompare "<1.23-0" $.Capabilities.KubeVersion.Version) }}
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "geolens.fullname" $ }}-{{ $component }}

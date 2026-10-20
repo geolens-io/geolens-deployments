@@ -66,9 +66,9 @@ api:
   resources:
     requests: {cpu: 100m, memory: 256Mi}
     limits: {memory: 2Gi}
-  # Optional HorizontalPodAutoscaler on CPU. While enabled the Deployment omits
-  # `replicas`, so `helm upgrade` does not reset the autoscaled count; minReplicas
-  # replaces it. Off by default because it needs a metrics-server and a CPU
+  # Optional HorizontalPodAutoscaler on CPU. While enabled the chart writes back
+  # the live replica count, so `helm upgrade` does not reset it; minReplicas is
+  # the floor. Off by default because it needs a metrics-server and a CPU
   # request (set above). Pair it with a shared cache and the connection budget
   # in clouds/README.md#database-connections before raising maxReplicas.
   autoscaling:
@@ -115,6 +115,11 @@ api:
 
 worker:
   replicas: 1
+  # true while an autoscaler outside the chart, such as a KEDA ScaledObject,
+  # owns the worker count; the chart then writes back the live count instead of
+  # `replicas`. It renders no HPA for the worker.
+  autoscaling:
+    enabled: false
   image:
     repository: ghcr.io/geolens-io/geolens-worker
     tag: "1.26.0"

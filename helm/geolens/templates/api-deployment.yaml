@@ -6,7 +6,7 @@ metadata:
     {{- include "geolens.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
-  {{- with include "geolens.replicas" .Values.api | trim }}
+  {{- with include "geolens.replicas" (list $ "api" .Values.api) | trim }}
   {{- . | nindent 2 }}
   {{- end }}
   {{- include "geolens.rollout" . | nindent 2 }}

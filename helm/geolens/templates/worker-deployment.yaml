@@ -6,7 +6,9 @@ metadata:
     {{- include "geolens.labels" . | nindent 4 }}
     app.kubernetes.io/component: worker
 spec:
-  replicas: {{ .Values.worker.replicas }}
+  {{- with include "geolens.replicas" (list $ "worker" .Values.worker) | trim }}
+  {{- . | nindent 2 }}
+  {{- end }}
   revisionHistoryLimit: {{ include "geolens.revisionHistoryLimit" . }}
   selector:
     matchLabels:

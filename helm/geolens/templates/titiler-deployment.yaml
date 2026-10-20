@@ -14,7 +14,7 @@ metadata:
     {{- include "geolens.labels" . | nindent 4 }}
     app.kubernetes.io/component: titiler
 spec:
-  {{- with include "geolens.replicas" .Values.titiler | trim }}
+  {{- with include "geolens.replicas" (list $ "titiler" .Values.titiler) | trim }}
   {{- . | nindent 2 }}
   {{- end }}
   {{- include "geolens.rollout" . | nindent 2 }}

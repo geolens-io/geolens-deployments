@@ -1,0 +1,35 @@
+{{- /* Opt-in HorizontalPodAutoscalers; geolens.replicas keeps a `helm upgrade`
+     off the count they own. CPU utilization is measured against the
+     component's CPU request. Kubernetes before 1.23 has only
+     autoscaling/v2beta2, with the same fields. */}}
+{{- range $component := list "api" "frontend" "titiler" }}
+{{- $values := get $.Values $component }}
+{{- $as := $values.autoscaling | default dict }}
+{{- if and $as.enabled (or (ne $component "titiler") $.Values.titiler.enabled) }}
+{{- if not (dig "requests" "cpu" "" ($values.resources | default dict)) }}
+{{- fail (printf "%s.autoscaling needs %s.resources.requests.cpu to measure utilization against; a --reuse-values upgrade from chart 0.4 keeps its empty resources" $component $component) }}
+{{- end }}
+---
+apiVersion: {{ ternary "autoscaling/v2beta2" "autoscaling/v2" (semverCompare "<1.23-0" $.Capabilities.KubeVersion.Version) }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "geolens.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "geolens.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "geolens.fullname" $ }}-{{ $component }}
+  minReplicas: {{ $as.minReplicas | default 2 }}
+  maxReplicas: {{ $as.maxReplicas | default 6 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $as.targetCPUUtilizationPercentage | default 70 }}
+{{- end }}
+{{- end }}

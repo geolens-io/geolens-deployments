@@ -6,7 +6,10 @@ metadata:
     {{- include "geolens.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
-  replicas: {{ .Values.api.replicas }}
+  {{- with include "geolens.replicas" (list $ "api" .Values.api) | trim }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  {{- include "geolens.rollout" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "geolens.selectorLabels" . | nindent 6 }}
@@ -26,6 +29,7 @@ spec:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- end }}
     spec:
+      terminationGracePeriodSeconds: {{ include "geolens.terminationGrace" (list .Values.api "api" 30) }}
       serviceAccountName: {{ include "geolens.serviceAccountName" . | quote }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -33,13 +37,16 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with include "geolens.scheduling" .Values.api | trim }}
+      {{- with include "geolens.podScheduling" (list $ "api" .Values.api) | trim }}
       {{- . | nindent 6 }}
       {{- end }}
       containers:
         - name: api
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          {{- with include "geolens.preStop" .Values.api | trim }}
+          {{- . | nindent 10 }}
+          {{- end }}
           securityContext:
             {{- include "geolens.containerSecurityContext" . | nindent 12 }}
           ports:

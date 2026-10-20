@@ -67,6 +67,17 @@ frontend images have no trusted-proxy support at all; the change landed as
 > chart's default tags satisfy this; if you pin an older tag, `helm install`
 > prints a warning and API traffic will not work.
 
+Ingress body size and timeouts: uploads go through the ingress, and controller
+defaults are small. ingress-nginx caps the body at 1m and times out at 60s, so
+set `nginx.ingress.kubernetes.io/proxy-body-size` to at least
+`api.uploadMaxSizeMb`, raise `proxy-read-timeout` and `proxy-send-timeout`, and
+set `proxy-request-buffering: "off"` so a large upload streams through.
+[`examples/values-aws.yaml`](../../examples/values-aws.yaml) shows the set. The
+AWS Load Balancer Controller takes the idle timeout from
+`alb.ingress.kubernetes.io/load-balancer-attributes:
+idle_timeout.timeout_seconds=600`, and GKE reads `timeoutSec` from a
+BackendConfig attached to the frontend Service.
+
 ## Required values
 
 The backend refuses to boot without admin credentials, a JWT secret, and a
@@ -184,6 +195,18 @@ backend:
   empty `staging.persistence.storageClass` renders no `storageClassName`, which
   needs a cluster *default* StorageClass that an eksctl-built cluster does not
   mark — the claim then sits `Pending` forever. RWX on AWS means EFS.
+
+ReadWriteMany by cloud, for the cases above that need a shared claim:
+
+| Cluster | ReadWriteMany backing | Notes |
+| --- | --- | --- |
+| EKS | EFS (`efs.csi.aws.com`) | Needs the EFS CSI driver and an access point or StorageClass with `uid` and `gid` 1001. |
+| AKS | Azure Files (`file.csi.azure.com`) | Set `uid=1001` and `gid=1001` mount options, as above. |
+| GKE | Filestore (`filestore.csi.storage.gke.io`) | The default tier has a 1 TiB minimum; check the tier before sizing. |
+| DOKS | None native | Block storage is ReadWriteOnce only. Use `storage.backend=s3` with DigitalOcean Spaces and no staging claim. |
+
+A claim that stays ReadWriteOnce works only while every pod that mounts it lands
+on one node. With more than one api or worker replica, NOTES prints a warning.
 
 S3-compatible endpoints (MinIO, R2): raster serving resolves assets as
 `/vsis3/` paths. The chart derives GDAL's `AWS_S3_ENDPOINT`, `AWS_HTTPS`, and
@@ -352,7 +375,8 @@ off for everything but TiTiler.
 
 ## Running more than one replica
 
-`api.replicas` and `frontend.replicas` default to 2. Beyond one api replica:
+`api.replicas`, `frontend.replicas` and `titiler.replicas` default to 2.
+Beyond one api replica:
 
 - **Storage must be shared.** Use `storage.backend=s3`, or `local`/`azure` with
   a ReadWriteMany `staging.persistence` claim (see the Storage section).
@@ -360,19 +384,81 @@ off for everything but TiTiler.
 - **Share one cache.** Set `redis.url` (or a `REDIS_URL` key in
   `secrets.existingSecret`). Without it, rate limits count per replica,
   caches are per process, and importing a token-protected service answers 503.
-- **The worker and TiTiler may scale too.** Raise `worker.replicas`, to which
-  the same storage rule applies, and `titiler.replicas`, which defaults to 1
-  and so stops raster tiles while its only pod is evicted or restarting.
-- **Spread the replicas.** `affinity` and `topologySpreadConstraints` are empty
-  by default, so the scheduler may put every copy on one node. Add a spread
-  constraint per component across nodes or zones with
-  `whenUnsatisfiable: DoNotSchedule`. The example above `api.nodeSelector` in
-  `values.yaml` uses `ScheduleAnyway`, which only prefers spreading. A hard
-  constraint leaves a pod Pending when there are fewer nodes or zones than
-  replicas; see Placement and disruption.
+- **Budget database connections.** Every api and worker replica holds a
+  connection pool. Work out the total against your database's
+  `max_connections` before adding replicas or enabling an HPA; the formula is
+  in [Database connections](../../clouds/README.md#database-connections).
+- **Set `frontend.trustedProxyCidrs`.** With several frontend pods behind an
+  ingress, nginx still needs the proxy hops listed as `TRUSTED_PROXY_CIDRS` to
+  see the real client, or the anonymous raster rate limit lands in one bucket.
+- **Shut down gracefully.** The api and frontend sleep in a `preStop` hook
+  before draining, and the chart refuses a `terminationGracePeriodSeconds` that
+  does not outlast the sleep plus the api's 30-second uvicorn drain. The hook
+  runs `sleep`, which both images ship, because the native `preStop.sleep`
+  action needs Kubernetes 1.30 and the chart supports 1.21.
+- **Spread and roll safely.** Components with no `topologySpreadConstraints`
+  get a soft node and zone spread, a value you set replaces it, and the api,
+  frontend and TiTiler roll with `maxUnavailable: 0`. The reasons are in
+  `values.yaml`.
 
 The chart prints a warning in NOTES whenever `redis.url` is empty, and with
 `secrets.existingSecret` it reminds you that the Secret must hold `REDIS_URL`.
+
+### Autoscaling
+
+`api.autoscaling`, `frontend.autoscaling` and `titiler.autoscaling` each render
+an `autoscaling/v2` HorizontalPodAutoscaler (`v2beta2` before Kubernetes 1.23)
+on CPU when `enabled` is true (`minReplicas`, `maxReplicas`,
+`targetCPUUtilizationPercentage`). The cluster needs a metrics server, and the
+component needs a CPU request, which the default `resources` provide. While an
+HPA is enabled the chart writes back the Deployment's live replica count
+instead of `replicas`, so neither `helm upgrade` nor turning the HPA on resets
+the count; `minReplicas` takes over as the floor. Turn it off again and
+`replicas` returns. `helm template`, which has no cluster to ask, leaves the
+field out, so GitOps tools should ignore `spec.replicas` on these Deployments.
+
+### The worker
+
+The worker stays at one replica by default. It takes jobs from a PostgreSQL
+queue, so more replicas share the work, subject to the storage rule above.
+Each one also adds database connections. A HorizontalPodAutoscaler on CPU fits
+it poorly, because queued work is not CPU. A KEDA `ScaledObject` can follow the
+queue depth instead. The chart ships no KEDA template; this is a starting point
+that assumes a KEDA install and a `ScaledObject` targeting the worker Deployment
+with this trigger:
+
+```yaml
+triggers:
+  - type: postgresql
+    metadata:
+      query: "SELECT count(*) FROM catalog.procrastinate_jobs WHERE status = 'todo'"
+      targetQueryValue: "5"
+    authenticationRef:
+      name: geolens-keda-postgres   # a TriggerAuthentication holding the connection string
+```
+
+Set `worker.autoscaling.enabled=true` while KEDA owns the count. The chart
+renders no HPA for the worker; it only stops writing `replicas`, so a
+`helm upgrade` leaves KEDA's count alone.
+The worker has no PodDisruptionBudget: at one replica `maxUnavailable: 1`
+permits the eviction anyway, and a worker finishes or releases its jobs inside
+`worker.terminationGracePeriodSeconds`.
+
+### Metrics
+
+`serviceMonitor.enabled=true` renders a Prometheus Operator ServiceMonitor for
+the api and a PodMonitor for the worker, whose health port also serves
+`/metrics`. They are off by default because both kinds are CRDs; a cluster
+without the Operator rejects them. Put the label your Prometheus selects on in
+`serviceMonitor.labels`, and with `networkPolicy.enabled` list the Prometheus
+pods in `networkPolicy.metricsFrom`.
+
+### Default resources
+
+Chart 0.5.0 sets resource requests and memory limits (values in `values.yaml`),
+and TiTiler defaults to two replicas. `helm upgrade --reuse-values` keeps the
+empty values of an earlier release; pass `--reset-then-reuse-values` to pick up
+the new defaults.
 
 ## Placement and disruption
 

@@ -64,3 +64,12 @@ Point redis.url, or a REDIS_URL key in the Secret, at one Valkey or Redis
 that the api and worker share. Ignore this if both get the same REDIS_URL
 another way. See the README's Running more than one replica section.
 {{- end }}
+{{- $staging := .Values.staging.persistence }}
+{{- if and $staging.enabled (not $staging.existingClaim) (has "ReadWriteOnce" $staging.accessModes) }}
+
+WARNING: the staging claim is ReadWriteOnce. The api, worker and titiler pods
+all mount it, and a ReadWriteOnce volume attaches to one node, so pods
+scheduled on another node stay Pending or cannot start. Use a ReadWriteMany
+class (EFS, Azure Files, Filestore), or storage.backend=s3 without
+persistence. See the README's Storage section.
+{{- end }}

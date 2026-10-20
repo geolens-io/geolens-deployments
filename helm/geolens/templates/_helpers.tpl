@@ -125,6 +125,89 @@ topologySpreadConstraints:
 {{- end }}
 {{- end -}}
 
+{{/* (list root component values): the component's pod placement and priority,
+     with a soft spread over nodes and zones when it sets none. ScheduleAnyway
+     only prefers spreading, so a one-node or one-zone cluster still schedules. */}}
+{{- define "geolens.podScheduling" -}}
+{{- $root := index . 0 -}}
+{{- $component := index . 1 -}}
+{{- $v := index . 2 -}}
+{{- with $v.priorityClassName }}
+priorityClassName: {{ . | quote }}
+{{- end }}
+{{- $spread := $v.topologySpreadConstraints -}}
+{{- if not $spread -}}
+{{- $match := merge (include "geolens.selectorLabels" $root | fromYaml) (dict "app.kubernetes.io/component" $component) -}}
+{{- $spread = list -}}
+{{- range list "kubernetes.io/hostname" "topology.kubernetes.io/zone" -}}
+{{- $spread = append $spread (dict "maxSkew" 1 "topologyKey" . "whenUnsatisfiable" "ScheduleAnyway" "labelSelector" (dict "matchLabels" $match)) -}}
+{{- end -}}
+{{- end -}}
+{{- include "geolens.scheduling" (dict "nodeSelector" $v.nodeSelector "affinity" $v.affinity "tolerations" $v.tolerations "topologySpreadConstraints" $spread) -}}
+{{- end -}}
+
+{{- define "geolens.revisionHistoryLimit" -}}
+{{- ternary .Values.revisionHistoryLimit 3 (hasKey .Values "revisionHistoryLimit") -}}
+{{- end -}}
+
+{{/* Rolling updates add a pod before removing one, so a rollout never lowers capacity. */}}
+{{- define "geolens.rollout" -}}
+revisionHistoryLimit: {{ include "geolens.revisionHistoryLimit" . }}
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+{{- end -}}
+
+{{/* (list root component values): the replicas line. While an autoscaler owns
+     the count, the live count is rendered back, since Kubernetes resets a
+     dropped field to 1; helm template has no cluster and leaves it out. */}}
+{{- define "geolens.replicas" -}}
+{{- $root := index . 0 -}}
+{{- $v := index . 2 -}}
+{{- if not ($v.autoscaling | default dict).enabled -}}
+replicas: {{ $v.replicas }}
+{{- else -}}
+{{- $live := lookup "apps/v1" "Deployment" $root.Release.Namespace (printf "%s-%s" (include "geolens.fullname" $root) (index . 1)) -}}
+{{- if $live }}
+replicas: {{ $live.spec.replicas }}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Seconds the pod stays in rotation after SIGTERM is due, so endpoint removal
+     propagates before it drains. 0 turns the hook off; an absent value
+     (--reuse-values) means 10. */}}
+{{- define "geolens.preStopSleep" -}}
+{{- ternary .preStopSleepSeconds 10 (hasKey . "preStopSleepSeconds") -}}
+{{- end -}}
+
+{{- define "geolens.preStop" -}}
+{{- $sleep := include "geolens.preStopSleep" . | int -}}
+{{- if gt $sleep 0 }}
+lifecycle:
+  preStop:
+    exec:
+      command: ["sleep", {{ $sleep | quote }}]
+{{- end }}
+{{- end -}}
+
+{{/* (list values component drainSeconds): terminationGracePeriodSeconds, which
+     must outlast the preStop sleep plus the process's own drain, else SIGKILL
+     lands mid-drain. Both images ship sleep. */}}
+{{- define "geolens.terminationGrace" -}}
+{{- $v := index . 0 -}}
+{{- $component := index . 1 -}}
+{{- $drain := index . 2 -}}
+{{- $grace := $v.terminationGracePeriodSeconds | default 60 | int -}}
+{{- $sleep := include "geolens.preStopSleep" $v | int -}}
+{{- if le $grace (add $sleep $drain | int) -}}
+{{- fail (printf "%s.terminationGracePeriodSeconds (%d) must exceed %s.preStopSleepSeconds (%d)%s" $component $grace $component $sleep (ternary " plus 30, the image's default UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN" "" (gt $drain 0))) -}}
+{{- end -}}
+{{- $grace -}}
+{{- end -}}
+
 {{/* One set of encryption-key checks, shared by the Secret and
      the migrate hook so the two can never disagree. */}}
 {{- define "geolens.validateEncryptionKeys" -}}

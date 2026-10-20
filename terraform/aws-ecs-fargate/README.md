@@ -345,6 +345,9 @@ the two limits cannot drift apart.
   `worker_task.cpu` with it.
 - `app_task` and `worker_task` set Fargate CPU units and memory. The worker
   default is 4 GB because GDAL ingestion of large rasters needs it.
+- `db_high_availability` runs RDS Multi-AZ: a synchronous standby in a second
+  zone and automatic failover, for about twice the instance cost. Connections
+  drop during a failover, so requests in flight fail. It is off by default.
 - `db_instance_class` sizes the database. The cache is `cache.t4g.micro` in
   `data.tf`. A `db.t4g.micro` allows roughly 100 connections and each api
   task is tuned for a budget of about 70, so raising `app_desired_count` past
@@ -376,7 +379,8 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
   role reconciler; keep each organization on its own RDS instance as described above.
 - One task role is shared by every container, which lets titiler write to the
   bucket even though it only reads.
-- The database is single-AZ and the cache is one node. Bucket versioning stays
+- The database is single-AZ unless `db_high_availability` is set, and the cache
+  is one node. Bucket versioning stays
   off on the generic path; the production profile enables it and expires
   noncurrent versions after the configured number of days.
 - One worker task runs every background job, `worker_concurrency` at a time.
@@ -523,3 +527,17 @@ raster tile, and `ingest-smoke.sh` passed again. An append-only key minted for
 the 1.25.1 vector dataset added a feature through the edge (201) and was
 refused a read (401). The stack was then destroyed in one run; a sweep found
 nothing left but the secret in its recovery window.
+
+On 2026-10-19 in us-east-1, a stack applied from the previous recipe at
+GeoLens 1.26.0 with the defaults was switched in place to this one with
+`db_high_availability = true`. The baseline passed `ingest-smoke.sh`. RDS
+converted the instance to Multi-AZ online in about seven minutes, and
+`/api/health` answered 200 at every check during the apply, ten seconds apart.
+The baseline datasets still served their collection items and raster tile,
+and `ingest-smoke.sh` passed again. A forced failover
+(`aws rds reboot-db-instance --force-failover`) completed in about 40 seconds,
+with one health check in that window answering 503, and a plan afterwards
+proposed no database change. The stack was then destroyed in one run. A sweep
+right after it listed the instance's automated snapshot, which RDS removed a
+minute later, and then found nothing left but the secret in its recovery
+window.

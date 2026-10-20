@@ -78,8 +78,9 @@ resource "random_bytes" "secret_encryption_key" {
 
 # ponytail: the administrator login is both the migration and application
 # login, as on AWS. Split them when the database is shared.
-# ponytail: no standby, so a zone outage or maintenance takes the database
-# offline. High availability needs a General Purpose SKU and doubles compute.
+# ponytail: no standby unless db_high_availability is set, so a zone outage or
+# maintenance takes the database offline. High availability needs a General
+# Purpose SKU and doubles compute.
 resource "azurerm_postgresql_flexible_server" "this" {
   name                = "${var.name}-${random_string.suffix.result}"
   resource_group_name = azurerm_resource_group.this.name
@@ -98,9 +99,17 @@ resource "azurerm_postgresql_flexible_server" "this" {
   backup_retention_days = var.backup_retention_days
   tags                  = local.tags
 
-  # Azure picks the zone when none is given and reports it afterwards.
+  dynamic "high_availability" {
+    for_each = var.db_high_availability ? [1] : []
+    content {
+      mode = "ZoneRedundant"
+    }
+  }
+
+  # Azure picks the zones when none are given and reports them afterwards. A
+  # failover swaps them, and an apply must not fail back on its own.
   lifecycle {
-    ignore_changes = [zone]
+    ignore_changes = [zone, high_availability[0].standby_availability_zone]
   }
 
   depends_on = [azurerm_private_dns_zone_virtual_network_link.postgres]

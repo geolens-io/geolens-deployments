@@ -191,6 +191,12 @@ variable "upload_max_size_mb" {
   }
 }
 
+variable "db_high_availability" {
+  description = "Run the RDS instance Multi-AZ, with a synchronous standby in a second zone and automatic failover. Roughly doubles the instance cost. Connections drop during a failover, so requests in flight fail."
+  type        = bool
+  default     = false
+}
+
 variable "db_instance_class" {
   description = "RDS instance class."
   type        = string

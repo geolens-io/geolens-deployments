@@ -38,8 +38,9 @@ resource "aws_db_subnet_group" "this" {
   subnet_ids  = aws_subnet.private[*].id
 }
 
-# ponytail: single-AZ (multi_az = false), so patching or an AZ outage takes the
-# database offline. Multi-AZ adds a standby for about twice the instance cost.
+# ponytail: single-AZ unless db_high_availability is set, so patching or an AZ
+# outage takes the database offline. Multi-AZ adds a standby for about twice the
+# instance cost.
 resource "aws_db_instance" "this" {
   identifier_prefix = "${var.name}-"
 
@@ -60,7 +61,7 @@ resource "aws_db_instance" "this" {
   db_subnet_group_name   = aws_db_subnet_group.this.name
   vpc_security_group_ids = [aws_security_group.data.id]
   publicly_accessible    = false
-  multi_az               = false
+  multi_az               = var.db_high_availability
   copy_tags_to_snapshot  = var.production_profile
 
   backup_retention_period = var.backup_retention_days

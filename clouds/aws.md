@@ -39,6 +39,11 @@ aws rds create-db-instance \
 Keep `--storage-encrypted`. Encryption cannot be turned on in place afterwards;
 undoing the omission means a snapshot copy and a restore.
 
+For a standby, add `--multi-az`: RDS keeps a synchronous copy in a second zone
+and fails over to it automatically, for about twice the instance cost.
+Connections drop during a failover, so requests in flight fail. The recipe sets
+it with `db_high_availability = true`.
+
 PostGIS is in the default RDS parameter group, and `pg_trgm`, `unaccent` and
 `vector` are available on those engine versions. None of them are created for
 you. Connect with `psql` as the master user and run the bootstrap SQL from the

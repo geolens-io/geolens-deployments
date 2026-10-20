@@ -30,6 +30,11 @@ az postgres flexible-server create \
   --admin-user geolens --admin-password "$DB_PASSWORD"
 ```
 
+For a standby, add `--high-availability ZoneRedundant` on a General Purpose or
+Memory Optimized tier, such as `--tier GeneralPurpose --sku-name
+Standard_D2ds_v5`. Burstable servers can't run one, and it roughly doubles the
+compute cost. The recipe sets it with `db_high_availability = true`.
+
 **Allow-list the extensions before anything else.** Flexible Server refuses
 `CREATE EXTENSION` for any extension missing from the `azure.extensions`
 server parameter, and no amount of privilege on the connecting role changes

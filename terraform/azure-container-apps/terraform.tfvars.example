@@ -25,6 +25,7 @@ geolens_version = "1.26.0"
 # worker_cpu         = 1
 # db_sku_name        = "B_Standard_B1ms"
 # db_storage_mb      = 32768
+# db_high_availability = false  # true for a zone-redundant standby; needs a GP_ or MO_ db_sku_name
 
 # Any other GeoLens setting. Plain values here, secrets as values that are
 # stored as Container Apps secrets (and in Terraform state).

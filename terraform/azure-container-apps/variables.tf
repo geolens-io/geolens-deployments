@@ -167,6 +167,17 @@ variable "db_sku_name" {
   default     = "B_Standard_B1ms"
 }
 
+variable "db_high_availability" {
+  description = "Run the Flexible Server zone-redundant, with a standby in a second zone and automatic failover. Needs a General Purpose or Memory Optimized db_sku_name and a region with availability zones, and roughly doubles the compute cost. Connections drop during a failover, so requests in flight fail. On an existing Burstable server, apply the new db_sku_name before turning this on."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.db_high_availability || startswith(var.db_sku_name, "GP_") || startswith(var.db_sku_name, "MO_")
+    error_message = "db_high_availability needs a General Purpose (GP_) or Memory Optimized (MO_) db_sku_name; Burstable SKUs cannot run a standby."
+  }
+}
+
 variable "db_storage_mb" {
   description = "PostgreSQL storage in MB. Azure accepts only its fixed sizes (32768, 65536, 131072 and up) and can grow a disk but never shrink one."
   type        = number

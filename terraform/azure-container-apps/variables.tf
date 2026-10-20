@@ -258,6 +258,11 @@ variable "worker_concurrency" {
     condition     = var.worker_concurrency >= 1 && floor(var.worker_concurrency) == var.worker_concurrency
     error_message = "worker_concurrency must be a positive whole number."
   }
+
+  validation {
+    condition     = var.db_sku_name != "B_Standard_B1ms" || var.worker_concurrency == 1
+    error_message = "B_Standard_B1ms has connections for one job slot only. Use a larger db_sku_name for more; see Database connections in the recipe README."
+  }
 }
 
 # The two escape hatches that make every other GeoLens option reachable, the

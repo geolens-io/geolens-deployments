@@ -83,3 +83,5 @@ rejected 'autoscaling on B1ms' 'B_Standard_B1ms has connections for one app repl
 rejected 'two fixed app replicas on B1ms' 'B_Standard_B1ms has connections for one app replica only' '-var=app_replicas=2' '-var=cache_enabled=true'
 rejected 'two workers on B1ms' 'B_Standard_B1ms has connections for one worker only' '-var=worker_replicas=2'
 accepted 'two workers on a Burstable SKU with more connections' '-var=worker_replicas=2' '-var=db_sku_name=B_Standard_B2s'
+rejected 'two job slots on B1ms' 'B_Standard_B1ms has connections for one job slot only' '-var=worker_concurrency=2'
+accepted 'two job slots on a larger SKU' '-var=worker_concurrency=2' '-var=db_sku_name=GP_Standard_D2ds_v5'

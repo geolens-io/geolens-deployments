@@ -250,8 +250,8 @@ api: presigned uploads are an S3-only path.
 - `worker_replicas` runs more copies of the worker, and `worker_concurrency`
   adds parallel job slots in each. The app tolerates several workers. Raise
   `worker_cpu` with concurrency. Replicas are fixed, since CPU is a poor
-  signal for the queue; see "Scaling the worker on queue depth". On B1ms it
-  stays at 1.
+  signal for the queue; see "Scaling the worker on queue depth". On B1ms both
+  stay at 1.
 - `api_cpu` and `worker_cpu` set vCPU, and each container gets twice that in
   GiB of memory, the ratio Consumption allows. The worker default of 2 GiB
   handles modest rasters; GDAL ingestion of large ones wants more.
@@ -288,21 +288,22 @@ leaving 35. On B1ms the recipe sets, for the api, `DB_POOL_SIZE=2`,
 and for the worker `DB_POOL_SIZE=worker_concurrency` and `DB_MAX_OVERFLOW=0`.
 `extra_env` overrides any of them. Per process the worst case is
 `DB_POOL_SIZE + DB_MAX_OVERFLOW + 3` for the job queue connector, plus
-`TILE_POOL_MAX_SIZE` in the api:
+`TILE_POOL_MAX_SIZE` in the api and one connection that listens for jobs in
+the worker:
 
 ```
 api     2 processes x (2 + 0 + 1 + 3)             = 12
-worker  1 replica    x (1 + 0 + 3)                =  4
-one revision                                      = 16
-a rolling revision runs old and new together      = 32   (limit 35)
+worker  1 replica    x (1 + 0 + 3 + 1)            =  5
+one revision                                      = 17
+a rolling revision runs old and new together      = 34   (limit 35)
 ```
 
 The cost is one tile render at a time in each api process. B1ms has room for
-one app replica and one worker only, so the plan refuses `app_replicas`,
-`app_max_replicas` or `worker_replicas` above 1 on it. Larger SKUs get the app
-defaults, which fit their much higher limits; the
-[connection budget](../../clouds/README.md#database-connections) has the
-formula.
+one app replica and one worker with one job slot, so the plan refuses
+`app_replicas`, `app_max_replicas`, `worker_replicas` or `worker_concurrency`
+above 1 on it. Larger SKUs get the app defaults, which fit their much higher
+limits; the [connection budget](../../clouds/README.md#database-connections)
+has the formula.
 
 To scale out, move to a larger `db_sku_name`. Flexible Server's built-in
 PgBouncer can't be used with GeoLens yet, because the job queue sets its

@@ -215,9 +215,11 @@ drains of the api and worker. Set `UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN` and
 Cloud SQL sets `max_connections` from memory: a tier with 3.75 to 6 GB, such
 as `db-custom-2-4096`, gets 100. With one worker and the
 [connection budget](README.md#database-connections), that allows two api
-instances at one uvicorn worker each, so set `--max-instances` on the api to 2
-or raise the tier or lower the pools. Keep the worker at `--max-instances=1`
-until you measure a need for more.
+instances at one uvicorn worker each, so cap the api with `--max=2` or raise
+the tier or lower the pools. Use `--max`, the service-wide limit, rather than
+`--max-instances`: that one limits each revision separately, so during a
+rollout the old and new revisions could each run two. Keep the worker at
+`--max=1` until you measure a need for more.
 
 A request times out at 300 seconds by default. Raise `--timeout` to 600 to
 match the read timeout the frontend's nginx allows. Leave concurrency at its

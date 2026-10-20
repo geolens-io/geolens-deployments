@@ -80,10 +80,15 @@ locals {
   ]
 
   # The chart's container hardening. Each container writes only to the task
-  # volumes it mounts, at the paths the chart gives it emptyDirs.
+  # volumes it mounts, at the paths the chart gives it emptyDirs. The empty
+  # lists are what ECS reports back for omitted fields; leaving them out makes
+  # every plan replace the task definitions.
   hardening = {
     readonlyRootFilesystem = true
-    linuxParameters        = { capabilities = { drop = ["ALL"] } }
+    linuxParameters        = { capabilities = { add = [], drop = ["ALL"] } }
+    portMappings           = []
+    systemControls         = []
+    volumesFrom            = []
   }
 
   task_volumes = {
@@ -159,7 +164,8 @@ resource "aws_ecs_task_definition" "app" {
   dynamic "volume" {
     for_each = local.task_volumes.app
     content {
-      name = volume.value
+      name                = volume.value
+      configure_at_launch = false
     }
   }
 
@@ -170,7 +176,7 @@ resource "aws_ecs_task_definition" "app" {
       image     = local.frontend_image
       essential = true
 
-      portMappings = [{ containerPort = 8080, protocol = "tcp" }]
+      portMappings = [{ containerPort = 8080, hostPort = 8080, protocol = "tcp" }]
 
       environment = [
         { name = "API_UPSTREAM", value = "http://127.0.0.1:8000" },
@@ -299,7 +305,8 @@ resource "aws_ecs_task_definition" "worker" {
   dynamic "volume" {
     for_each = local.task_volumes.worker
     content {
-      name = volume.value
+      name                = volume.value
+      configure_at_launch = false
     }
   }
 
@@ -376,7 +383,8 @@ resource "aws_ecs_task_definition" "migrate" {
   dynamic "volume" {
     for_each = local.task_volumes.migrate
     content {
-      name = volume.value
+      name                = volume.value
+      configure_at_launch = false
     }
   }
 

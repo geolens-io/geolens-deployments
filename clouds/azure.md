@@ -158,7 +158,28 @@ ingress.
 Give the worker app a minimum of one replica. Container Apps scales to zero by
 default, and an app with no ingress has no HTTP trigger to scale it back up, so
 a worker left on the default sits at zero replicas and queued imports are never
-picked up. Either pin `--min-replicas 1` or attach a queue-based KEDA scaler.
+picked up. Either pin `--min-replicas 1` or attach a KEDA PostgreSQL scaler
+on the job queue, for example with the query
+`SELECT count(*) FROM catalog.procrastinate_jobs WHERE status = 'todo'`, a
+`targetQueryValue` of about 5 and the database password as a secret. The app
+tolerates several workers; keep them within the connection budget below.
+
+**Scaling the app.** Add an HTTP scale rule (`concurrentRequests` about 50)
+and a maximum above the minimum, with the shared cache; the recipe's
+[Scaling](../terraform/azure-container-apps/README.md#scaling) section covers
+the grace period, replica size limits and zone redundancy.
+
+**Request timeout.** Container Apps ingress ends a request after 240 seconds,
+so an upload through the api that takes longer fails; see
+[Uploads and the ingress timeout](../terraform/azure-container-apps/README.md#uploads-and-the-ingress-timeout).
+
+**Database connections.** B1ms allows only 35 usable connections; the formula
+is in [Database connections](README.md#database-connections) and the numbers in
+the [recipe README](../terraform/azure-container-apps/README.md#database-connections).
+Scale the database tier rather than using the built-in PgBouncer, which GeoLens
+can't use yet: its job queue sets `search_path` through the `options` startup
+parameter, and PgBouncer rejects that
+([geolens#3213](https://github.com/geolens-io/geolens/issues/3213)).
 
 Titiler defaults to port 8000, which the api already holds. Override its
 command to move it, as

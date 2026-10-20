@@ -18,6 +18,8 @@ geolens_version = "1.26.0"
 # admin_password = ""   # empty generates one into the app's secrets
 
 # app_replicas       = 1       # more than one needs cache_enabled
+# app_max_replicas   = 1       # above 1 needs cache_enabled; on B_Standard_B1ms, 1 only
+# worker_replicas    = 1       # on B_Standard_B1ms, 1 only
 # cache_enabled      = false   # true to import services that need a token
 # upload_max_size_mb = 500
 # worker_concurrency = 1
@@ -25,6 +27,7 @@ geolens_version = "1.26.0"
 # worker_cpu         = 1
 # db_sku_name        = "B_Standard_B1ms"
 # db_storage_mb      = 32768
+# zone_redundancy_enabled = false  # changing it replaces the environment
 # db_high_availability = false  # true for a zone-redundant standby; needs a GP_ or MO_ db_sku_name
 
 # Any other GeoLens setting. Plain values here, secrets as values that are

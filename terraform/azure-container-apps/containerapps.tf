@@ -21,6 +21,19 @@ locals {
   # and re-runs the migrate job.
   secrets_revision = nonsensitive(substr(sha256(jsonencode(local.app_secrets)), 0, 16))
 
+  app_max_replicas = coalesce(var.app_max_replicas, var.app_replicas)
+
+  # Concurrent requests per replica before Container Apps adds one.
+  http_scale_concurrent_requests = "50"
+
+  # B1ms allows 35 usable connections: these pools keep a rolling revision
+  # under that (arithmetic in the README).
+  db_clamped = var.db_sku_name == "B_Standard_B1ms"
+  db_env = local.db_clamped ? {
+    api    = { DB_POOL_SIZE = "2", DB_MAX_OVERFLOW = "0", TILE_POOL_MIN_SIZE = "1", TILE_POOL_MAX_SIZE = "1" }
+    worker = { DB_POOL_SIZE = tostring(var.worker_concurrency), DB_MAX_OVERFLOW = "0" }
+  } : {}
+
   backend_env = {
     ENVIRONMENT               = "production"
     LOG_JSON                  = "true"
@@ -71,7 +84,7 @@ locals {
       GEOLENS_BOOTSTRAP_B64      = base64encode(file("${path.module}/migrate.py"))
     }
     } : role => {
-    for k, v in merge(local.backend_env, own, var.extra_env) : k => v if !contains(local.extra_secret_names, k)
+    for k, v in merge(local.backend_env, own, lookup(local.db_env, role, {}), var.extra_env) : k => v if !contains(local.extra_secret_names, k)
   } }
 
   frontend_env = {
@@ -129,6 +142,10 @@ resource "azurerm_container_app_environment" "this" {
   infrastructure_resource_group_name = "${var.name}-rg-infra"
   tags                               = local.tags
 
+  # Fixed when the environment is created: changing it replaces the
+  # environment, and with it every app and the job.
+  zone_redundancy_enabled = var.zone_redundancy_enabled
+
   workload_profile {
     name                  = "Consumption"
     workload_profile_type = "Consumption"
@@ -183,7 +200,18 @@ resource "azurerm_container_app" "app" {
     # ponytail: no scale to zero, since the api takes the better part of a
     # minute to start. Drop min_replicas to 0 when idle cost matters more.
     min_replicas = var.app_replicas
-    max_replicas = var.app_replicas
+    max_replicas = local.app_max_replicas
+
+    # Compose's 35s, as for the worker: in-flight requests finish before the kill.
+    termination_grace_period_seconds = 35
+
+    dynamic "http_scale_rule" {
+      for_each = local.app_max_replicas > var.app_replicas ? [1] : []
+      content {
+        name                = "http"
+        concurrent_requests = local.http_scale_concurrent_requests
+      }
+    }
 
     # SMB shows every file as owned by the mount's uid, and only the owner may
     # set file times, which the raster pipeline's copies do; 1001 is the
@@ -341,10 +369,10 @@ resource "azurerm_container_app" "worker" {
   }
 
   # No ingress. An app without ingress has nothing to scale it up from zero,
-  # so the worker is pinned at one replica or queued imports never run.
+  # so the worker is pinned at worker_replicas or queued imports never run.
   template {
-    min_replicas = 1
-    max_replicas = 1
+    min_replicas = var.worker_replicas
+    max_replicas = var.worker_replicas
 
     # Compose's 35s: the kill lands after the worker's own 30s shutdown
     # window, so it releases its jobs first.

@@ -88,6 +88,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   version             = "17"
   sku_name            = var.db_sku_name
   storage_mb          = var.db_storage_mb
+  auto_grow_enabled   = true
 
   administrator_login    = "geolens"
   administrator_password = random_password.db.result
@@ -108,8 +109,9 @@ resource "azurerm_postgresql_flexible_server" "this" {
 
   # Azure picks the zones when none are given and reports them afterwards. A
   # failover swaps them, and an apply must not fail back on its own.
+  # Auto-grow owns the size after creation.
   lifecycle {
-    ignore_changes = [zone, high_availability[0].standby_availability_zone]
+    ignore_changes = [zone, high_availability[0].standby_availability_zone, storage_mb]
   }
 
   depends_on = [azurerm_private_dns_zone_virtual_network_link.postgres]

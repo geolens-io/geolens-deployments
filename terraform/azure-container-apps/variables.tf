@@ -168,7 +168,7 @@ variable "db_sku_name" {
 }
 
 variable "db_high_availability" {
-  description = "Run the Flexible Server zone-redundant, with a standby in a second zone and automatic failover. Needs a General Purpose or Memory Optimized db_sku_name and a region with availability zones, and roughly doubles the compute cost. Connections drop during a failover, so requests in flight fail."
+  description = "Run the Flexible Server zone-redundant, with a standby in a second zone and automatic failover. Needs a General Purpose or Memory Optimized db_sku_name and a region with availability zones, and roughly doubles the compute cost. Connections drop during a failover, so requests in flight fail. On an existing Burstable server, apply the new db_sku_name before turning this on."
   type        = bool
   default     = false
 

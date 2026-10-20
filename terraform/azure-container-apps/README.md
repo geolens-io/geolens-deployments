@@ -251,7 +251,12 @@ api: presigned uploads are an S3-only path.
   failover. It needs a General Purpose or Memory Optimized `db_sku_name` (the
   plan refuses a Burstable one) and a region with availability zones, and
   roughly doubles the compute cost. Connections drop during a failover, so
-  requests in flight fail.
+  requests in flight fail. To add a standby to a server that is already
+  Burstable, apply the new `db_sku_name` first and set `db_high_availability`
+  in a second apply. Azure checks the standby against the SKU the server has
+  now, so making both changes in one apply fails with
+  `HANotSupportedForBurstableSku`. The SKU change restarts the server and took
+  GeoLens offline for about seven minutes in testing, so schedule it.
 - `db_sku_name` and `db_storage_mb` size the database. Azure grows a disk but
   never shrinks one.
 
@@ -396,3 +401,19 @@ served their collection items and raster tile. An append-only key minted for
 the 1.25.1 vector dataset added a feature through the edge (201) and was
 refused a read (401). The destroy again took four runs, and neither resource
 group nor any soft-deleted workspace or vault remained.
+
+On 2026-10-19 in westus3, the previous recipe applied GeoLens 1.26.0 with the
+defaults, and this one then turned on `db_high_availability` over it.
+Setting `db_sku_name = "GP_Standard_D2ds_v5"` and `db_high_availability = true`
+in one apply failed with `HANotSupportedForBurstableSku` and left the
+Burstable server unchanged and serving. In two applies, the SKU change took
+seven minutes, about six and a half of them with GeoLens offline while the
+server restarted, and the high availability apply took ten, with
+`/api/health` answering 200 at every check, ten seconds apart. The standby
+came up Healthy in zone 1 with the primary in zone 3. The datasets ingested
+on the baseline still served their collection items and raster tile, and
+`.github/ci/ingest-smoke.sh` passed before and after. A forced failover
+(`az postgres flexible-server restart --failover Forced`) swapped the zones
+with about a minute of failed health checks, and a plan afterwards proposed
+no changes. The destroy took the four runs Teardown describes, and the sweep
+found nothing left.

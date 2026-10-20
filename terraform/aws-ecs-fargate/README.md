@@ -527,3 +527,17 @@ raster tile, and `ingest-smoke.sh` passed again. An append-only key minted for
 the 1.25.1 vector dataset added a feature through the edge (201) and was
 refused a read (401). The stack was then destroyed in one run; a sweep found
 nothing left but the secret in its recovery window.
+
+On 2026-10-19 in us-east-1, a stack applied from the previous recipe at
+GeoLens 1.26.0 with the defaults was switched in place to this one with
+`db_high_availability = true`. The baseline passed `ingest-smoke.sh`. RDS
+converted the instance to Multi-AZ online in about seven minutes, and
+`/api/health` answered 200 at every check during the apply, ten seconds apart.
+The baseline datasets still served their collection items and raster tile,
+and `ingest-smoke.sh` passed again. A forced failover
+(`aws rds reboot-db-instance --force-failover`) completed in about 40 seconds,
+with one health check in that window answering 503, and a plan afterwards
+proposed no database change. The stack was then destroyed in one run. A sweep
+right after it listed the instance's automated snapshot, which RDS removed a
+minute later, and then found nothing left but the secret in its recovery
+window.

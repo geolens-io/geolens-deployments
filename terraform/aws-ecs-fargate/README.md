@@ -364,8 +364,9 @@ the two limits cannot drift apart.
   larger class.
 - `db_allocated_storage_gb` is the initial encrypted RDS storage, and
   `db_max_allocated_storage_gb` (default 100) lets RDS grow it up to that
-  ceiling. RDS never shrinks storage again, and a volume can be modified only
-  once every six hours. Set it to 0 to keep storage fixed.
+  ceiling, which RDS requires to be at least 10% above the initial size. RDS
+  never shrinks storage again, and a volume can be modified only once every
+  six hours. Set it to 0 to keep storage fixed.
 - `worker_ephemeral_storage_gb` is the worker's scratch disk. With S3 storage
   the api never keeps an upload, but the worker pulls a raster down to convert
   it, so a large GeoTIFF plus its COG must fit; Fargate allows up to 200 GiB.

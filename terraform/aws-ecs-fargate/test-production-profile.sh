@@ -146,6 +146,10 @@ assert_profile_rejected \
   'db_max_allocated_storage_gb must be 0' \
   -var=production_profile=false -var=db_allocated_storage_gb=50 -var=db_max_allocated_storage_gb=40
 assert_profile_rejected \
+  'the storage ceiling must sit at least 10 percent above the initial size' \
+  'db_max_allocated_storage_gb must be 0' \
+  -var=production_profile=false -var=db_allocated_storage_gb=50 -var=db_max_allocated_storage_gb=54
+assert_profile_rejected \
   'the production profile keeps the app at one fixed task' \
   'production_profile requires a geolens-<org-slug> name' \
   '-var=app_autoscaling={min=1,max=3}'
@@ -154,3 +158,5 @@ assert_profile_rejected \
   'production_profile requires a geolens-<org-slug> name' \
   -var=worker_desired_count=2
 assert_profile_valid 'storage autoscaling turned off' -var=db_max_allocated_storage_gb=0
+assert_profile_valid 'a storage ceiling exactly 10 percent above the initial size' \
+  -var=db_allocated_storage_gb=50 -var=db_max_allocated_storage_gb=55

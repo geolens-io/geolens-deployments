@@ -254,12 +254,14 @@ variable "db_max_allocated_storage_gb" {
   type        = number
   default     = 100
 
+  # RDS rejects a ceiling less than 10% above the allocated size; whole-number
+  # arithmetic keeps 50 and 55 from failing on float rounding.
   validation {
     condition = var.db_max_allocated_storage_gb == 0 || (
-      var.db_max_allocated_storage_gb >= var.db_allocated_storage_gb &&
+      var.db_max_allocated_storage_gb * 10 >= var.db_allocated_storage_gb * 11 &&
       floor(var.db_max_allocated_storage_gb) == var.db_max_allocated_storage_gb
     )
-    error_message = "db_max_allocated_storage_gb must be 0 to disable autoscaling, or a whole number at least db_allocated_storage_gb."
+    error_message = "db_max_allocated_storage_gb must be 0 to disable autoscaling, or a whole number at least 10% above db_allocated_storage_gb."
   }
 }
 

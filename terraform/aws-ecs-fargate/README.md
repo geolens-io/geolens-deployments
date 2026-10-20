@@ -347,7 +347,10 @@ the two limits cannot drift apart.
   service on average CPU. It is off by default. The recipe always registers an
   Application Auto Scaling target and ignores `desired_count` in Terraform, so
   the target owns the count: with autoscaling off it pins `app_desired_count`.
-  A resize takes effect within a minute or two of the apply.
+  A resize takes effect within a minute or two of the apply. Terraform no
+  longer sees the service's running count, so change it through these
+  variables: a count set in the console stays until the next change to the
+  target.
 - `worker_desired_count` runs several worker tasks, each with
   `worker_concurrency` job slots. Jobs are safe to share between workers. The
   count is fixed: CPU does not track queue depth, so scale on
@@ -375,12 +378,10 @@ the two limits cannot drift apart.
 - `cpu_architecture` is `ARM64` by default, about 20% cheaper per vCPU-hour
   than `X86_64`. Every image the recipe runs is published for both; pick
   `X86_64` in a region without Graviton Fargate.
-- `container_insights` sets ECS Container Insights on the cluster:
-  `"enhanced"` reports CPU and memory per container and is billed per metric
-  and log observation; `"enabled"` and `"disabled"` are the other values. The
-  default, null, leaves the account setting in charge. After applying a value,
-  set `"disabled"` to turn it off: removing the variable leaves the cluster as
-  it was.
+- Container Insights follows the account setting, and the recipe leaves the
+  cluster's setting alone. For CPU and memory per container inside the shared
+  app task, which is billed per metric and log observation, run
+  `aws ecs update-cluster-settings --cluster <name> --settings name=containerInsights,value=enhanced`.
 
 ### Connections during a deploy
 
@@ -610,8 +611,7 @@ The baseline datasets still served their collection items and raster tile, and
 the scalable target, ECS started the second task on its own, and the plan
 stayed clean; `worker_desired_count = 2` ran two workers. Turning on
 `app_autoscaling` (2 to 4 tasks, CPU target 60) added the target-tracking
-policy, and `container_insights` set the cluster to enhanced, again with a
-clean plan afterwards. The stack was then destroyed in one run. A sweep 90
+policy, again with a clean plan afterwards. The stack was then destroyed in one run. A sweep 90
 seconds later still listed the instance's automated snapshot, which RDS removed
 within two more minutes, and then found nothing left but the secret in its
 recovery window.

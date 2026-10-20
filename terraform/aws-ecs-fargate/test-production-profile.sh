@@ -158,10 +158,5 @@ assert_profile_rejected \
   'production_profile requires a geolens-<org-slug> name' \
   -var=worker_desired_count=2
 assert_profile_valid 'storage autoscaling turned off' -var=db_max_allocated_storage_gb=0
-assert_profile_valid 'Container Insights turned off explicitly' -var=container_insights=disabled
-assert_profile_rejected \
-  'Container Insights takes only the ECS values' \
-  'container_insights must be null' \
-  -var=container_insights=on
 assert_profile_valid 'a storage ceiling exactly 10 percent above the initial size' \
   -var=db_allocated_storage_gb=50 -var=db_max_allocated_storage_gb=55

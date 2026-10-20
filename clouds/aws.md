@@ -10,10 +10,10 @@ console path, and read this page for what it is doing.
 equivalent for the Helm chart.
 
 The recipe's [Scaling section](../terraform/aws-ecs-fargate/README.md#scaling)
-lists its knobs and the alarms worth setting. By hand, the equivalents are an Application Auto Scaling target and target-tracking
-policy on the ECS service, a worker service with its own desired count, a
-maximum storage threshold on the instance and the cluster's `containerInsights`
-setting. Every app task and worker task holds database connections, and a
+lists its knobs and the alarms worth setting. By hand, the equivalents are an
+Application Auto Scaling target and target-tracking policy on the ECS service,
+a worker service with its own desired count and a maximum storage threshold on
+the instance. Every app task and worker task holds database connections, and a
 rolling deploy runs old and new tasks together at the default 200% maximum, so
 read the [connection budget](README.md#database-connections) before raising
 either count.

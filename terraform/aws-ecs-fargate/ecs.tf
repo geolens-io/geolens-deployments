@@ -133,17 +133,6 @@ locals {
 
 resource "aws_ecs_cluster" "this" {
   name = var.name
-
-  # Rendered only when set, so the account-level default otherwise applies. The
-  # provider sends nothing when the block disappears, so turning it off takes
-  # "disabled".
-  dynamic "setting" {
-    for_each = var.container_insights == null ? [] : [var.container_insights]
-    content {
-      name  = "containerInsights"
-      value = setting.value
-    }
-  }
 }
 
 resource "aws_cloudwatch_log_group" "app" {

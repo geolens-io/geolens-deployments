@@ -265,17 +265,6 @@ variable "db_max_allocated_storage_gb" {
   }
 }
 
-variable "container_insights" {
-  description = "ECS Container Insights for the cluster: \"enhanced\" for per-container metrics, billed per observation, \"enabled\" or \"disabled\". Null leaves the account setting in charge; set \"disabled\" to turn off a value applied earlier."
-  type        = string
-  default     = null
-
-  validation {
-    condition     = var.container_insights == null ? true : contains(["enhanced", "enabled", "disabled"], var.container_insights)
-    error_message = "container_insights must be null, \"enhanced\", \"enabled\" or \"disabled\"."
-  }
-}
-
 variable "app_task" {
   description = "Fargate CPU units and memory (MiB) for the app task: frontend, api and titiler together."
   type        = object({ cpu = number, memory = number })

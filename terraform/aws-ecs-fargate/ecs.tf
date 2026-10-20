@@ -123,10 +123,26 @@ locals {
   }) }
 
   after_volume_init = [{ containerName = "volume-init", condition = "SUCCESS" }]
+
+  # Five seconds past the 30 s drains (uvicorn's graceful shutdown, nginx, and
+  # the worker's WORKER_SHUTDOWN_TIMEOUT), so SIGKILL lands after they finish.
+  stop_timeout = 35
+
+  app_scale = var.app_autoscaling == null ? { min = var.app_desired_count, max = var.app_desired_count } : var.app_autoscaling
 }
 
 resource "aws_ecs_cluster" "this" {
   name = var.name
+
+  # Per-container metrics, billed per observation. Rendered only when on, so an
+  # account-level default is not overridden.
+  dynamic "setting" {
+    for_each = var.container_insights ? [1] : []
+    content {
+      name  = "containerInsights"
+      value = "enhanced"
+    }
+  }
 }
 
 resource "aws_cloudwatch_log_group" "app" {
@@ -201,6 +217,8 @@ resource "aws_ecs_task_definition" "app" {
       ]
       dependsOn = local.after_volume_init
 
+      stopTimeout = local.stop_timeout
+
       logConfiguration = local.log.frontend
     }),
     merge(local.hardening, {
@@ -242,6 +260,8 @@ resource "aws_ecs_task_definition" "app" {
 
       mountPoints = local.backend_mounts["api-"]
       dependsOn   = local.after_volume_init
+
+      stopTimeout = local.stop_timeout
 
       logConfiguration = local.log.api
     }),
@@ -339,9 +359,7 @@ resource "aws_ecs_task_definition" "worker" {
         REMOTE_RASTER_RELAY_BASE_URL = "http://127.0.0.1:8000"
       }, var.extra_env) : { name = k, value = v } if !contains(keys(var.extra_secrets), k)]
 
-      # Compose's 35s: SIGKILL lands after the worker's own 30s
-      # shutdown window, so it releases its jobs first.
-      stopTimeout = 35
+      stopTimeout = local.stop_timeout
 
       secrets = local.backend_secrets
 
@@ -522,15 +540,59 @@ resource "aws_ecs_service" "app" {
   # group, and ECS rejects a service whose target group has no load balancer
   # yet.
   depends_on = [aws_lb_listener.http, aws_lb_listener.https, terraform_data.migrate]
+
+  # The scalable target below owns the running count in both modes, so a later
+  # apply cannot reset what Application Auto Scaling moved. desired_count above
+  # only seeds a new service.
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
 }
 
-# ponytail: one worker task, which runs worker_concurrency jobs at a time. Make
-# the count a variable when that task's CPU becomes the limit.
+# One target whether or not autoscaling is on. Off, min = max = app_desired_count
+# pins the count, so changing that variable still resizes the service through
+# the target. On, the target tracks CPU between the configured bounds. Scaling
+# in leaves the load balancer's deregistration delay and the stop timeouts to
+# drain each task.
+resource "aws_appautoscaling_target" "app" {
+  service_namespace  = "ecs"
+  scalable_dimension = "ecs:service:DesiredCount"
+  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.app.name}"
+  min_capacity       = local.app_scale.min
+  max_capacity       = local.app_scale.max
+}
+
+resource "aws_appautoscaling_policy" "app_cpu" {
+  count = var.app_autoscaling == null ? 0 : 1
+
+  name               = "${var.name}-app-cpu"
+  policy_type        = "TargetTrackingScaling"
+  service_namespace  = aws_appautoscaling_target.app.service_namespace
+  scalable_dimension = aws_appautoscaling_target.app.scalable_dimension
+  resource_id        = aws_appautoscaling_target.app.resource_id
+
+  target_tracking_scaling_policy_configuration {
+    target_value = var.app_autoscaling.cpu_target
+
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+
+    # Scale out quickly, scale in slowly, so a brief lull does not drop tasks
+    # that a tile burst needs again a minute later.
+    scale_out_cooldown = 60
+    scale_in_cooldown  = 300
+  }
+}
+
+# ponytail: a fixed count of worker_desired_count tasks, each running
+# worker_concurrency jobs at a time. CPU is a poor signal for the job queue, so
+# there is no autoscaling; scale on procrastinate_jobs depth outside the recipe.
 resource "aws_ecs_service" "worker" {
   name            = "${var.name}-worker"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.worker.arn
-  desired_count   = 1
+  desired_count   = var.worker_desired_count
   launch_type     = "FARGATE"
   propagate_tags  = "SERVICE"
 

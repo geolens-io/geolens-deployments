@@ -24,14 +24,19 @@ resource "aws_lb_target_group" "app" {
   protocol    = "HTTP"
   target_type = "ip"
 
-  deregistration_delay = 15
+  # Long enough for a streaming export or a slow tile to finish before ECS
+  # sends SIGTERM to the task.
+  deregistration_delay = 60
 
   # Through the edge to the api's process-only check: ECS stops a task that
   # fails it, and the deep /health 503s on any S3 or cache outage, so ECS would
   # replace healthy tasks that a restart cannot fix.
   health_check {
-    path    = "/api/health/live"
-    matcher = "200"
+    path                = "/api/health/live"
+    matcher             = "200"
+    interval            = 15
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
   }
 
   lifecycle {

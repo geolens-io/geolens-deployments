@@ -19,9 +19,11 @@ variable "production_profile" {
       var.s3_noncurrent_version_expiration_days >= 30 &&
       !var.s3_force_destroy &&
       var.app_desired_count == 1 &&
+      var.app_autoscaling == null &&
+      var.worker_desired_count == 1 &&
       var.worker_concurrency == 1
     )
-    error_message = "production_profile requires a geolens-<org-slug> name, deletion protection, a final snapshot, at least 7 backup days, versioned S3 with at least 30-day noncurrent retention, and one app task and worker slot."
+    error_message = "production_profile requires a geolens-<org-slug> name, deletion protection, a final snapshot, at least 7 backup days, versioned S3 with at least 30-day noncurrent retention, and one app task, one worker task and one job slot."
   }
 }
 
@@ -61,9 +63,42 @@ variable "vpc_cidr" {
 }
 
 variable "app_desired_count" {
-  description = "Number of app tasks (frontend + api + titiler)."
+  description = "Number of app tasks (frontend + api + titiler) while app_autoscaling is null; with it set, only the starting count. More than one needs cache_enabled."
   type        = number
   default     = 1
+
+  validation {
+    condition     = var.app_desired_count >= 1 && floor(var.app_desired_count) == var.app_desired_count
+    error_message = "app_desired_count must be a positive whole number."
+  }
+
+  validation {
+    condition     = var.app_desired_count == 1 || var.cache_enabled
+    error_message = "app_desired_count above 1 needs cache_enabled = true; without a shared cache every api task keeps its own."
+  }
+}
+
+variable "app_autoscaling" {
+  description = "Scale the app service on average CPU between min and max tasks, aiming for cpu_target percent; null keeps app_desired_count fixed. Size db_instance_class for max, not min. A max above 1 needs cache_enabled."
+  type        = object({ min = number, max = number, cpu_target = optional(number, 60) })
+  default     = null
+
+  validation {
+    condition = var.app_autoscaling == null || (
+      var.app_autoscaling.min >= 1 &&
+      var.app_autoscaling.max >= var.app_autoscaling.min &&
+      var.app_autoscaling.cpu_target >= 10 &&
+      var.app_autoscaling.cpu_target <= 90 &&
+      floor(var.app_autoscaling.min) == var.app_autoscaling.min &&
+      floor(var.app_autoscaling.max) == var.app_autoscaling.max
+    )
+    error_message = "app_autoscaling needs whole numbers with 1 <= min <= max and a cpu_target from 10 through 90."
+  }
+
+  validation {
+    condition     = var.app_autoscaling == null || var.app_autoscaling.max == 1 || var.cache_enabled
+    error_message = "app_autoscaling with max above 1 needs cache_enabled = true; without a shared cache every api task keeps its own."
+  }
 }
 
 variable "cache_enabled" {
@@ -204,7 +239,7 @@ variable "db_instance_class" {
 }
 
 variable "db_allocated_storage_gb" {
-  description = "Fixed encrypted RDS gp3 storage in GiB. No storage autoscaling is configured."
+  description = "Initial encrypted RDS gp3 storage in GiB. RDS grows it toward db_max_allocated_storage_gb."
   type        = number
   default     = 20
 
@@ -212,6 +247,26 @@ variable "db_allocated_storage_gb" {
     condition     = var.db_allocated_storage_gb >= 20 && floor(var.db_allocated_storage_gb) == var.db_allocated_storage_gb
     error_message = "db_allocated_storage_gb must be a whole number of at least 20 GiB."
   }
+}
+
+variable "db_max_allocated_storage_gb" {
+  description = "Ceiling in GiB for RDS storage autoscaling, which never shrinks the volume again. 0 disables it."
+  type        = number
+  default     = 100
+
+  validation {
+    condition = var.db_max_allocated_storage_gb == 0 || (
+      var.db_max_allocated_storage_gb >= var.db_allocated_storage_gb &&
+      floor(var.db_max_allocated_storage_gb) == var.db_max_allocated_storage_gb
+    )
+    error_message = "db_max_allocated_storage_gb must be 0 to disable autoscaling, or a whole number at least db_allocated_storage_gb."
+  }
+}
+
+variable "container_insights" {
+  description = "Turn on ECS Container Insights with enhanced observability: per-container metrics, billed per observation."
+  type        = bool
+  default     = false
 }
 
 variable "app_task" {
@@ -234,6 +289,17 @@ variable "worker_ephemeral_storage_gb" {
   validation {
     condition     = var.worker_ephemeral_storage_gb >= 20 && var.worker_ephemeral_storage_gb <= 200
     error_message = "worker_ephemeral_storage_gb must be between 20 and 200."
+  }
+}
+
+variable "worker_desired_count" {
+  description = "Number of worker tasks, each running worker_concurrency jobs and holding its own database connections."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.worker_desired_count >= 1 && floor(var.worker_desired_count) == var.worker_desired_count
+    error_message = "worker_desired_count must be a positive whole number."
   }
 }
 

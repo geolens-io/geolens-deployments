@@ -9,6 +9,15 @@ console path, and read this page for what it is doing.
 [`examples/values-aws.yaml`](../examples/values-aws.yaml) is the EKS
 equivalent for the Helm chart.
 
+The recipe's [Scaling section](../terraform/aws-ecs-fargate/README.md#scaling)
+lists its knobs and the alarms worth setting. By hand, the equivalents are an Application Auto Scaling target and target-tracking
+policy on the ECS service, a worker service with its own desired count, a
+maximum storage threshold on the instance and the cluster's `containerInsights`
+setting. Every app task and worker task holds database connections, and a
+rolling deploy runs old and new tasks together at the default 200% maximum, so
+read the [connection budget](README.md#database-connections) before raising
+either count.
+
 For a production deployment, use the recipe's
 [single-organization production profile](../terraform/aws-ecs-fargate/README.md#production-profile).
 Each organization gets a separate stack and RDS instance. Shared RDS is not a
@@ -179,7 +188,7 @@ own, and setting it is how people accidentally pin the wrong region.
 Provision one unless no service you import needs a token. From 1.23.0 the api
 hands a service token to the worker through the cache, so importing,
 re-uploading or refreshing such a service answers 503 without `REDIS_URL`,
-even on a single instance. A single-node `cache.t3.micro` Redis or Valkey
+even on a single instance. A single-node `cache.t4g.micro` Redis or Valkey
 cluster in the application's VPC is enough. Open TCP 6379 from the application
 security group. Everything else works with `REDIS_URL` unset: the application
 then caches in process memory, which is correct for a single instance and

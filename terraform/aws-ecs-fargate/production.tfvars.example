@@ -18,6 +18,8 @@ upload_max_size_mb            = 500
 worker_ephemeral_storage_gb   = 50
 db_instance_class             = "db.t4g.micro"
 db_allocated_storage_gb       = 50
+db_max_allocated_storage_gb   = 100
+worker_desired_count          = 1
 
 # Recovery and teardown controls. Keep these enabled in production.
 backup_retention_days                   = 14

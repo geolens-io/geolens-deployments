@@ -50,9 +50,10 @@ resource "aws_db_instance" "this" {
   engine_version = "17"
   instance_class = var.db_instance_class
 
-  allocated_storage = var.db_allocated_storage_gb
-  storage_type      = "gp3"
-  storage_encrypted = true
+  allocated_storage     = var.db_allocated_storage_gb
+  max_allocated_storage = var.db_max_allocated_storage_gb == 0 ? null : var.db_max_allocated_storage_gb
+  storage_type          = "gp3"
+  storage_encrypted     = true
 
   db_name  = "geolens"
   username = "geolens"
@@ -191,8 +192,10 @@ resource "aws_elasticache_subnet_group" "this" {
   subnet_ids = aws_subnet.private[*].id
 }
 
-# ponytail: one node, no replica, no TLS, so REDIS_URL is a plain redis://
-# string. Turn on transit encryption and switch to rediss:// when the VPC is
+# ponytail: one node, no replica, no failover, no TLS, so REDIS_URL is a plain
+# redis:// string and a node failure empties the cache until ElastiCache
+# replaces it. Raise num_cache_clusters to 2 with automatic_failover_enabled for
+# a replica. Turn on transit encryption and switch to rediss:// when the VPC is
 # shared or the cache holds anything worth intercepting. The replication group
 # resource is what carries Valkey; aws_elasticache_cluster still only speaks
 # redis and memcached.

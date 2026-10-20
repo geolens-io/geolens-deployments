@@ -18,11 +18,14 @@ geolens_version = "1.26.0"
 
 # cpu_architecture   = "ARM64"   # X86_64 where Graviton Fargate is unavailable
 # app_desired_count  = 1
+# app_autoscaling    = { min = 1, max = 3, cpu_target = 60 }   # size the database for max
+# worker_desired_count = 1
 # cache_enabled      = true
 # upload_max_size_mb = 500
 # worker_concurrency = 1
 # db_instance_class  = "db.t4g.micro"
 # db_high_availability = false   # true for a Multi-AZ standby, about twice the database cost
+# db_max_allocated_storage_gb = 100
 # app_task           = { cpu = 1024, memory = 3072 }
 # worker_task        = { cpu = 1024, memory = 4096 }
 # worker_ephemeral_storage_gb = 20

@@ -71,7 +71,7 @@ The opt-in `production_profile` validation requires a `geolens-<org-slug>` name,
 public HTTPS hostname and an ACM certificate ARN in the configured region,
 RDS deletion protection, a final snapshot, at least seven days of automated
 backups, versioned S3 with at least 30-day noncurrent-version retention, and
-one app task and worker slot. Before applying, verify in ACM that the
+one app task, one worker task and one job slot. Before applying, verify in ACM that the
 certificate is `ISSUED` and covers the hostname, and create the DNS alias after
 Terraform reports the load balancer name. Terraform can validate the supplied
 values; it cannot prove the DNS record or certificate coverage.
@@ -119,7 +119,8 @@ settings. Use provider keys only when needed, store a separate key for each
 organization, and set the provider's own spend limits.
 
 The example sets one app task, one worker slot, the cache, a 500 MB per-file
-upload limit, 50 GiB of fixed RDS storage, and 50 GiB of worker scratch. The
+upload limit, 50 GiB of RDS storage that grows to 100 GiB, and 50 GiB of worker
+scratch. The
 cache stays on because token-protected service imports need it (see Upgrading
 GeoLens). S3 has no total bucket quota in this recipe, and a per-resource AWS
 Budget is an alert rather than a hard stop. Activate the `Deployment`
@@ -339,28 +340,72 @@ the two limits cannot drift apart.
 
 ## Scaling
 
-- `app_desired_count` adds app tasks behind the load balancer. The api is
-  stateless, so this scales reads.
-- `worker_concurrency` adds parallel job slots in the one worker task. Raise
-  `worker_task.cpu` with it.
+- `app_desired_count` sets the number of app tasks behind the load balancer.
+  More than one needs `cache_enabled`, since each api task otherwise keeps its
+  own cache. The api is stateless, so this scales reads.
+- `app_autoscaling = { min = 1, max = 4, cpu_target = 60 }` scales the app
+  service on average CPU. It is off by default. The recipe always registers an
+  Application Auto Scaling target and ignores `desired_count` in Terraform, so
+  the target owns the count: with autoscaling off it pins `app_desired_count`.
+  A resize takes effect within a minute or two of the apply. Terraform no
+  longer sees the service's running count, so change it through these
+  variables: a count set in the console stays until the next change to the
+  target.
+- `worker_desired_count` runs several worker tasks, each with
+  `worker_concurrency` job slots. Jobs are safe to share between workers. The
+  count is fixed: CPU does not track queue depth, so scale on
+  `catalog.procrastinate_jobs` depth outside this recipe if you need that.
 - `app_task` and `worker_task` set Fargate CPU units and memory. The worker
   default is 4 GB because GDAL ingestion of large rasters needs it.
 - `db_high_availability` runs RDS Multi-AZ: a synchronous standby in a second
   zone and automatic failover, for about twice the instance cost. Connections
   drop during a failover, so requests in flight fail. It is off by default.
-- `db_instance_class` sizes the database. The cache is `cache.t4g.micro` in
-  `data.tf`. A `db.t4g.micro` allows roughly 100 connections and each api
-  task is tuned for a budget of about 70, so raising `app_desired_count` past
-  two, or the uvicorn worker count (`UVICORN_WORKERS`, 2, overridable through
-  `extra_env`), needs a larger class or an external pooler.
+- `db_instance_class` sizes the database. A `db.t4g.micro` allows roughly 100
+  connections and each api task is tuned for a budget of about 70, so raising
+  `app_desired_count` or `app_autoscaling.max` past two, or the uvicorn worker
+  count (`UVICORN_WORKERS`, 2, overridable through `extra_env`), needs a
+  larger class.
+- `db_allocated_storage_gb` is the initial encrypted RDS storage, and
+  `db_max_allocated_storage_gb` (default 100) lets RDS grow it up to that
+  ceiling, which RDS requires to be at least 10% above the initial size. RDS
+  never shrinks storage again, and a volume can be modified only once every
+  six hours. Set it to 0 to keep storage fixed. If RDS has already grown the
+  volume, first set `db_allocated_storage_gb` to its current size and apply,
+  or the apply asks RDS to shrink it and fails.
 - `worker_ephemeral_storage_gb` is the worker's scratch disk. With S3 storage
   the api never keeps an upload, but the worker pulls a raster down to convert
   it, so a large GeoTIFF plus its COG must fit; Fargate allows up to 200 GiB.
-- `db_allocated_storage_gb` sets fixed encrypted RDS storage. The recipe does
-  not configure storage autoscaling; size it for each organization's database.
 - `cpu_architecture` is `ARM64` by default, about 20% cheaper per vCPU-hour
   than `X86_64`. Every image the recipe runs is published for both; pick
   `X86_64` in a region without Graviton Fargate.
+- Container Insights follows the account setting, and the recipe leaves the
+  cluster's setting alone. For CPU and memory per container inside the shared
+  app task, which is billed per metric and log observation, run
+  `aws ecs update-cluster-settings --cluster <name> --settings name=containerInsights,value=enhanced`.
+
+### Connections during a deploy
+
+A rolling deploy runs old and new tasks together, doubling the api's database
+connections for its length, so size the class for that peak. RDS Proxy has not
+been tested with GeoLens; the
+[connection budget](../../clouds/README.md#database-connections) explains why
+PgBouncer-based poolers don't work yet.
+
+### Alarms worth setting
+
+The recipe creates no alarms. At least:
+
+- RDS `DatabaseConnections` close to the class limit, and `FreeStorageSpace`
+  falling toward the autoscaling ceiling.
+- ALB `HTTPCode_Target_5XX_Count` above zero for several minutes, and
+  `TargetResponseTime` p95 above your tile latency budget.
+- ECS `CPUUtilization` for the app service above 80% when autoscaling is off,
+  or sitting at `max` when it is on.
+
+### Cache
+
+The cache is one node with no failover; the `# ponytail:` comment on it in
+`data.tf` says how to add a replica.
 
 ## What is deliberately simplified
 
@@ -380,10 +425,11 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
 - One task role is shared by every container, which lets titiler write to the
   bucket even though it only reads.
 - The database is single-AZ unless `db_high_availability` is set, and the cache
-  is one node. Bucket versioning stays
+  is one node with no failover. Bucket versioning stays
   off on the generic path; the production profile enables it and expires
   noncurrent versions after the configured number of days.
-- One worker task runs every background job, `worker_concurrency` at a time.
+- Workers run a fixed `worker_desired_count` tasks, `worker_concurrency` jobs
+  at a time each, with no queue-based scaling.
 
 ## Cost
 
@@ -552,3 +598,20 @@ and the next plan again proposed no changes. The baseline datasets still
 served their collection items and raster tile, and `ingest-smoke.sh` passed
 before and after. The stack was then destroyed in one run, and a sweep found
 nothing left but the secret in its recovery window.
+
+In a second run that day, a stack applied at GeoLens 1.26.0 from the recipe
+before the #98 fix was upgraded in place to this one, which includes it. The
+upgrade created the Application Auto Scaling target pinned at one task,
+replaced the app task definition to add the 35-second stop timeouts, and
+changed the target group (60-second deregistration delay, checks every 15
+seconds) and the RDS storage ceiling (100 GiB) in place. `/api/health` answered
+200 at every check, ten seconds apart, and the next plan proposed no changes.
+The baseline datasets still served their collection items and raster tile, and
+`ingest-smoke.sh` passed again. Raising `app_desired_count` to 2 changed only
+the scalable target, ECS started the second task on its own, and the plan
+stayed clean; `worker_desired_count = 2` ran two workers. Turning on
+`app_autoscaling` (2 to 4 tasks, CPU target 60) added the target-tracking
+policy, again with a clean plan afterwards. The stack was then destroyed in one run. A sweep 90
+seconds later still listed the instance's automated snapshot, which RDS removed
+within two more minutes, and then found nothing left but the secret in its
+recovery window.

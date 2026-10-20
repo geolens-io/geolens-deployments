@@ -541,3 +541,14 @@ proposed no database change. The stack was then destroyed in one run. A sweep
 right after it listed the instance's automated snapshot, which RDS removed a
 minute later, and then found nothing left but the secret in its recovery
 window.
+
+On 2026-10-20 in us-east-1, a stack applied from the previous recipe at
+GeoLens 1.26.0 planned to replace all three task definitions straight after
+its own apply. This recipe planned no changes against the same state, so the
+upgrade applied nothing and both services stayed on their task definitions.
+Task definitions recreated from this recipe with `-replace` rolled both
+services with `/api/health` answering 200 at every check, ten seconds apart,
+and the next plan again proposed no changes. The baseline datasets still
+served their collection items and raster tile, and `ingest-smoke.sh` passed
+before and after. The stack was then destroyed in one run, and a sweep found
+nothing left but the secret in its recovery window.

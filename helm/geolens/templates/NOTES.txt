@@ -65,11 +65,7 @@ that the api and worker share. Ignore this if both get the same REDIS_URL
 another way. See the README's Running more than one replica section.
 {{- end }}
 {{- $staging := .Values.staging.persistence }}
-{{- $modes := $staging.accessModes }}
-{{- if $staging.existingClaim }}
-{{- $modes = dig "spec" "accessModes" (list) (lookup "v1" "PersistentVolumeClaim" .Release.Namespace $staging.existingClaim) }}
-{{- end }}
-{{- if and $staging.enabled (has "ReadWriteOnce" $modes) }}
+{{- if and $staging.enabled (not $staging.existingClaim) (has "ReadWriteOnce" $staging.accessModes) }}
 
 WARNING: the staging claim is ReadWriteOnce. The api, worker and titiler pods
 all mount it, and a ReadWriteOnce volume attaches to one node, so pods

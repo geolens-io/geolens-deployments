@@ -468,6 +468,9 @@ staging:
   # that eksctl does not mark. RWX on AWS means EFS.
   persistence:
     enabled: false
+    # Must be ReadWriteMany unless every api, worker and titiler pod shares one
+    # node, since they all mount it. The chart cannot check a claim it did not
+    # create.
     existingClaim: ""
     storageClass: ""
     accessModes:

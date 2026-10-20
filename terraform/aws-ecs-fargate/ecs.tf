@@ -134,13 +134,14 @@ locals {
 resource "aws_ecs_cluster" "this" {
   name = var.name
 
-  # Per-container metrics, billed per observation. Rendered only when on, so an
-  # account-level default is not overridden.
+  # Rendered only when set, so the account-level default otherwise applies. The
+  # provider sends nothing when the block disappears, so turning it off takes
+  # "disabled".
   dynamic "setting" {
-    for_each = var.container_insights ? [1] : []
+    for_each = var.container_insights == null ? [] : [var.container_insights]
     content {
       name  = "containerInsights"
-      value = "enhanced"
+      value = setting.value
     }
   }
 }

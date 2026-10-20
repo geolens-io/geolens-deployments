@@ -366,16 +366,21 @@ the two limits cannot drift apart.
   `db_max_allocated_storage_gb` (default 100) lets RDS grow it up to that
   ceiling, which RDS requires to be at least 10% above the initial size. RDS
   never shrinks storage again, and a volume can be modified only once every
-  six hours. Set it to 0 to keep storage fixed.
+  six hours. Set it to 0 to keep storage fixed. If RDS has already grown the
+  volume, first set `db_allocated_storage_gb` to its current size and apply,
+  or the apply asks RDS to shrink it and fails.
 - `worker_ephemeral_storage_gb` is the worker's scratch disk. With S3 storage
   the api never keeps an upload, but the worker pulls a raster down to convert
   it, so a large GeoTIFF plus its COG must fit; Fargate allows up to 200 GiB.
 - `cpu_architecture` is `ARM64` by default, about 20% cheaper per vCPU-hour
   than `X86_64`. Every image the recipe runs is published for both; pick
   `X86_64` in a region without Graviton Fargate.
-- `container_insights = true` turns on ECS Container Insights with enhanced
-  observability, which reports CPU and memory per container. It is billed per
-  metric and log observation, so it is off by default.
+- `container_insights` sets ECS Container Insights on the cluster:
+  `"enhanced"` reports CPU and memory per container and is billed per metric
+  and log observation; `"enabled"` and `"disabled"` are the other values. The
+  default, null, leaves the account setting in charge. After applying a value,
+  set `"disabled"` to turn it off: removing the variable leaves the cluster as
+  it was.
 
 ### Connections during a deploy
 

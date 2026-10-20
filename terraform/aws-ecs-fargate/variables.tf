@@ -84,7 +84,7 @@ variable "app_autoscaling" {
   default     = null
 
   validation {
-    condition = var.app_autoscaling == null || (
+    condition = var.app_autoscaling == null ? true : (
       var.app_autoscaling.min >= 1 &&
       var.app_autoscaling.max >= var.app_autoscaling.min &&
       var.app_autoscaling.cpu_target >= 10 &&
@@ -96,7 +96,7 @@ variable "app_autoscaling" {
   }
 
   validation {
-    condition     = var.app_autoscaling == null || var.app_autoscaling.max == 1 || var.cache_enabled
+    condition     = var.app_autoscaling == null ? true : (var.app_autoscaling.max == 1 || var.cache_enabled)
     error_message = "app_autoscaling with max above 1 needs cache_enabled = true; without a shared cache every api task keeps its own."
   }
 }
@@ -266,9 +266,14 @@ variable "db_max_allocated_storage_gb" {
 }
 
 variable "container_insights" {
-  description = "Turn on ECS Container Insights with enhanced observability: per-container metrics, billed per observation."
-  type        = bool
-  default     = false
+  description = "ECS Container Insights for the cluster: \"enhanced\" for per-container metrics, billed per observation, \"enabled\" or \"disabled\". Null leaves the account setting in charge; set \"disabled\" to turn off a value applied earlier."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.container_insights == null ? true : contains(["enhanced", "enabled", "disabled"], var.container_insights)
+    error_message = "container_insights must be null, \"enhanced\", \"enabled\" or \"disabled\"."
+  }
 }
 
 variable "app_task" {

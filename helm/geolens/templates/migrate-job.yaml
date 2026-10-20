@@ -14,6 +14,9 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: {{ .Values.migrate.backoffLimit }}
+  {{- with (.Values.migrate | default dict).activeDeadlineSeconds }}
+  activeDeadlineSeconds: {{ . }}
+  {{- end }}
   template:
     metadata:
       labels:
@@ -56,6 +59,10 @@ spec:
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           securityContext:
             {{- include "geolens.containerSecurityContext" . | nindent 12 }}
+          {{- with (.Values.migrate | default dict).resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           # `upgrade heads` (plural) matches the api entrypoint and stays
           # correct should the migration graph ever carry multiple heads.
           command:

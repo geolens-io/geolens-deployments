@@ -6,7 +6,10 @@ metadata:
     {{- include "geolens.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
 spec:
-  replicas: {{ .Values.frontend.replicas }}
+  {{- with include "geolens.replicas" .Values.frontend | trim }}
+  {{- . | nindent 2 }}
+  {{- end }}
+  {{- include "geolens.rollout" . | nindent 2 }}
   selector:
     matchLabels:
       {{- include "geolens.selectorLabels" . | nindent 6 }}
@@ -17,6 +20,7 @@ spec:
         {{- include "geolens.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
     spec:
+      terminationGracePeriodSeconds: {{ include "geolens.terminationGrace" (list .Values.frontend "frontend" 0) }}
       {{- /* --reuse-values from a release without this value supplies none, so an
            absent key falls back to nginx's non-root uid. */}}
       {{- $frontendPsc := dict "runAsNonRoot" true "runAsUser" 101 "runAsGroup" 101 }}
@@ -31,13 +35,16 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with include "geolens.scheduling" .Values.frontend | trim }}
+      {{- with include "geolens.podScheduling" (list $ "frontend" .Values.frontend) | trim }}
       {{- . | nindent 6 }}
       {{- end }}
       containers:
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          {{- with include "geolens.preStop" .Values.frontend | trim }}
+          {{- . | nindent 10 }}
+          {{- end }}
           securityContext:
             {{- include "geolens.containerSecurityContext" . | nindent 12 }}
           ports:

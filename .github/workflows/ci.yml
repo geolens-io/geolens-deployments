@@ -357,6 +357,53 @@ jobs:
           }
           echo "PDBs default to maxUnavailable 1 and keep an explicit 0"
 
+      - name: Guard - scaling and shutdown defaults render, and the opt-in resources stay off
+        # The HPA must own the replica count or `helm upgrade` resets it; the
+        # ServiceMonitor kinds are CRDs a plain cluster rejects.
+        run: |
+          render() { helm template geolens helm/geolens --set secrets.existingSecret=geolens-secrets "$@"; }
+          doc() { awk -v want="$1" 'BEGIN{RS="---"} index($0, "name: " want "\n") && /kind: Deployment/'; }
+          die() { echo "$*" >&2; exit 1; }
+          default=$(render)
+          for kind in HorizontalPodAutoscaler ServiceMonitor PodMonitor; do
+            ! grep -q "kind: $kind" <<<"$default" || die "$kind renders by default"
+          done
+          for c in api frontend titiler worker; do
+            d=$(doc "geolens-$c" <<<"$default")
+            [ "$(grep -c 'whenUnsatisfiable: ScheduleAnyway' <<<"$d")" -eq 2 ] && grep -q 'topology.kubernetes.io/zone' <<<"$d" || die "$c lacks the default node and zone spread"
+            grep -q 'revisionHistoryLimit: 3' <<<"$d" || die "$c lacks revisionHistoryLimit"
+            if [ "$c" != titiler ] && [ "$c" != worker ]; then
+              grep -q 'maxUnavailable: 0' <<<"$d" || die "$c does not surge on rollout"
+            fi
+            if [ "$c" = api ] || [ "$c" = frontend ]; then
+              grep -q 'terminationGracePeriodSeconds: 60' <<<"$d" && grep -q 'command: \["sleep", "10"\]' <<<"$d" || die "$c lacks the grace period or preStop"
+            fi
+            if [ "$c" = titiler ]; then
+              grep -q 'replicas: 2' <<<"$d" && grep -q 'maxUnavailable: 0' <<<"$d" || die "titiler lacks 2 replicas or surge"
+            fi
+          done
+          # One render for the opt-ins that do not conflict: both HPAs, the monitors, no api
+          # preStop, and an explicit frontend spread.
+          opt=$(render --set api.autoscaling.enabled=true --set titiler.autoscaling.enabled=true \
+            --set serviceMonitor.enabled=true --set api.preStopSleepSeconds=0 \
+            --set 'frontend.topologySpreadConstraints[0].maxSkew=3' \
+            --set 'frontend.topologySpreadConstraints[0].topologyKey=rack' \
+            --set 'frontend.topologySpreadConstraints[0].whenUnsatisfiable=DoNotSchedule')
+          [ "$(grep -c 'kind: HorizontalPodAutoscaler' <<<"$opt")" -eq 2 ] || die "want two HPAs"
+          for c in api titiler; do
+            ! grep -q 'replicas:' <<<"$(doc "geolens-$c" <<<"$opt")" || die "$c keeps spec.replicas while its HPA is enabled"
+          done
+          grep -q 'replicas: 2' <<<"$(doc geolens-frontend <<<"$opt")" || die "frontend lost replicas without an HPA"
+          grep -q 'kind: ServiceMonitor' <<<"$opt" && grep -q 'kind: PodMonitor' <<<"$opt" || die "serviceMonitor.enabled did not render both monitors"
+          ! grep -q preStop <<<"$(doc geolens-api <<<"$opt")" || die "api.preStopSleepSeconds=0 kept the preStop"
+          d=$(doc geolens-frontend <<<"$opt")
+          ! grep -q 'ScheduleAnyway' <<<"$d" && grep -q 'maxSkew: 3' <<<"$d" || die "an explicit spread did not replace the default"
+          # A grace period that does not outlast the preStop sleep plus uvicorn's 30s drain must fail.
+          ! render --set api.terminationGracePeriodSeconds=40 >/dev/null 2>&1 || die "api grace 40 with a 10s sleep rendered"
+          ! render --set frontend.terminationGracePeriodSeconds=10 >/dev/null 2>&1 || die "frontend grace 10 with a 10s sleep rendered"
+          render --set api.terminationGracePeriodSeconds=41 --set frontend.terminationGracePeriodSeconds=11 >/dev/null || die "a grace period above the sleep was refused"
+          echo "scaling and shutdown defaults render; HPAs own replicas; monitors are opt-in; bad grace periods fail"
+
       - name: Guard - placement reaches its pods, and the migrate hook takes the api's node placement
         # A hook left off a tainted node pool stays Pending and times out the
         # install, so the api's tolerations must reach it too, but never its pod
@@ -820,8 +867,8 @@ jobs:
           kubectl create namespace geolens
           kubectl label namespace geolens pod-security.kubernetes.io/enforce=restricted
           helm install geolens helm/geolens --namespace geolens \
-            --set api.replicas=1 \
             --set frontend.replicas=1 \
+            --set titiler.replicas=1 \
             --set secrets.databaseUrlOverride='postgresql+asyncpg://geolens:chart-ci-db-password@geolens-ci-db.default.svc.cluster.local:5432/geolens' \
             --set secrets.jwtSecretKey='0123456789abcdef0123456789abcdef' \
             --set secrets.adminUsername='ci-admin' \
@@ -859,6 +906,27 @@ jobs:
             exit 1
           fi
           echo "NOTES warn exactly when a backend other than s3 has no shared staging volume"
+
+      - name: NOTES warn when a ReadWriteOnce staging claim serves several replicas
+        run: |
+          notes() {
+            helm install notes-check helm/geolens --namespace default --dry-run=client \
+              --set secrets.existingSecret=geolens-secrets --set storage.backend=s3 --set storage.s3Bucket=geolens \
+              --set staging.persistence.enabled=true --set-json 'staging.persistence.accessModes=["ReadWriteOnce"]' "$@" | sed -n '/^NOTES:/,$p'
+          }
+          grep -q 'WARNING: staging.persistence.accessModes is ReadWriteOnce' <<<"$(notes)" || {
+            echo "no ReadWriteOnce warning with two api replicas" >&2
+            exit 1
+          }
+          if grep -q 'accessModes is ReadWriteOnce' <<<"$(notes --set api.replicas=1)"; then
+            echo "ReadWriteOnce warning shown with one api and one worker replica" >&2
+            exit 1
+          fi
+          if grep -q 'accessModes is ReadWriteOnce' <<<"$(notes --set-json 'staging.persistence.accessModes=["ReadWriteMany"]')"; then
+            echo "ReadWriteOnce warning shown for ReadWriteMany" >&2
+            exit 1
+          fi
+          echo "NOTES warn exactly when a ReadWriteOnce staging claim serves more than one replica"
 
       - name: NOTES warn when no cache is configured
         run: |

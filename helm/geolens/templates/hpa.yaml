@@ -1,0 +1,31 @@
+{{- /* Opt-in HorizontalPodAutoscalers. While one is enabled its Deployment omits
+     spec.replicas, so a `helm upgrade` leaves the autoscaled count alone. CPU
+     utilization is measured against the component's CPU request. */}}
+{{- range $component := list "api" "frontend" "titiler" }}
+{{- $values := get $.Values $component }}
+{{- $as := $values.autoscaling | default dict }}
+{{- if and $as.enabled (or (ne $component "titiler") $.Values.titiler.enabled) }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "geolens.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "geolens.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "geolens.fullname" $ }}-{{ $component }}
+  minReplicas: {{ $as.minReplicas | default 2 }}
+  maxReplicas: {{ $as.maxReplicas | default 6 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $as.targetCPUUtilizationPercentage | default 70 }}
+{{- end }}
+{{- end }}

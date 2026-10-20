@@ -59,7 +59,31 @@ api:
   # rendering CLIENT_MAX_BODY_SIZE as "<value>m", so raising it does not 413 at
   # the edge. Frontend images < 1.4.10 ignore that variable and stay at 500m.
   uploadMaxSizeMb: "500"
-  resources: {}
+  # Requests let the scheduler place pods and are what an HPA measures against.
+  # The 2Gi memory limit matches the Compose prod default (API_MEM_LIMIT); raise
+  # it with UVICORN_WORKERS. There is no CPU limit, which only throttles a pod
+  # that has idle cores to use.
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 2Gi}
+  # Optional HorizontalPodAutoscaler on CPU. While enabled the Deployment omits
+  # `replicas`, so `helm upgrade` does not reset the autoscaled count; minReplicas
+  # replaces it. Off by default because it needs a metrics-server and a CPU
+  # request (set above). Pair it with a shared cache and the connection budget
+  # in clouds/README.md#database-connections before raising maxReplicas.
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  # Seconds between SIGTERM and SIGKILL. It must exceed preStopSleepSeconds plus
+  # uvicorn's drain, UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN (image default 30); if you
+  # raise that timeout, raise this above it.
+  terminationGracePeriodSeconds: 60
+  # preStop sleep before SIGTERM, so the Service and ingress stop sending
+  # requests to a pod that is about to drain. 0 disables it.
+  preStopSleepSeconds: 10
+  priorityClassName: ""
   # The chart sets FORWARDED_ALLOW_IPS="*" on the api so uvicorn takes the
   # client address from the X-Forwarded-For the frontend edge writes. Without
   # it every user shares the frontend pod's rate-limit buckets (login allows 5
@@ -73,7 +97,9 @@ api:
   # dedicated node pool reaches the hook too; without it the hook stays Pending
   # and the install or upgrade times out. Pod affinity and spread constraints
   # stay api-only: they select api pods, which a pre-install hook runs before.
-  # Spread constraints need their own labelSelector, e.g.
+  # Empty topologySpreadConstraints render a soft default: spread across
+  # nodes and zones with ScheduleAnyway, which only prefers spreading. A value
+  # here replaces both entries, and needs its own labelSelector, e.g.
   #   topologySpreadConstraints:
   #     - maxSkew: 1
   #       topologyKey: kubernetes.io/hostname
@@ -93,7 +119,13 @@ worker:
     repository: ghcr.io/geolens-io/geolens-worker
     tag: "1.26.0"
     pullPolicy: IfNotPresent
-  resources: {}
+  # The 4Gi memory limit matches the Compose prod default (WORKER_MEM_LIMIT) and
+  # keeps one runaway ingest from starving the node. A large raster that gets
+  # OOMKilled needs this raised; that is the fix, not removing the limit.
+  resources:
+    requests: {cpu: 200m, memory: 512Mi}
+    limits: {memory: 4Gi}
+  priorityClassName: ""
   # Seconds between SIGTERM and SIGKILL. Keep it above WORKER_SHUTDOWN_TIMEOUT
   # (default 30), the window the worker gives running jobs to finish, so it can
   # release them before it is killed. Compose uses the same 35s. Raise both
@@ -155,7 +187,21 @@ frontend:
     runAsNonRoot: true
     runAsUser: 101
     runAsGroup: 101
-  resources: {}
+  # nginx proxies and caches to disk, so memory stays small.
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+  # Optional HorizontalPodAutoscaler, as for api.autoscaling.
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  # As for api: the grace period outlasts the preStop sleep and nginx's drain
+  # of in-flight uploads and downloads.
+  terminationGracePeriodSeconds: 60
+  preStopSleepSeconds: 10
+  priorityClassName: ""
   extraEnv: []
   # Placement, as for api.nodeSelector and friends.
   nodeSelector: {}
@@ -167,7 +213,9 @@ titiler:
   # Raster (COG) tile rendering, part of the standard GeoLens topology.
   # Disable only for vector-only catalogs — raster datasets need it.
   enabled: true
-  replicas: 1
+  # Two, so raster tiles keep serving while a pod is evicted, restarted after an
+  # OOMKill or rolled.
+  replicas: 2
   image:
     repository: ghcr.io/developmentseed/titiler
     # Upstream ships security fixes as ordinary bugfix releases
@@ -197,16 +245,23 @@ titiler:
     runAsNonRoot: true
     runAsUser: 1001
     runAsGroup: 1001
-  # Empty = BestEffort QoS: titiler is evicted first under node pressure and
-  # its RSS ratchet grows unbounded. For production, set a
-  # memory limit of roughly 2x the plateau you observe (the demo plateaus
-  # around 600Mi-1.8Gi depending on raster traffic) — under a limit, an
-  # OOMKill restart is the intended recycling backstop, gated by the probes
-  # below. Requests are also the prerequisite for ever running an HPA.
-  #   resources:
-  #     requests: {memory: 256Mi, cpu: 100m}
-  #     limits: {memory: 2Gi}
-  resources: {}
+  # Without a memory limit TiTiler's RSS ratchet grows unbounded, and empty
+  # resources would make it BestEffort, evicted first under node pressure.
+  # 2Gi is about 2x the plateau the demo reaches (600Mi to 1.8Gi depending on
+  # raster traffic); an OOMKill restart is the intended recycling backstop,
+  # gated by the probes. Raise it with `workers`. Requests are also what an
+  # HPA measures against.
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 2Gi}
+  # Optional HorizontalPodAutoscaler, as for api.autoscaling. Tile rendering is
+  # CPU-bound, so CPU is the right signal here.
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  priorityClassName: ""
   # glibc malloc arena cap inside the titiler container. Slows
   # (does not stop) TiTiler's RSS ratchet under concurrent tile reads; raise
   # only if malloc contention shows up on many-core nodes. Mirrors the compose
@@ -244,6 +299,13 @@ migrate:
   # instead, which races with api.replicas > 1 — keep this enabled.
   enabled: true
   backoffLimit: 2
+  # Hard stop for the Job, so a migration stuck on a lock cannot hold an install
+  # or upgrade forever. Generous because index builds on a large catalog are
+  # slow (see the README's upgrade notes); helm's own --timeout still applies.
+  activeDeadlineSeconds: 3600
+  # Requests for the hook pod. Empty by default because it runs once, briefly,
+  # but set them in a namespace with a ResourceQuota: it rejects pods without.
+  resources: {}
   extraEnv: []
   # Mounts from `extraVolumes` for the migrate Job. It talks to the same
   # database as the api, so a CA bundle needed for DATABASE_SSL_MODE=verify-full
@@ -418,10 +480,26 @@ readOnlyRootFilesystem: true
 # PodDisruptionBudgets for the api, frontend and titiler, so a node drain evicts
 # one pod of each at a time. maxUnavailable rather than minAvailable: with a
 # single replica the pod can still be evicted, where minAvailable: 1 would
-# block the drain forever.
+# block the drain forever. The worker has none: at its default of one replica
+# the same budget permits the eviction anyway, and the worker drains within its
+# own terminationGracePeriodSeconds.
 podDisruptionBudget:
   enabled: true
   maxUnavailable: 1
+
+# Old ReplicaSets kept per Deployment for `kubectl rollout undo`. Kubernetes
+# keeps 10 by default, which clutters a cluster that upgrades often.
+revisionHistoryLimit: 3
+
+# Prometheus Operator scrape config for the api (ServiceMonitor) and the worker
+# (PodMonitor, since it has no Service). Off by default: both are CRDs, and a
+# cluster without them rejects the install. `labels` carries whatever your
+# Prometheus selects on, e.g. {release: kube-prometheus-stack}. With
+# networkPolicy.enabled, list the Prometheus pods in networkPolicy.metricsFrom.
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
 
 # NetworkPolicies, off by default because they only work with a CNI that
 # enforces them and the frontend's rule depends on where your ingress

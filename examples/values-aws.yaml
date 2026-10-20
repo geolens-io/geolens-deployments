@@ -98,22 +98,19 @@ frontend:
   trustedProxyCidrs:
     - 192.168.0.0/16
 
-titiler:
-  # Empty resources means BestEffort QoS: TiTiler is evicted first under node
-  # pressure and its RSS ratchet grows unbounded. Give it a ceiling.
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      memory: 2Gi
-
 ingress:
   enabled: true
   className: nginx
   host: <your-host>
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt
+    # ingress-nginx defaults to a 1m body and 60s timeouts, which fail large
+    # uploads. Keep the body size at api.uploadMaxSizeMb (500 by default) and
+    # stream the upload rather than buffering it on the controller.
+    nginx.ingress.kubernetes.io/proxy-body-size: 500m
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
   tls:
     - hosts:
         - <your-host>

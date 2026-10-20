@@ -59,6 +59,17 @@ bootstrap script from the
 as `doadmin` against the `geolens` database, and apply the ownership transfer
 above.
 
+### Connection limits and pools
+
+A cluster allows 25 connections per GiB of RAM and reserves 3 of them for
+maintenance. The `db-s-1vcpu-1gb` node above therefore leaves 22, which is less
+than one api process can open at its defaults (see
+[Database connections](README.md#database-connections)). Size the node from the
+connection budget, or lower `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` and
+`TILE_POOL_MAX_SIZE`, before adding api instances. The cluster's connection
+pools can't carry GeoLens yet, for the reason the
+[connection notes](README.md#database-connections) give.
+
 ## Storage: Spaces
 
 ```bash
@@ -112,10 +123,12 @@ uploads keep working, so the symptom looks unrelated to the endpoint.
 ## Cache
 
 Managed Valkey where the region offers it, otherwise Valkey on a Droplet. The
-application uses redis-py, which speaks to either. Skip it entirely for a
-single instance, where the in-process cache is the right answer, except that
-from 1.23.0 importing, re-uploading or refreshing a service that needs a token
-also needs the cache.
+application uses redis-py, which speaks to either. A single api instance can
+skip it, where the in-process cache is the right answer, except that from
+1.23.0 importing, re-uploading or refreshing a service that needs a token also
+needs the cache. It is required once the api component runs more than one
+instance or you add a second worker: without it rate limits count per instance
+and caches differ between instances.
 
 A managed cluster requires TLS and a password on port 25061, so its URL is
 `rediss://default:<password>@<host>:25061/0`. Take it from the console rather
@@ -137,6 +150,10 @@ components.
 Because api and titiler land in separate components, titiler can keep port
 8000. It only has to move when it shares a network namespace with the api,
 which is the Droplet and Compose case.
+
+App Platform times out an upload to the app after 600 seconds, and each
+component's 4 GiB local filesystem is lost on every deploy, so use Spaces for
+storage. Browser uploads then go straight to the bucket.
 
 Route the app's public domain to the frontend component. It is the application
 edge, so serving the built bundle alone breaks `/api` proxying and raster

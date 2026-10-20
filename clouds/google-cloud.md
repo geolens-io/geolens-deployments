@@ -154,9 +154,13 @@ even on a single instance. Without it everything else still works, with an
 in-process cache that is wrong for more than one API instance.
 
 ```bash
-gcloud redis instances create geolens-cache --size=1 --region=us-central1
+gcloud redis instances create geolens-cache --size=1 --region=us-central1 --tier=standard
 gcloud redis instances describe geolens-cache --region=us-central1 --format="value(host)"
 ```
+
+`--tier=standard` keeps a replica with automatic failover and costs more than
+the default `basic` tier, which has no replica. Basic is fine while you run one
+api instance.
 
 Memorystore is reachable only from inside its VPC, which for Cloud Run means
 Serverless VPC Access or Direct VPC egress. Without one of those, `REDIS_URL`
@@ -166,8 +170,8 @@ points at an address the service cannot open.
 
 Cloud Run multi-container services cover the frontend, api and titiler in one
 service sharing a network namespace. The worker is a long-running process, so
-it needs its own service with CPU always allocated and minimum instances 1, or
-a small Compute Engine VM.
+it needs its own service with CPU always allocated and at least one instance
+(`--no-cpu-throttling --min-instances=1`), or a small Compute Engine VM.
 
 A Cloud Run service has to listen on the port it is configured with, which
 defaults to 8080. The worker image serves its health and metrics endpoints on
@@ -192,6 +196,37 @@ invoker role by itself does not make either call work.
 Route the public domain to the frontend. It is the application edge, so
 serving the built bundle from a bucket instead breaks `/api` proxying and
 raster tiles.
+
+## Scaling
+
+Cloud Run adds and removes instances on its own, so the
+[checklist for more than one replica](README.md#before-running-more-than-one-replica)
+applies, and the cache above stops being optional. Four Cloud Run limits matter
+on top of it.
+
+Cloud Run caps a request body at 32 MiB over HTTP/1. Browser uploads go
+straight to the bucket through presigned URLs and never meet that limit, but a
+client posting a file to the api's `/upload` endpoint fails above 32 MiB.
+
+Cloud Run kills a container 10 seconds after SIGTERM, well inside the 30-second
+drains of the api and worker. Set `UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN` and
+`WORKER_SHUTDOWN_TIMEOUT` to about 8.
+
+Cloud SQL sets `max_connections` from memory: a tier with 3.75 to 6 GB, such
+as `db-custom-2-4096`, gets 100. Cap the api and the worker with `--max`, the
+service-wide limit, rather than `--max-instances`, which limits each revision
+separately, so during a rollout the old and new revisions could each run that
+many. Even `--max` is not a hard ceiling: Cloud Run starts extra instances a
+few times a week to replace others or absorb a spike, usually fewer than twice
+the limit. Size the [connection budget](README.md#database-connections) for
+twice `--max`. At the default pools that makes `--max=1` on both the most this
+tier carries (`2 x 26 + 2 x 17 = 86`); raise the tier or lower the pools to
+run more api instances.
+
+A request times out at 300 seconds by default. Raise `--timeout` to 600 to
+match the read timeout the frontend's nginx allows. Set `--concurrency=80`,
+since a service created with gcloud or Terraform otherwise allows 80 per vCPU.
+Requests beyond the pool only wait for a connection.
 
 ## HTTPS
 

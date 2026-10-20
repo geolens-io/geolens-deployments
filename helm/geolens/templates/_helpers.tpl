@@ -170,8 +170,8 @@ strategy:
 replicas: {{ $v.replicas }}
 {{- else -}}
 {{- $live := lookup "apps/v1" "Deployment" $root.Release.Namespace (printf "%s-%s" (include "geolens.fullname" $root) (index . 1)) -}}
-{{- with dig "spec" "replicas" nil $live }}
-replicas: {{ . }}
+{{- if $live }}
+replicas: {{ $live.spec.replicas }}
 {{- end -}}
 {{- end -}}
 {{- end -}}

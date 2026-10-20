@@ -14,7 +14,8 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: {{ .Values.migrate.backoffLimit }}
-  {{- with (.Values.migrate | default dict).activeDeadlineSeconds }}
+  {{- $migrate := .Values.migrate | default dict }}
+  {{- with ternary $migrate.activeDeadlineSeconds 3600 (hasKey $migrate "activeDeadlineSeconds") }}
   activeDeadlineSeconds: {{ . }}
   {{- end }}
   template:

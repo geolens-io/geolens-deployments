@@ -281,7 +281,16 @@ jobs:
             echo "an absent storage.s3AddressingStyle renders S3_ADDRESSING_STYLE, which the backend rejects unless it is auto, path or virtual" >&2
             exit 1
           fi
-          echo "renders with serviceAccount, database and s3AddressingStyle absent (cross-version --reuse-values safe)"
+          # A release from chart 0.4 has no migrate.activeDeadlineSeconds; the hook still gets the deadline.
+          job=$(helm template geolens helm/geolens \
+            --set secrets.existingSecret=geolens-secrets \
+            --set-json 'migrate.activeDeadlineSeconds=null' \
+            --show-only templates/migrate-job.yaml)
+          grep -q 'activeDeadlineSeconds: 3600' <<<"$job" || {
+            echo "an absent migrate.activeDeadlineSeconds dropped the migrate hook's deadline" >&2
+            exit 1
+          }
+          echo "renders with serviceAccount, database and s3AddressingStyle absent, and keeps the migrate deadline (cross-version --reuse-values safe)"
 
       - name: Guard - a --reuse-values upgrade from the published chart keeps pods non-root
         # --reuse-values renders the new templates against
@@ -400,6 +409,7 @@ jobs:
           keda=$(render --set worker.autoscaling.enabled=true)
           ! grep -q 'replicas:' <<<"$(doc geolens-worker <<<"$keda")" || die "the worker keeps spec.replicas under an external autoscaler"
           ! grep -q 'kind: HorizontalPodAutoscaler' <<<"$keda" || die "worker.autoscaling rendered an HPA"
+          ! render --set api.autoscaling.enabled=true --set-json 'api.resources=null' >/dev/null 2>&1 || die "an HPA rendered without a CPU request to measure against"
           grep -q 'kind: ServiceMonitor' <<<"$opt" && grep -q 'kind: PodMonitor' <<<"$opt" || die "serviceMonitor.enabled did not render both monitors"
           ! grep -q preStop <<<"$(doc geolens-api <<<"$opt")" || die "api.preStopSleepSeconds=0 kept the preStop"
           d=$(doc geolens-frontend <<<"$opt")
@@ -921,11 +931,11 @@ jobs:
               --set staging.persistence.enabled=true --set-json 'staging.persistence.accessModes=["ReadWriteOnce"]' "$@" | sed -n '/^NOTES:/,$p'
           }
           # The api, worker and titiler all mount the claim, so one replica each still spans nodes.
-          grep -q 'WARNING: staging.persistence.accessModes is ReadWriteOnce' <<<"$(notes --set api.replicas=1)" || {
+          grep -q 'WARNING: the staging claim is ReadWriteOnce' <<<"$(notes --set api.replicas=1)" || {
             echo "no ReadWriteOnce warning with one api and one worker replica" >&2
             exit 1
           }
-          if grep -q 'accessModes is ReadWriteOnce' <<<"$(notes --set-json 'staging.persistence.accessModes=["ReadWriteMany"]')"; then
+          if grep -q 'staging claim is ReadWriteOnce' <<<"$(notes --set-json 'staging.persistence.accessModes=["ReadWriteMany"]')"; then
             echo "ReadWriteOnce warning shown for ReadWriteMany" >&2
             exit 1
           fi
@@ -1007,7 +1017,13 @@ jobs:
           grep -q 'replicas: 2' <<<"$manifest" || { echo "the api manifest dropped replicas when its HPA turned on" >&2; exit 1; }
           live=$(kubectl -n geolens get deploy geolens-api -o jsonpath='{.spec.replicas}')
           [ "$live" = 2 ] || { echo "the api Deployment went to $live replicas when its HPA turned on" >&2; exit 1; }
-          echo "turning on the api HPA kept two replicas"
+          # KEDA's default minimum is zero, and zero is a count too.
+          kubectl -n geolens scale deploy geolens-worker --replicas=0
+          helm upgrade geolens helm/geolens --namespace geolens --reuse-values \
+            --set worker.autoscaling.enabled=true --wait --timeout 20m
+          live=$(kubectl -n geolens get deploy geolens-worker -o jsonpath='{.spec.replicas}')
+          [ "$live" = 0 ] || { echo "a worker scaled to zero came back with $live replicas" >&2; exit 1; }
+          echo "turning on the api HPA kept two replicas, and an externally scaled worker kept zero"
 
       - name: Retire the fresh install
         # The upgrade scenario below gets the runner to itself.

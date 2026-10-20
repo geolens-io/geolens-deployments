@@ -6,6 +6,9 @@
 {{- $values := get $.Values $component }}
 {{- $as := $values.autoscaling | default dict }}
 {{- if and $as.enabled (or (ne $component "titiler") $.Values.titiler.enabled) }}
+{{- if not (dig "requests" "cpu" "" ($values.resources | default dict)) }}
+{{- fail (printf "%s.autoscaling needs %s.resources.requests.cpu to measure utilization against; a --reuse-values upgrade from chart 0.4 keeps its empty resources" $component $component) }}
+{{- end }}
 ---
 apiVersion: {{ ternary "autoscaling/v2beta2" "autoscaling/v2" (semverCompare "<1.23-0" $.Capabilities.KubeVersion.Version) }}
 kind: HorizontalPodAutoscaler

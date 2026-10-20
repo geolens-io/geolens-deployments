@@ -74,8 +74,8 @@ One uvicorn worker process in the api holds, at most:
 | Total | | 26 |
 
 Each api replica runs `UVICORN_WORKERS` such processes (default 1), and every
-one has its own pools. The worker process holds the engine pool (13), the
-connector pool (3) and one separate connection that listens for new jobs
+one has its own pools. The background worker (the `worker` service, not a
+uvicorn process) holds the engine pool (13), the connector pool (3) and one separate connection that listens for new jobs
 (`LISTEN`), 17 in all. The migrate job adds a few connections while it runs.
 
 ```text
@@ -158,8 +158,9 @@ Beyond the shared storage and cache above:
 - Run migrations once, as a separate job, and set
   `GEOLENS_API_RUN_MIGRATIONS=false` on the api so replicas don't race to
   migrate at startup.
-- Probe `/health/live` for liveness and `/health/ready` for readiness, with a
-  `failureThreshold` of 3 or more. Never probe `/health`: it also fails when the
+- Probe `/health/live` for liveness and `/health/ready` for readiness (images
+  before GeoLens 1.21.0 have only `/health/live`, which the chart then uses for
+  both), with a `failureThreshold` of 3 or more. Never probe `/health`: it also fails when the
   cache or object store is down, which would pull every replica out at once.
 - Set `TRUSTED_PROXY_CIDRS` on the frontend to the load balancer's address
   range, or client IPs and rate limits all see the balancer.

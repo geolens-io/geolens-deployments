@@ -62,11 +62,11 @@ above.
 ### Connection limits and pools
 
 A cluster allows 25 connections per GiB of RAM and reserves 3 of them for
-maintenance. The `db-s-1vcpu-1gb` node above therefore leaves 22, which is less
-than one api process can open at its defaults (see
-[Database connections](README.md#database-connections)). Size the node from the
-connection budget, or lower `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` and
-`TILE_POOL_MAX_SIZE`, before adding api instances. The cluster's connection
+maintenance. The `db-s-1vcpu-1gb` node above therefore leaves 22, fewer than
+one api process and the worker open at their defaults (26 + 17, see
+[Database connections](README.md#database-connections)). Before the first
+deploy, size the node from the connection budget, or lower `DB_POOL_SIZE`,
+`DB_MAX_OVERFLOW` and `TILE_POOL_MAX_SIZE`. The cluster's connection
 pools can't carry GeoLens yet, for the reason the
 [connection notes](README.md#database-connections) give.
 

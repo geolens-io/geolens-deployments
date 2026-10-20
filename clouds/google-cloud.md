@@ -213,17 +213,20 @@ drains of the api and worker. Set `UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN` and
 `WORKER_SHUTDOWN_TIMEOUT` to about 8.
 
 Cloud SQL sets `max_connections` from memory: a tier with 3.75 to 6 GB, such
-as `db-custom-2-4096`, gets 100. With one worker and the
-[connection budget](README.md#database-connections), that allows two api
-instances at one uvicorn worker each, so cap the api with `--max=2` or raise
-the tier or lower the pools. Use `--max`, the service-wide limit, rather than
-`--max-instances`: that one limits each revision separately, so during a
-rollout the old and new revisions could each run two. Keep the worker at
-`--max=1` until you measure a need for more.
+as `db-custom-2-4096`, gets 100. Cap the api and the worker with `--max`, the
+service-wide limit, rather than `--max-instances`, which limits each revision
+separately, so during a rollout the old and new revisions could each run that
+many. Even `--max` is not a hard ceiling: Cloud Run starts extra instances a
+few times a week to replace others or absorb a spike, usually fewer than twice
+the limit. Size the [connection budget](README.md#database-connections) for
+twice `--max`. At the default pools that makes `--max=1` on both the most this
+tier carries (`2 x 26 + 2 x 17 = 86`); raise the tier or lower the pools to
+run more api instances.
 
 A request times out at 300 seconds by default. Raise `--timeout` to 600 to
-match the read timeout the frontend's nginx allows. Leave concurrency at its
-default of 80: requests beyond the pool only wait for a connection.
+match the read timeout the frontend's nginx allows. Set `--concurrency=80`,
+since a service created with gcloud or Terraform otherwise allows 80 per vCPU.
+Requests beyond the pool only wait for a connection.
 
 ## HTTPS
 

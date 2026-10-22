@@ -26,11 +26,11 @@ locals {
   # Concurrent requests per replica before Container Apps adds one.
   http_scale_concurrent_requests = "50"
 
-  # B1ms allows 35 usable connections: these pools keep a rolling revision
-  # under that (arithmetic in the README).
+  # B1ms allows 35 usable connections: one api process and these pools keep a
+  # rolling revision under that (arithmetic in the README).
   db_clamped = var.db_sku_name == "B_Standard_B1ms"
   db_env = local.db_clamped ? {
-    api    = { DB_POOL_SIZE = "2", DB_MAX_OVERFLOW = "0", TILE_POOL_MIN_SIZE = "1", TILE_POOL_MAX_SIZE = "1" }
+    api    = { DB_POOL_SIZE = "2", DB_MAX_OVERFLOW = "0", TILE_POOL_MIN_SIZE = "1", TILE_POOL_MAX_SIZE = "1", UVICORN_WORKERS = "1" }
     worker = { DB_POOL_SIZE = tostring(var.worker_concurrency), DB_MAX_OVERFLOW = "0" }
   } : {}
 
@@ -55,7 +55,7 @@ locals {
   # then extra_env over both. An extra_secrets entry drops the plain variable
   # of the same name, since Container Apps would otherwise pass both.
   backend_env_for = { for role, own in {
-    api = {
+    api = merge({
       # Migrations run once in the migrate job instead. The entrypoint has no
       # advisory lock, so several api replicas starting together would race.
       GEOLENS_API_RUN_MIGRATIONS = "false"
@@ -65,13 +65,15 @@ locals {
       # The image's own command reads these. The frontend overwrites
       # X-Forwarded-For before proxying, so trusting it gives the api the
       # real client.
-      UVICORN_WORKERS      = "2"
-      UVICORN_MAX_REQUESTS = "10000"
-      FORWARDED_ALLOW_IPS  = "*"
+      UVICORN_WORKERS     = "2"
+      FORWARDED_ALLOW_IPS = "*"
       # Only the api runs several uvicorn workers, and only its entrypoint
       # creates this directory; the worker and migrate job crash on it.
       PROMETHEUS_MULTIPROC_DIR = "/tmp/prometheus-multiproc"
-    }
+      },
+      # The image applies the limit whatever the worker count, and the one
+      # process B1ms runs would take the container down when it reached it.
+    local.db_clamped ? {} : { UVICORN_MAX_REQUESTS = "10000" })
     worker = {
       GEOLENS_API_RUN_MIGRATIONS = "false"
       WORKER_CONCURRENCY         = tostring(var.worker_concurrency)

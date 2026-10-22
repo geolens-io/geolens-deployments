@@ -85,3 +85,7 @@ rejected 'two workers on B1ms' 'B_Standard_B1ms has connections for one worker o
 accepted 'two workers on a Burstable SKU with more connections' '-var=worker_replicas=2' '-var=db_sku_name=B_Standard_B2s'
 rejected 'two job slots on B1ms' 'B_Standard_B1ms has connections for one job slot only' '-var=worker_concurrency=2'
 accepted 'two job slots on a larger SKU' '-var=worker_concurrency=2' '-var=db_sku_name=GP_Standard_D2ds_v5'
+accepted 'one api process on B1ms, set explicitly' '-var=extra_env={UVICORN_WORKERS="1"}'
+rejected 'two api processes on B1ms' 'B_Standard_B1ms has connections for one api process only' '-var=extra_env={UVICORN_WORKERS="2"}'
+rejected 'two api processes on B1ms through a secret' 'B_Standard_B1ms has connections for one api process only' '-var=extra_secrets={UVICORN_WORKERS="2"}'
+accepted 'four api processes on a larger SKU' '-var=extra_env={UVICORN_WORKERS="4"}' '-var=db_sku_name=GP_Standard_D2ds_v5'

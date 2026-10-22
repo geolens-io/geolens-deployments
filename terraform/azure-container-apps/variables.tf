@@ -293,11 +293,6 @@ variable "extra_env" {
     condition     = length(setintersection(toset(keys(var.extra_env)), toset(local.reserved_env))) == 0
     error_message = "extra_env cannot set any of ${join(", ", local.reserved_env)}. The recipe owns them; public_app_url, upload_max_size_mb and the admin variables set the ones meant to change."
   }
-
-  validation {
-    condition     = var.db_sku_name != "B_Standard_B1ms" || lookup(var.extra_env, "UVICORN_WORKERS", "1") == "1"
-    error_message = "B_Standard_B1ms has connections for one api process only, so UVICORN_WORKERS must stay 1. Use a larger db_sku_name for more; see Database connections in the recipe README."
-  }
 }
 
 variable "extra_secrets" {
@@ -309,11 +304,6 @@ variable "extra_secrets" {
   validation {
     condition     = length(setintersection(toset(keys(var.extra_secrets)), toset(local.reserved_env))) == 0
     error_message = "extra_secrets cannot redefine any of ${join(", ", local.reserved_env)}. The recipe owns them; public_app_url, upload_max_size_mb and the admin variables set the ones meant to change."
-  }
-
-  validation {
-    condition     = var.db_sku_name != "B_Standard_B1ms" || !contains(nonsensitive(keys(var.extra_secrets)), "UVICORN_WORKERS")
-    error_message = "B_Standard_B1ms has connections for one api process only, so UVICORN_WORKERS stays the recipe's. Use a larger db_sku_name for more; see Database connections in the recipe README."
   }
 
   validation {

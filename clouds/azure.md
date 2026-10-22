@@ -176,7 +176,9 @@ so an upload through the api that takes longer fails; see
 **Database connections.** B1ms allows only 35 usable connections; the formula
 is in [Database connections](README.md#database-connections) and the numbers in
 the [recipe README](../terraform/azure-container-apps/README.md#database-connections).
-Scale the database tier rather than using the built-in PgBouncer, which GeoLens
+On B1ms run one api process, the image default: leave `UVICORN_WORKERS` at 1
+and `UVICORN_MAX_REQUESTS` unset, because a single process that reaches the
+request limit exits and takes the container with it. Scale the database tier rather than using the built-in PgBouncer, which GeoLens
 can't use yet: its job queue sets `search_path` through the `options` startup
 parameter, and PgBouncer rejects that
 ([geolens#3213](https://github.com/geolens-io/geolens/issues/3213)).

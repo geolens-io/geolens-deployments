@@ -305,9 +305,10 @@ process. The cost is one tile render at a time in the api. B1ms has room for
 one app replica with one api process and one worker with one job slot, so the
 plan refuses `app_replicas`, `app_max_replicas`, `worker_replicas` or
 `worker_concurrency` above 1 on it, and `UVICORN_WORKERS` above 1 or any
-`UVICORN_MAX_REQUESTS` in `extra_env` or `extra_secrets`. Larger SKUs get the app defaults, which fit their much higher
-limits; the [connection budget](../../clouds/README.md#database-connections)
-has the formula.
+`UVICORN_MAX_REQUESTS` in `extra_env` or `extra_secrets`. Larger SKUs get the
+app defaults, which fit their much higher limits; the
+[connection budget](../../clouds/README.md#database-connections) has the
+formula.
 
 To scale out, move to a larger `db_sku_name`. Flexible Server's built-in
 PgBouncer can't be used with GeoLens yet, because the job queue sets its
@@ -526,3 +527,17 @@ The new environment reported zone redundancy, the datasets ingested before the
 upgrade still served, and the smoke test passed. A plan of this recipe against
 the stack afterwards proposed no changes. The destroy took the four runs
 Teardown describes, and the sweep found nothing left.
+
+On 2026-10-22 in westus, the previous recipe applied GeoLens 1.26.0 with the
+defaults (`B_Standard_B1ms`), and this one was applied over it. Only the app
+changed, in place: the api went from two uvicorn processes with
+`UVICORN_MAX_REQUESTS=10000` to one process with no request limit, and its log
+showed a single server process. `/api/health` answered 200 at every check, ten
+seconds apart, until the new revision took all traffic, and the next plan
+proposed no changes. The baseline datasets still served their collection items
+and raster tile, and `.github/ci/ingest-smoke.sh` passed again. The server's
+`active_connections` metric, which counts Azure's own sessions too, peaked at
+26 during the rollout and the smoke test. The destroy took the four runs
+Teardown describes, and the sweep found nothing left. That morning westus3
+refused to create the B1ms server (`SkuNotAvailable`), although Azure lists the
+SKU there.

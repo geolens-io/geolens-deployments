@@ -304,8 +304,8 @@ GeoLens 1.26.0 holds no readiness connection, so it uses one fewer in each
 process. The cost is one tile render at a time in the api. B1ms has room for
 one app replica with one api process and one worker with one job slot, so the
 plan refuses `app_replicas`, `app_max_replicas`, `worker_replicas` or
-`worker_concurrency` above 1 on it, and `UVICORN_WORKERS` above 1 in
-`extra_env` or `extra_secrets`. Larger SKUs get the app defaults, which fit their much higher
+`worker_concurrency` above 1 on it, and `UVICORN_WORKERS` above 1 or any
+`UVICORN_MAX_REQUESTS` in `extra_env` or `extra_secrets`. Larger SKUs get the app defaults, which fit their much higher
 limits; the [connection budget](../../clouds/README.md#database-connections)
 has the formula.
 

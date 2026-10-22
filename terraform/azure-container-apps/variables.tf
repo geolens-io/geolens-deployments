@@ -298,6 +298,11 @@ variable "extra_env" {
     condition     = var.db_sku_name != "B_Standard_B1ms" || lookup(var.extra_env, "UVICORN_WORKERS", "1") == "1"
     error_message = "B_Standard_B1ms has connections for one api process only, so UVICORN_WORKERS must stay 1. Use a larger db_sku_name for more; see Database connections in the recipe README."
   }
+
+  validation {
+    condition     = var.db_sku_name != "B_Standard_B1ms" || !contains(keys(var.extra_env), "UVICORN_MAX_REQUESTS")
+    error_message = "B_Standard_B1ms runs one api process, which would stop at UVICORN_MAX_REQUESTS and take the container with it. Use a larger db_sku_name to set it; see Database connections in the recipe README."
+  }
 }
 
 variable "extra_secrets" {
@@ -312,8 +317,8 @@ variable "extra_secrets" {
   }
 
   validation {
-    condition     = var.db_sku_name != "B_Standard_B1ms" || !contains(nonsensitive(keys(var.extra_secrets)), "UVICORN_WORKERS")
-    error_message = "B_Standard_B1ms has connections for one api process only, so UVICORN_WORKERS stays the recipe's. Use a larger db_sku_name for more; see Database connections in the recipe README."
+    condition     = var.db_sku_name != "B_Standard_B1ms" || length(setintersection(toset(nonsensitive(keys(var.extra_secrets))), toset(["UVICORN_WORKERS", "UVICORN_MAX_REQUESTS"]))) == 0
+    error_message = "B_Standard_B1ms runs one api process, so UVICORN_WORKERS and UVICORN_MAX_REQUESTS stay the recipe's. Use a larger db_sku_name to set them; see Database connections in the recipe README."
   }
 
   validation {

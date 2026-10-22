@@ -63,7 +63,7 @@ above.
 
 A cluster allows 25 connections per GiB of RAM and reserves 3 of them for
 maintenance. The `db-s-1vcpu-1gb` node above therefore leaves 22, fewer than
-one api process and the worker open at their defaults (26 + 17, see
+one api process and the worker open at their defaults (27 + 18, see
 [Database connections](README.md#database-connections)). Before the first
 deploy, size the node from the connection budget, or lower `DB_POOL_SIZE`,
 `DB_MAX_OVERFLOW` and `TILE_POOL_MAX_SIZE`. The cluster's connection

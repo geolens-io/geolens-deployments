@@ -220,7 +220,7 @@ many. Even `--max` is not a hard ceiling: Cloud Run starts extra instances a
 few times a week to replace others or absorb a spike, usually fewer than twice
 the limit. Size the [connection budget](README.md#database-connections) for
 twice `--max`. At the default pools that makes `--max=1` on both the most this
-tier carries (`2 x 26 + 2 x 17 = 86`); raise the tier or lower the pools to
+tier carries (`2 x 27 + 2 x 18 = 90`); raise the tier or lower the pools to
 run more api instances.
 
 A request times out at 300 seconds by default. Raise `--timeout` to 600 to

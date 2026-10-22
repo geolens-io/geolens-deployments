@@ -71,21 +71,24 @@ One uvicorn worker process in the api holds, at most:
 | SQLAlchemy engine | `DB_POOL_SIZE` plus `DB_MAX_OVERFLOW` | 10 + 3 = 13 |
 | Tile queries (asyncpg) | `TILE_POOL_MAX_SIZE` | 10 |
 | Procrastinate connector, which defers jobs | fixed | 3 |
-| Total | | 26 |
+| Readiness probes | fixed | 1 |
+| Total | | 27 |
 
 Each api replica runs `UVICORN_WORKERS` such processes (default 1), and every
 one has its own pools. The background worker (the `worker` service, not a
-uvicorn process) holds the engine pool (13), the connector pool (3) and one separate connection that listens for new jobs
-(`LISTEN`), 17 in all. The migrate job adds a few connections while it runs.
+uvicorn process) holds the engine pool (13), the connector pool (3), one
+separate connection that listens for new jobs (`LISTEN`) and one for readiness
+probes, 18 in all. GeoLens 1.26.0 holds no readiness connection, so it uses one
+fewer in each process. The migrate job adds a few connections while it runs.
 
 ```text
-connections = api_replicas x UVICORN_WORKERS x 26
-            + worker_replicas x 17
+connections = api_replicas x UVICORN_WORKERS x 27
+            + worker_replicas x 18
             + migrate job (a few, while it runs)
 ```
 
 For example, 2 api replicas with 2 uvicorn workers each plus 1 worker is
-`2 x 2 x 26 + 17 = 121` connections at the ceiling. Pools open connections on
+`2 x 2 x 27 + 18 = 126` connections at the ceiling. Pools open connections on
 demand, so an idle install sits far lower, but a burst of tile requests can
 reach the ceiling. During a rolling deploy old and new replicas overlap, so
 budget for both. Keep the total under about 80 percent of the database's

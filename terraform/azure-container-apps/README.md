@@ -301,7 +301,24 @@ a rolling revision runs old and new together      = 34   (limit 35)
 The cost is one tile render at a time in each api process. B1ms has room for
 one app replica and one worker with one job slot, so the plan refuses
 `app_replicas`, `app_max_replicas`, `worker_replicas` or `worker_concurrency`
-above 1 on it. Larger SKUs get the app defaults, which fit their much higher
+above 1 on it.
+
+That arithmetic is for GeoLens 1.26.0, the recipe's default. Later releases
+keep one more connection in each api process and in the worker, for readiness
+probes: 20 per revision and 40 during a rolling revision, over the limit. With
+those releases, run one api process on B1ms:
+
+```
+api     1 process    x (2 + 0 + 1 + 3 + 1)        =  7
+worker  1 replica    x (1 + 0 + 3 + 1 + 1)        =  6
+one revision                                      = 13
+a rolling revision runs old and new together      = 26   (limit 35)
+```
+
+The recipe sets `UVICORN_WORKERS=2` and `UVICORN_MAX_REQUESTS=10000`. The
+image applies the request limit whatever the worker count, and a single process
+that reaches it exits and takes the container with it, so one api process also
+needs the limit dropped. Larger SKUs get the app defaults, which fit their much higher
 limits; the [connection budget](../../clouds/README.md#database-connections)
 has the formula.
 

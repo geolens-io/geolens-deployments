@@ -283,44 +283,32 @@ api: presigned uploads are an S3-only path.
 ### Database connections
 
 `B_Standard_B1ms`, the default, allows 50 connections and Azure reserves 15,
-leaving 35. On B1ms the recipe sets, for the api, `DB_POOL_SIZE=2`,
-`DB_MAX_OVERFLOW=0` and `TILE_POOL_MIN_SIZE` and `TILE_POOL_MAX_SIZE` of 1,
-and for the worker `DB_POOL_SIZE=worker_concurrency` and `DB_MAX_OVERFLOW=0`.
-`extra_env` overrides any of them. Per process the worst case is
-`DB_POOL_SIZE + DB_MAX_OVERFLOW + 3` for the job queue connector, plus
-`TILE_POOL_MAX_SIZE` in the api and one connection that listens for jobs in
-the worker:
+leaving 35. On B1ms the recipe runs one api process (`UVICORN_WORKERS=1`,
+without `UVICORN_MAX_REQUESTS`, which would stop the only process) and sets,
+for the api, `DB_POOL_SIZE=2`, `DB_MAX_OVERFLOW=0` and `TILE_POOL_MIN_SIZE`
+and `TILE_POOL_MAX_SIZE` of 1, and for the worker
+`DB_POOL_SIZE=worker_concurrency` and `DB_MAX_OVERFLOW=0`. `extra_env`
+overrides the pool settings. Per process the worst case is
+`DB_POOL_SIZE + DB_MAX_OVERFLOW + 3` for the job queue connector, plus one
+held for readiness probes, `TILE_POOL_MAX_SIZE` in the api and one connection
+that listens for jobs in the worker:
 
 ```
-api     2 processes x (2 + 0 + 1 + 3)             = 12
-worker  1 replica    x (1 + 0 + 3 + 1)            =  5
-one revision                                      = 17
-a rolling revision runs old and new together      = 34   (limit 35)
-```
-
-The cost is one tile render at a time in each api process. B1ms has room for
-one app replica and one worker with one job slot, so the plan refuses
-`app_replicas`, `app_max_replicas`, `worker_replicas` or `worker_concurrency`
-above 1 on it.
-
-That arithmetic is for GeoLens 1.26.0, the recipe's default. Later releases
-keep one more connection in each api process and in the worker, for readiness
-probes: 20 per revision and 40 during a rolling revision, over the limit. With
-those releases, run one api process on B1ms:
-
-```
-api     1 process    x (2 + 0 + 1 + 3 + 1)        =  7
-worker  1 replica    x (1 + 0 + 3 + 1 + 1)        =  6
+api     1 process   x (2 + 0 + 1 + 3 + 1)         =  7
+worker  1 replica   x (1 + 0 + 3 + 1 + 1)         =  6
 one revision                                      = 13
 a rolling revision runs old and new together      = 26   (limit 35)
 ```
 
-The recipe sets `UVICORN_WORKERS=2` and `UVICORN_MAX_REQUESTS=10000`. The
-image applies the request limit whatever the worker count, and a single process
-that reaches it exits and takes the container with it, so one api process also
-needs the limit dropped. Larger SKUs get the app defaults, which fit their much higher
-limits; the [connection budget](../../clouds/README.md#database-connections)
-has the formula.
+GeoLens 1.26.0 holds no readiness connection, so it uses one fewer in each
+process. The cost is one tile render at a time in the api. B1ms has room for
+one app replica with one api process and one worker with one job slot, so the
+plan refuses `app_replicas`, `app_max_replicas`, `worker_replicas` or
+`worker_concurrency` above 1 on it, and `UVICORN_WORKERS` above 1 or any
+`UVICORN_MAX_REQUESTS` in `extra_env` or `extra_secrets`. Larger SKUs get the
+app defaults, which fit their much higher limits; the
+[connection budget](../../clouds/README.md#database-connections) has the
+formula.
 
 To scale out, move to a larger `db_sku_name`. Flexible Server's built-in
 PgBouncer can't be used with GeoLens yet, because the job queue sets its
@@ -539,3 +527,17 @@ The new environment reported zone redundancy, the datasets ingested before the
 upgrade still served, and the smoke test passed. A plan of this recipe against
 the stack afterwards proposed no changes. The destroy took the four runs
 Teardown describes, and the sweep found nothing left.
+
+On 2026-10-22 in westus, the previous recipe applied GeoLens 1.26.0 with the
+defaults (`B_Standard_B1ms`), and this one was applied over it. Only the app
+changed, in place: the api went from two uvicorn processes with
+`UVICORN_MAX_REQUESTS=10000` to one process with no request limit, and its log
+showed a single server process. `/api/health` answered 200 at every check, ten
+seconds apart, until the new revision took all traffic, and the next plan
+proposed no changes. The baseline datasets still served their collection items
+and raster tile, and `.github/ci/ingest-smoke.sh` passed again. The server's
+`active_connections` metric, which counts Azure's own sessions too, peaked at
+26 during the rollout and the smoke test. The destroy took the four runs
+Teardown describes, and the sweep found nothing left. That morning westus3
+refused to create the B1ms server (`SkuNotAvailable`), although Azure lists the
+SKU there.

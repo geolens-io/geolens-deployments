@@ -232,6 +232,14 @@ writes, so on a busy catalog the migrate task can fail with a lock timeout.
 The apply then stops before the services roll, and the previous release keeps
 serving. Apply again.
 
+Upgrading to 1.27.0: migrations 0087 to 0094 run. 0088 and 0091 to 0094 wait
+at most 5 seconds for their locks instead of queueing behind other writes, so
+on a busy catalog the migrate task can fail with a lock timeout. The apply
+then stops before the services roll, and the previous release keeps serving.
+Apply again. 0088 moves each dataset's kept previous version onto its version
+row and drops the `datasets.previous_version_*` columns, so rolling back below
+1.27.0 refuses while any dataset keeps more than one previous version.
+
 ## Running one-off commands
 
 The services have no ECS Exec. Run a GeoLens maintenance script as a one-off

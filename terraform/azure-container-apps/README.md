@@ -171,13 +171,16 @@ writes, so on a busy catalog the migrate job can fail with a lock timeout.
 The apply then stops before the apps roll, and the previous revision keeps
 serving. Apply again.
 
-Upgrading to 1.27.0: migrations 0087 to 0094 run. 0088 and 0091 to 0094 wait
-at most 5 seconds for their locks instead of queueing behind other writes, so
-on a busy catalog the migrate job can fail with a lock timeout. The apply then
-stops before the apps roll, and the previous revision keeps serving. Apply
-again. 0088 moves each dataset's kept previous version onto its version row
-and drops the `datasets.previous_version_*` columns, so rolling back below
-1.27.0 refuses while any dataset keeps more than one previous version.
+Upgrading to 1.27.1: from 1.26, upgrade straight to 1.27.1 rather than 1.27.0.
+1.27.0's migration 0088 drops columns that 1.26 reads, so 1.26 replicas still
+serving during the rollout fail dataset requests and jobs until they are
+replaced; 1.27.1 keeps those columns. Migrations 0087 to 0094 run. 0088 and
+0091 to 0094 wait at most 5 seconds for their locks instead of queueing behind
+other writes, so on a busy catalog the migrate job can fail with a lock
+timeout. The apply then stops before the apps roll, and the previous revision
+keeps serving. Apply again. 0088 moves each dataset's kept previous version
+onto its version row, so rolling back below 1.27 refuses while any dataset
+keeps more than one previous version. From 1.27.0, no migration runs.
 
 ## Configuration
 

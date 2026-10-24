@@ -674,6 +674,14 @@ writes, so on a busy catalog the migrate hook can fail with a lock timeout.
 Helm then marks the upgrade failed and keeps the previous pods serving. Run
 the upgrade again.
 
+Upgrading to 1.27.0: migrations 0087 to 0094 run. 0088 and 0091 to 0094 wait
+at most 5 seconds for their locks instead of queueing behind other writes, so
+on a busy catalog the migrate hook can fail with a lock timeout. Helm then
+marks the upgrade failed and keeps the previous pods serving. Run the upgrade
+again. 0088 moves each dataset's kept previous version onto its version row
+and drops the `datasets.previous_version_*` columns, so rolling back below
+1.27.0 refuses while any dataset keeps more than one previous version.
+
 ## Render locally
 
 The values below are placeholders for a template render, not credentials.

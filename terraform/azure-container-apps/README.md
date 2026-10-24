@@ -413,7 +413,7 @@ az postgres flexible-server restore --resource-group <name>-rg \
 
 The new server has a new name, and this module generates the DSN from its own
 server, so repointing the stack at a restored database is a manual step:
-follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.26.0/RUNBOOK.md)
+follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.27.1/RUNBOOK.md)
 for the managed-PostgreSQL restore, and rehearse it before you rely on it.
 Blob Storage has no versioning or soft delete here; turn them on if you want
 them.
@@ -552,3 +552,29 @@ and raster tile, and `.github/ci/ingest-smoke.sh` passed again. The server's
 Teardown describes, and the sweep found nothing left. That morning westus3
 refused to create the B1ms server (`SkuNotAvailable`), although Azure lists the
 SKU there.
+
+On 2026-10-24 in westus, with the cache off, this recipe applied GeoLens 1.26.0
+(9 minutes 41 seconds) and was then upgraded in place to 1.27.1 on the same
+state (1 minute 49 seconds, of which the migrate job took 36 seconds). The
+baseline answered `/api/health` 200 and passed `.github/ci/ingest-smoke.sh`.
+The new revision served 1.27.1 about a minute after the apply, and the old one
+drained within about 40 seconds. During the rollout 28 health checks, ten
+seconds apart, all answered 200, and a dataset request and an OGC items
+request every 5 seconds (102 requests) all answered 200. `ingest-smoke.sh`
+started as the apps began rolling and passed, and a second run while the
+1.26.0 revision was still active passed too. Migrations 0087 to 0094 ran, as
+the Log Analytics workspace showed. The baseline vector and raster tile still
+served, a further smoke passed, and a group probe returned 200 `restricted` to
+a member and 404 to a non-member and to an anonymous caller. The destroy took
+the four runs Teardown describes (the first three stop on the azurerm
+Content-Type delete errors), and the sweep found nothing left.
+
+westus3 refused the `B_Standard_B1ms` Flexible Server with `SkuNotAvailable`
+about 5 minutes into the apply, although `az postgres flexible-server
+list-skus --location westus3` showed it unrestricted just before (also seen on
+2026-10-22). The run used westus.
+
+Reusing a stack name right after destroying it hit intermittent ARM 404s on
+resources that existed (the virtual network, its subnets, the private DNS
+zone), and Terraform dropped them from state; the leftovers had to be deleted
+by hand. Use a fresh stack name for each run.

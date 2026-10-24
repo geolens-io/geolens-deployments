@@ -265,6 +265,17 @@ writes, so on a busy catalog the migration can fail with a lock timeout.
 Leave the services on the previous release and run the migrate task again
 before rolling them onto 1.26.0.
 
+Upgrading to 1.27.1: from 1.26, upgrade straight to 1.27.1 rather than 1.27.0.
+1.27.0's migration 0088 drops columns that 1.26 reads, so 1.26 tasks still
+serving during the rollout fail dataset requests and jobs until they are
+replaced; 1.27.1 keeps those columns. Migrations 0087 to 0094 run. 0088 and
+0091 to 0094 wait at most 5 seconds for their locks instead of queueing behind
+other writes, so on a busy catalog the migration can fail with a lock timeout.
+Leave the services on the previous release and run the migrate task again
+before rolling them onto 1.27.1. 0088 moves each dataset's kept previous
+version onto its version row, so rolling back below 1.27 refuses while any
+dataset keeps more than one previous version. From 1.27.0, no migration runs.
+
 ## HTTPS
 
 Issue an ACM certificate, put an ALB in front with an HTTPS listener, and

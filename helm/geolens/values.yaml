@@ -50,7 +50,7 @@ api:
   replicas: 2
   image:
     repository: ghcr.io/geolens-io/geolens-api
-    tag: "1.27.1"
+    tag: "1.28.0"
     pullPolicy: IfNotPresent
   publicAppUrl: "https://geolens.example.com"
   publicApiUrl: "https://geolens.example.com/api"
@@ -122,7 +122,7 @@ worker:
     enabled: false
   image:
     repository: ghcr.io/geolens-io/geolens-worker
-    tag: "1.27.1"
+    tag: "1.28.0"
     pullPolicy: IfNotPresent
   # The 4Gi memory limit matches the Compose prod default (WORKER_MEM_LIMIT) and
   # keeps one runaway ingest from starving the node. A large raster that gets
@@ -152,7 +152,7 @@ frontend:
     repository: ghcr.io/geolens-io/geolens-frontend
     # Must stay >= 1.4.9: older frontend images predate the parameterized
     # edge proxy (API_UPSTREAM) and cannot reach the api on Kubernetes.
-    tag: "1.27.1"
+    tag: "1.28.0"
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP

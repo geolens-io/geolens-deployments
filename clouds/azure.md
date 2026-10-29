@@ -261,6 +261,13 @@ rolling them onto 1.27.1. 0088 moves each dataset's kept previous version onto
 its version row, so rolling back below 1.27 refuses while any dataset keeps
 more than one previous version. From 1.27.0, no migration runs.
 
+Upgrading to 1.28.0: migrations 0095 and 0096 only add tables and a nullable
+column, so 1.27 replicas keep serving during the rollout. Both wait at most 5
+seconds for their locks on the users and maps tables instead of queueing
+behind other writes, so on a busy catalog the migration can fail with a lock
+timeout. Leave the apps on the previous release and run the migrate job again
+before rolling them onto 1.28.0.
+
 ## HTTPS
 
 Container Apps terminates TLS on its own `*.azurecontainerapps.io` hostname

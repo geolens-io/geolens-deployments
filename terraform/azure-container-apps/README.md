@@ -189,6 +189,14 @@ behind other writes, so on a busy catalog the migrate job can fail with a
 lock timeout. The apply then stops before the apps roll, and the previous
 revision keeps serving. Apply again.
 
+Upgrading to 1.29.0: migrations 0097, 0099 and 0100 only add tables and
+columns. 0101 drops the four `catalog.datasets.previous_version_*` columns,
+which have been empty since 1.27 and which neither 1.27 nor 1.28 reads, so
+1.28 replicas keep serving during the rollout. Coming from 1.26, upgrade to
+1.27.1 first. Each migration waits at most 5 seconds for its locks, so on a
+busy catalog the migrate job can fail with a lock timeout. The apply then stops before
+the apps roll, and the previous revision keeps serving. Apply again.
+
 ## Configuration
 
 The variables cover the infrastructure and the application settings a first

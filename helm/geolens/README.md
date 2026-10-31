@@ -692,6 +692,14 @@ behind other writes, so on a busy catalog the migrate hook can fail with a
 lock timeout. Helm then marks the upgrade failed and keeps the previous pods
 serving. Run the upgrade again.
 
+Upgrading to 1.29.0: migrations 0097, 0099 and 0100 only add tables and
+columns. 0101 drops the four `catalog.datasets.previous_version_*` columns,
+which have been empty since 1.27 and which neither 1.27 nor 1.28 reads, so
+1.28 pods keep serving during the rollout. Coming from 1.26, upgrade to
+1.27.1 first. Each migration waits at most 5 seconds for its locks, so on a
+busy catalog the migrate hook can fail with a lock timeout. Helm then marks the upgrade
+failed and keeps the previous pods serving. Run the upgrade again.
+
 ## Render locally
 
 The values below are placeholders for a template render, not credentials.

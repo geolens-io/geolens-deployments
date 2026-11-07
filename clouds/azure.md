@@ -278,11 +278,11 @@ release and run the migrate job again before rolling them onto 1.29.0.
 
 Upgrading to 1.30.0: migration 0102 only widens the check constraint on
 `catalog.dataset_assets.key` to allow the new `vrt_overview` asset, which 1.29
-pods never write, so they keep serving during the rollout. It drops and re-adds
+replicas never write, so they keep serving during the rollout. It drops and re-adds
 the constraint in one transaction and validates it afterwards without blocking
 reads or writes. The migration waits at most 5 seconds for its lock, so on a busy
-catalog the migrate hook can fail with a lock timeout. Helm then marks the upgrade
-failed and keeps the previous pods serving. Run the upgrade again.
+catalog the migration can fail with a lock timeout. Leave the apps on the previous
+release and run the migrate job again before rolling them onto 1.30.0.
 
 ## HTTPS
 

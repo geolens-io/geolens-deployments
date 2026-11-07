@@ -276,6 +276,14 @@ which have been empty since 1.27 and which neither 1.27 nor 1.28 reads, so
 busy catalog the migration can fail with a lock timeout. Leave the apps on the previous
 release and run the migrate job again before rolling them onto 1.29.0.
 
+Upgrading to 1.30.0: migration 0102 only widens the check constraint on
+`catalog.dataset_assets.key` to allow the new `vrt_overview` asset, which 1.29
+replicas never write, so they keep serving during the rollout. It drops and re-adds
+the constraint in one transaction and validates it afterwards without blocking
+reads or writes. The migration waits at most 5 seconds for its lock, so on a busy
+catalog the migration can fail with a lock timeout. Leave the apps on the previous
+release and run the migrate job again before rolling them onto 1.30.0.
+
 ## HTTPS
 
 Container Apps terminates TLS on its own `*.azurecontainerapps.io` hostname

@@ -436,7 +436,7 @@ az postgres flexible-server restore --resource-group <name>-rg \
 
 The new server has a new name, and this module generates the DSN from its own
 server, so repointing the stack at a restored database is a manual step:
-follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.27.1/RUNBOOK.md)
+follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.30.0/RUNBOOK.md)
 for the managed-PostgreSQL restore, and rehearse it before you rely on it.
 Blob Storage has no versioning or soft delete here; turn them on if you want
 them.
@@ -591,6 +591,22 @@ served, a further smoke passed, and a group probe returned 200 `restricted` to
 a member and 404 to a non-member and to an anonymous caller. The destroy took
 the four runs Teardown describes (the first three stop on the azurerm
 Content-Type delete errors), and the sweep found nothing left.
+
+On 2026-11-07 in westus, with the cache off, this recipe applied GeoLens 1.27.1
+(8 minutes 59 seconds) and was then upgraded in place to 1.30.0 on the same
+state (2 minutes 2 seconds, of which the migrate job took 51 seconds). The
+baseline answered `/api/health` 200 and passed `ingest-smoke.sh`. The new
+revision served 1.30.0 about a minute after the apply, and the old one had left
+the revision list within two minutes. Over the 25 minutes around the rollout,
+127 health checks, ten seconds apart, all answered 200, and a dataset request
+and an OGC items request every 5 seconds (508 requests) all answered 200. An
+`ingest-smoke.sh` run on the 1.27.1 revision after the migrate job finished
+passed. Migrations 0095 to 0102 ran, as the Log Analytics workspace showed. The
+baseline vector and raster tile still served, a further smoke passed, a dataset
+set to `restricted` answered 200 to the admin and 404 to an anonymous caller,
+and a plan afterwards proposed no changes. The destroy took the four runs
+Teardown describes (the third sat on the environment for about 25 minutes), and
+the sweep found nothing left.
 
 westus3 refused the `B_Standard_B1ms` Flexible Server with `SkuNotAvailable`
 about 5 minutes into the apply, although `az postgres flexible-server

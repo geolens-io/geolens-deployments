@@ -128,9 +128,9 @@ cost-allocation tag, set S3, database, egress and AI limits for the
 organization, and configure AWS Budgets and provider-side alerts before
 accepting data.
 
-### Database identity limit as of release 1.27.1
+### Database identity limit as of release 1.30.0
 
-GeoLens 1.27.1 supports its canonical runtime-role environment settings and
+GeoLens 1.30.0 supports its canonical runtime-role environment settings and
 requires migrations to run separately when that mode is enabled. The published
 API image does not include the repository-level `scripts/init-db.sh` or
 `scripts/lib/configure-runtime-db-role.sh` helper, and this Terraform recipe's
@@ -294,7 +294,7 @@ a failed run never reads as done; it uses `false` rather than `exit` so a
 pasted copy doesn't close your shell.
 
 That example is the lockout recovery from section 12 of the GeoLens
-[RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.27.1/RUNBOOK.md). Its
+[RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.30.0/RUNBOOK.md). Its
 single-use link lands in the migrate log group, which keeps it for 14 days;
 the link expires 10 minutes after it is printed. For the section 11 key
 rotation, the command is
@@ -358,7 +358,7 @@ no longer makes them unreadable. Adding it to a running stack is safe: the app
 still falls back to the JWT-derived key for anything written before. Do not
 replace `random_bytes.secret_encryption_key` to rotate it; that strands what it
 encrypted. Follow section 11 of the GeoLens
-[RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.27.1/RUNBOOK.md)
+[RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.30.0/RUNBOOK.md)
 instead, running its script as described in
 [Running one-off commands](#running-one-off-commands).
 
@@ -454,7 +454,7 @@ Every shortcut is marked with a `# ponytail:` comment naming its ceiling.
   from the load balancer. A NAT gateway costs about $32 a month and buys you
   private task IPs.
 - The RDS master user is both the migration and application login. The current
-  1.27.1 image/recipe combination does not run the canonical managed-Postgres
+  1.30.0 image/recipe combination does not run the canonical managed-Postgres
   role reconciler; keep each organization on its own RDS instance as described above.
 - One task role is shared by every container, which lets titiler write to the
   bucket even though it only reads.
@@ -492,7 +492,7 @@ organization-specific stack:
 2. Restore a database recovery point to a new RDS endpoint and recover the
    corresponding S3 objects or versions. RDS recovery creates a new endpoint;
    keep the source stack available until verification is complete.
-3. Follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.27.1/RUNBOOK.md)
+3. Follow section 3 of the GeoLens [RUNBOOK](https://github.com/geolens-io/geolens/blob/v1.30.0/RUNBOOK.md)
    for managed PostgreSQL restore steps. Verify `/api/health`, sign-in,
    collection items and raster rendering, and record the recovery point,
    endpoint change, object versions and elapsed time.
@@ -664,3 +664,23 @@ ran. The baseline vector and raster tile still served, a second
 member and 404 to a non-member. The stack was destroyed in one run (47
 resources, 8 minutes 42 seconds); the app secret needed a force delete, and a
 sweep found nothing else left.
+
+On 2026-11-07 in us-east-1, this recipe applied GeoLens 1.27.1 (11 minutes 57
+seconds) and was then upgraded in place to 1.30.0 on the same state. The
+baseline answered `/api/health` 200 and passed `ingest-smoke.sh`. The upgrade
+applied in 5 minutes 12 seconds: the migrate task took 1 minute 15 seconds, the
+worker rolled 2 minutes 9 seconds in and the app after 3 minutes 52 seconds.
+ECS could not place the first new app task because a GHCR manifest request for
+the titiler sidecar image timed out (`CannotPullContainerError`); it placed the
+task on its own 32 seconds later, and the load balancer served 1.30.0 4 minutes
+47 seconds after the apply began. Over the 25 minutes around the rollout, 141
+health checks, ten seconds apart, all answered 200, and a dataset request and an
+OGC items request every 5 seconds (562 requests) all answered 200. An ingest
+started while the app service was still rolling ran on the 1.27.1 tasks against
+the migrated schema and passed. Migrations 0095 to 0102 ran, as the migrate
+task's CloudWatch log showed. The baseline vector and raster tile still served,
+a second `ingest-smoke.sh` passed, a dataset set to `restricted` answered 200 to
+the admin and 404 to an anonymous caller, and a plan afterwards proposed no
+changes. The stack was destroyed in one run (47 resources, 8 minutes 52
+seconds); a sweep 90 seconds later found nothing left but the app secret in
+its recovery window, which a force delete then removed.

@@ -124,7 +124,10 @@ Azure is still issuing would otherwise stall the apply.
 
 ## Upgrading GeoLens
 
-Bump `geolens_version` and apply. The migrate job's image changes, so the
+Bump `geolens_version` and apply. A stack that leaves it at the recipe default
+moves to the newest validated release on its next apply, so pin it in
+`terraform.tfvars`, and take a 1.26 stack through 1.27.1 before any later
+release (see the 1.29.0 note below). The migrate job's image changes, so the
 migration runs again against the new image, and only then do the apps roll
 onto a new revision. Container Apps keeps the old revision serving until the
 new one is ready, but Terraform does not wait for that, so check it after an

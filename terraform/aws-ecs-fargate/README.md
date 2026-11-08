@@ -196,7 +196,10 @@ the api hands out, and a mismatch breaks browser uploads.
 
 ## Upgrading GeoLens
 
-Bump `geolens_version` and apply. The migrate task definition changes, so the
+Bump `geolens_version` and apply. A stack that leaves it at the recipe default
+moves to the newest validated release on its next apply, so pin it in
+`terraform.tfvars`, and take a 1.26 stack through 1.27.1 before any later
+release (see the 1.29.0 note below). The migrate task definition changes, so the
 migration runs again against the new image, and only then do the services roll.
 The circuit breaker rolls a failed deployment back to the previous task
 definition.

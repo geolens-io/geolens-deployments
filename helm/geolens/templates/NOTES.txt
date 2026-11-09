@@ -1,4 +1,4 @@
-GeoLens {{ .Chart.AppVersion }} ({{ .Release.Name }}) deployed.
+GeoLens {{ .Values.api.image.tag }} ({{ .Release.Name }}) deployed.
 {{- $feTag := .Values.frontend.image.tag | toString }}
 {{- if regexMatch "^v?\\d+\\.\\d+\\.\\d+$" $feTag }}
 {{- if semverCompare "<1.4.9-0" $feTag }}

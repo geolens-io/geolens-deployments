@@ -269,6 +269,14 @@ reads or writes. The migration waits at most 5 seconds for its lock, so on a bus
 catalog the migrate task can fail with a lock timeout. The apply then stops before
 the services roll, and the previous release keeps serving. Apply again.
 
+Upgrading to 1.31.0: migration 0103 only widens the check constraints on
+`catalog.datasets.source_format` and the refresh run origin kind to allow
+`database`, which 1.30.1 and 1.29.2 tasks never write, so they keep serving during
+the rollout. Nothing changes beyond the usual migration step. SQL Server import
+stays off until you set `DATABASE_SOURCES`. The migration waits at most 5 seconds
+for its lock, so on a busy catalog the migrate task can fail with a lock timeout. The apply then stops before
+the services roll, and the previous release keeps serving. Apply again.
+
 ## Running one-off commands
 
 The services have no ECS Exec. Run a GeoLens maintenance script as a one-off

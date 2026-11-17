@@ -222,6 +222,9 @@ the apps roll, and the previous revision keeps serving. Apply again.
 Once 0103 has run, a restarted replica on 1.30.1 or 1.29.2 refuses to start because the
 database is ahead of its migrations (replicas already running keep serving), so roll back
 from the pre-upgrade backup.
+The restore loses every write made after that backup, including writes the previous
+release accepted during the rollout, so record those changes before restoring and
+apply them again afterwards.
 
 Upgrading to 1.32.0: migrations 0104 and 0105 add two nullable columns (the API
 key that created a map, and a dataset version's geometry columns) and widen the API
@@ -242,6 +245,9 @@ characters or equal to a published example, and for the database password
 Once 0104 has run, a restarted replica on 1.31.0 refuses to start because the
 database is ahead of its migrations (replicas already running keep serving), so roll back
 from the pre-upgrade backup.
+The restore loses every write made after that backup, including writes the previous
+release accepted during the rollout, so record those changes before restoring and
+apply them again afterwards.
 
 ## Configuration
 

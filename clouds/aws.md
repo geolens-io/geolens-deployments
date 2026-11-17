@@ -314,6 +314,32 @@ previous release and run the migrate task again before rolling them onto 1.31.0.
 Once 0103 has run, a restarted task on 1.30.1 or 1.29.2 refuses to start because the
 database is ahead of its migrations (tasks already running keep serving), so roll back
 from the pre-upgrade backup.
+The restore loses every write made after that backup, including writes the previous
+release accepted during the rollout, so record those changes before restoring and
+apply them again afterwards.
+
+Upgrading to 1.32.0: migrations 0104 and 0105 add two nullable columns (the API
+key that created a map, and a dataset version's geometry columns) and widen the API
+key scope check to allow `map_author`. 1.31.0 tasks read none of them, so they keep
+serving during the rollout, though they refuse a `map_author` key. Both migrations wait at most 5 seconds for their locks, so on a busy catalog the
+migration can fail with a lock timeout. Leave the services on the previous release
+and run the migrate task again before rolling them onto 1.32.0.
+While both releases run, a 1.31.0 task answers 403 to a tile URL that a 1.32.0
+task signed for an embedded map, so embedded maps can miss tiles until the rollout
+finishes; a reload recovers. An admin transfer of a map now revokes its embed tokens.
+Anonymous OGC API, STAC and catalog search reads stop after 30 seconds of database
+time and answer 503 (`DB_ANONYMOUS_READ_TIMEOUT_SECONDS`). `SESSION_SECRET_KEY` is
+optional and falls back to `JWT_SECRET_KEY`; if you set it, use at least 32
+characters that differ from the JWT and tile signing secrets, and the same value on
+every API task. 1.32.0 logs a warning for a `TILE_SIGNING_SECRET` shorter than 32
+characters or equal to a published example, and for the database password
+`geolens`; 1.33.0 refuses to start with either, so change them now.
+Once 0104 has run, a restarted task on 1.31.0 refuses to start because the
+database is ahead of its migrations (tasks already running keep serving), so roll back
+from the pre-upgrade backup.
+The restore loses every write made after that backup, including writes the previous
+release accepted during the rollout, so record those changes before restoring and
+apply them again afterwards.
 
 ## HTTPS
 

@@ -241,7 +241,8 @@ optional and falls back to `JWT_SECRET_KEY`; if you set it, use at least 32
 characters that differ from the JWT and tile signing secrets, and the same value on
 every API replica. 1.32.0 logs a warning for a `TILE_SIGNING_SECRET` shorter than 32
 characters or equal to a published example, and for the database password
-`geolens`; 1.33.0 refuses to start with either, so change them now.
+`geolens`; the first release on or after 2027-02-10 refuses to start with
+either, so change them before then.
 Once 0104 has run, a restarted replica on 1.31.0 refuses to start because the
 database is ahead of its migrations (replicas already running keep serving), so roll back
 from the pre-upgrade backup.

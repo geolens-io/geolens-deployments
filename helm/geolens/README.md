@@ -750,6 +750,23 @@ The restore loses every write made after that backup, including writes the previ
 release accepted during the rollout, so record those changes before restoring and
 apply them again afterwards.
 
+Upgrading to 1.34.0: migration 0106 adds a nullable `bookmarks` column to maps, and
+0107 adds a nullable `manifest_key` column to maps and to map layers, each with a
+partial unique index. Both only add, so pods still on 1.33.0 keep serving during
+the rollout. Map requests can wait briefly while the migrations hold their locks on the maps
+tables; a migration that can't take a lock within 5 seconds stops, and you run the
+upgrade again. Publish manifest version 2 is a preview: finish upgrading every worker
+before you send a version 2 publish, because a worker still on 1.33.0 that takes a
+version 2 job leaves it to fail. Version 1 is unchanged. There are no new settings
+and no chart value changes. Overlay authors: `EXTENSION_API_VERSION` is now 26.
+Once 0106 has run, a restarted pod on 1.33.0 refuses to start because the
+database is ahead of its migrations (pods already running keep serving), so roll back
+from the pre-upgrade backup.
+The restore loses every write made after that backup, including writes the previous
+release accepted during the rollout. Stop the api and worker first, so nothing new is
+written while you work, then record those changes before restoring and apply them
+again afterwards.
+
 ## Render locally
 
 The values below are placeholders for a template render, not credentials.

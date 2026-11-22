@@ -763,8 +763,9 @@ Once 0106 has run, a restarted pod on 1.33.0 refuses to start because the
 database is ahead of its migrations (pods already running keep serving), so roll back
 from the pre-upgrade backup.
 The restore loses every write made after that backup, including writes the previous
-release accepted during the rollout, so record those changes before restoring and
-apply them again afterwards.
+release accepted during the rollout. Stop the api and worker first, so nothing new is
+written while you work, then record those changes before restoring and apply them
+again afterwards.
 
 ## Render locally
 
